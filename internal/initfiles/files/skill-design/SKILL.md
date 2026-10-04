@@ -88,12 +88,16 @@ limits: { max_transitions: 200, max_budget_usd: 10 }
 
 steps:                        # names: lowercase letters, digits, - and _
   implement:
-    agent: /implement         # a skill line; or prompt: "free text"; or both
+    prompt: |                 # what to do; the brief and the previous handover are provided automatically
+      Implement the plan in the brief. Add or update tests. Commit your work.
     session: continue         # revisits resume the same agent session
     next: review              # one target for every outcome
 
   review:
-    agent: /review mode=code
+    description: Code review
+    prompt: |
+      Review the changes on this branch (git diff against {{run.base}}) against the
+      brief's plan and acceptance criteria. Pass only if they're met and the code is sound.
     model: opus
     next:                     # the agent chooses one of these outcomes
       pass: gate
@@ -132,11 +136,11 @@ steps:                        # names: lowercase letters, digits, - and _
 
 | Key | What it does | Outcomes |
 |---|---|---|
-| `agent:` / `prompt:` | Runs Claude Code in the run's worktree. | The keys of `next` (the agent picks one), or `done` if `next` is a single target |
+| `prompt:` / `agent:` | Runs Claude Code in the run's worktree. `prompt:` is free text; `agent:` is a skill line such as `/review mode=code` (only for skills that exist, see below); both together send the skill line, then the prompt. | The keys of `next` (the agent picks one), or `done` if `next` is a single target |
 | `run:` | Runs a bash script. | `pass` / `fail`, or map exit codes with `outcomes: {0: pass, 2: flaky, default: fail}` |
 | `ask:` | Pauses for a person. Uses `choices:` instead of `next:`. | The chosen label |
 | `wait:` | Polls a command every `every` (default 1m) until its last line matches a key of `next`. | Those keys; `timeout` if mapped |
-| `split:` | An agent splits the brief into slices (`rules:` file, `max_slices:`, `review: true` to approve them). | `ok` (required) plus any others you add |
+| `split:` | An agent splits the brief into slices (`rules:` file, `max_slices:`, `review: true` to approve them). Write `split: ""` plus a `prompt:`, or `split: /<skill>`. | `ok` (required) plus any others you add |
 | `fanout:` | Runs another pipeline once per slice. `mode: series` (`stack: true` bases each slice's branch on the previous one; `advance_on: <step>` starts the next slice when this one reaches that step) or `mode: parallel` (`max_parallel: 3`). `on_child_stop: halt \| continue`. | `done` (every slice finished) and `failed`, both required |
 
 **Targets**: a step name, `done` (success), `stop` (abandon), or `$came_from`
@@ -156,6 +160,16 @@ such as `SHIP_RUN_ID`, `SHIP_RUN_DIR`, `SHIP_BRANCH`, `SHIP_VAR_<NAME>` and
 `SHIP_HOME`.
 
 ## Design rules of thumb
+
+- **Write agent steps as `prompt:`** unless a matching skill really exists.
+  Only use `agent: /<name>` after checking that `.claude/skills/<name>/SKILL.md`
+  exists in the repo or `~/.claude/skills/<name>/SKILL.md` for the user (or
+  the user tells you it comes from a plugin). A pipeline that calls a missing
+  skill fails on its first agent step. If the user has suitable skills, ask
+  whether to use them.
+- Good prompts say what to do and what "done" means. Don't restate the brief
+  or the previous step's handover: every agent step already gets both, plus
+  the list of outcomes it can choose and where each leads.
 
 - Give every agent a way to reach a person: an outcome such as `stuck`
   leading to an `ask` step, or `on_error:`. Otherwise failures just pause the

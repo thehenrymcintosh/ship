@@ -102,6 +102,10 @@ func buildCall(v *Visit, outcomes []string, extra string) (*agentCall, *Result) 
 			parts = append(parts, r)
 		}
 		c.prompt = strings.Join(parts, "\n\n")
+		if strings.TrimSpace(c.prompt) == "" {
+			// e.g. `split: ""` with no prompt: the system prompt says what to do.
+			c.prompt = "Do the work for this step as described in your instructions, then report your result."
+		}
 		if v.ResumeKind == "resplit-fresh" {
 			c.prompt += "\n\nThe reviewer asked for a different split:\n\n" + v.Note
 		}

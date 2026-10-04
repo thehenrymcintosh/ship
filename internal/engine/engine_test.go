@@ -525,3 +525,13 @@ steps:
 		t.Fatal(err)
 	}
 }
+
+func TestEmptyPromptGetsDefault(t *testing.T) {
+	en := newEnv(t, map[string]string{"p": "version: 1\nstart: s\nsteps:\n  s:\n    split: \"\"\n    next: {ok: done}\n"})
+	s := en.start("p", "", nil, "s: [{outcome: ok, summary: one, slices: [{key: a, title: A, brief: b, acceptance: [x]}]}]\n")
+	s = en.waitStatus(s.ID, store.StatusDone)
+	in, _ := os.ReadFile(filepath.Join(en.st.RunDir(s.ID), "visits", s.Visits[0].Dir, "input.md"))
+	if !strings.Contains(string(in), "Do the work for this step") {
+		t.Fatalf("empty prompt should get a default:\n%s", in)
+	}
+}
