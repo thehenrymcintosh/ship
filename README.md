@@ -1,9 +1,13 @@
 # ship
 
-`ship` runs local agentic-coding pipelines. A pipeline is a YAML file in your
-repo whose steps are agent runs (Claude Code), shell scripts, human
-check-ins and polls. Each step's outcome decides which step runs next. Every
-run works in its own git worktree, survives crashes and reboots, and shows up
+`ship` runs your coding workflows with Claude Code, on your machine. You
+describe a workflow once, for example "implement it, have it reviewed, run the
+tests, open a PR, wait for it to merge", and `ship` runs it for each piece of
+work you hand it. Agents do the writing and reviewing, scripts do the
+checking, and you're asked only when a decision needs a person.
+
+Each run gets its own git worktree, so several can run side by side without
+touching your checkout. Runs survive crashes and reboots, and you watch them
 live in a local web UI.
 
 ## Install
@@ -14,167 +18,373 @@ curl -fsSL https://raw.githubusercontent.com/thehenrymcintosh/ship/main/install.
 
 This installs the latest release for macOS or Linux (arm64/amd64) to
 `~/.local/bin`, after checking it against the release checksums. Set
-`SHIP_INSTALL_DIR` to put it elsewhere, or `SHIP_VERSION=v0.2.0` to pin a
+`SHIP_INSTALL_DIR` to install elsewhere, or `SHIP_VERSION=v0.2.0` to pin a
 version.
 
-To update later:
+To update:
 
 ```sh
-ship update            # latest release; restarts the daemon onto it
-ship update --check    # just say whether there's a newer one
+ship update            # installs the latest release and restarts ship's background process onto it
+ship update --check    # only says whether there's a newer one
 ```
 
-You need git, and the `claude` CLI for agent steps. To build from source
-instead (Go 1.23+): `make build`, which writes `bin/ship`.
-
-### Publishing a release
-
-```sh
-scripts/release.sh            # patch bump; or minor, major, or an exact X.Y.Z
-scripts/release.sh minor --dry-run
-```
-
-It checks you're on a clean, up-to-date `main`, runs the tests, builds and
-installs the new version locally, then tags and pushes. The pushed tag
-triggers the release workflow, which publishes the archives `install.sh`
-and `ship update` download.
-
-To use your local changes without releasing: `make install` (then
-`ship serve --restart` if the daemon is running).
-[treehouse](https://github.com/kunchenguid/treehouse) is optional.
+You need git and the [`claude` CLI](https://docs.anthropic.com/en/docs/claude-code).
+[treehouse](https://github.com/kunchenguid/treehouse) is optional, as a
+faster way to provide worktrees. To build from source, see
+[Development](#development).
 
 ## Quick start
 
+**1. Set up your repo.**
+
 ```sh
 cd your-repo
-ship init     # .ship/, schemas for your editor, and two Claude Code skills
+ship init
 ```
 
-`ship init` doesn't add any pipelines. Make one of these two ways:
+This creates `.ship/` (where pipelines live) and installs two Claude Code
+skills: `/ship-design` and `ship-handoff`.
 
-- **Describe it.** In Claude Code, run `/ship-design` followed by what you
-  want, e.g. `/ship-design implement, review, run tests, then open a PR and
-  wait for it to merge`. It asks about your workflow, reads the plan back in
-  plain words, writes `.ship/pipelines/<name>.yml` and checks it with
-  `ship validate`. It only runs when you invoke it.
-- **Start from a template.** `ship templates` lists them; `ship add <name>`
-  copies one in, along with any scripts, rules and agent skills it uses.
+**2. Design a pipeline with Claude.** In Claude Code, run `/ship-design` and
+say what you want in plain words:
 
-Then start a run from a brief (markdown with front matter):
+```
+/ship-design implement the change, have it reviewed, run the tests, then open a PR and wait for it to merge
+```
+
+It asks a few questions about your workflow, reads the plan back to you,
+then writes `.ship/pipelines/<name>.yml` and checks it. It only runs when
+you invoke it.
+
+**3. Plan a change, then hand it over.** Talk the change through with Claude
+as usual. When you're happy with the plan, say **"hand this to ship"**. The
+`ship-handoff` skill writes a brief (the context, the plan and acceptance
+criteria) and starts a run. The web UI opens on it.
+
+**4. Watch, and step in when asked.** The run works in its own worktree. When
+it needs you, for example an agent is stuck or the slices of a big change need
+approving, it shows up in the UI's inbox (with a desktop notification on
+macOS). Answer there or from the terminal.
+
+### The web UI
+
+`ship open` opens it (it starts automatically with your first run). It's
+served only on `127.0.0.1` and signs your browser in with a local token.
+
+- **Runs:** every run, grouped by repo, with its status, current step,
+  elapsed time and cost. 🔔 marks runs waiting for you. Runs that were split
+  into slices show their child runs underneath.
+- **A run's page:**
+  - The pipeline as a graph, with the current step highlighted and the
+    paths taken so far drawn solid. Click a step to show only its visits.
+  - A timeline of every step visit. Each one has the live output (script
+    output, or the agent's messages and tool calls), the exact input it got,
+    the handover it wrote for the next step, and its raw result.
+  - When the run needs you: the question, any context it chose to show, a
+    note box and one button per choice.
+  - Controls to retry a step, jump to another step, resume an interrupted
+    agent session, or cancel. You can also edit the run's variables, and
+    copy the worktree path or open it in your editor or terminal.
+- **Inbox:** everything waiting for you across all runs, oldest first,
+  answerable in place.
+- **Pipelines:** each repo's pipelines (and your global ones) as graphs,
+  with any validation problems and a form to start a run.
+
+### The CLI
+
+Everything the UI does is also available in the terminal. Where a command
+takes a run, any unique part of its id works (`3fa`, `rate-limit`).
+
+| Command | What it does |
+|---|---|
+| `ship start --brief brief.md` | Start a run from a brief file (`-` reads stdin) |
+| `ship ls` | Active runs (`--all` includes finished ones; `--pipelines` lists pipelines) |
+| `ship status <run>` | Where a run is: current step, visits, pending question, worktree |
+| `ship logs <run> -f` | Follow the current step's output |
+| `ship answer <run> [choice] --note "…"` | Answer a question (prompts for the choice if you leave it out) |
+| `ship retry <run>`, `ship goto <run> <step>`, `ship cancel <run>` | Step in manually |
+| `ship cd <run>` | Print the worktree path: `cd "$(ship cd 3fa)"` |
+| `ship open [run]` | Open the web UI |
+| `ship validate` | Check this repo's pipelines |
+| `ship templates` / `ship add <name>` | List and add pipeline templates |
+| `ship init` / `ship update` | Set up a repo / update ship |
+
+`ship <command> --help` has the details. A background process (the
+"daemon") runs the pipelines; it starts by itself and keeps going after you
+close the terminal. `ship serve --restart` restarts it.
+
+### Example uses
+
+Each of these is one `/ship-design` conversation away.
+
+- **Fix it and get it reviewed.** An agent implements the change, a second
+  agent reviews it and either passes it or sends it back with notes, then
+  your tests run. If the reviewer is stuck, or the same step fails too many
+  times, the run stops and asks you.
+  > `/ship-design implement, review until it passes, then run make test. Ask me if it gets stuck.`
+- **Take a change all the way to a merged PR.** As above, then push the
+  branch, open a draft PR, have an agent review the PR, mark it ready, and
+  wait. New review comments go back to an agent to address; a merge ends the
+  run.
+  > `/ship-design implement, review, test, open a PR, wait for review; address comments until it's merged`
+- **Split a big feature into stacked PRs.** An agent splits the plan into
+  small slices following your rules, you approve the split, then each slice
+  runs the PR workflow on its own branch, each stacked on the one before. The
+  next slice starts as soon as the previous one is waiting for review.
+  > `/ship-design split the brief into stacked PRs following .ship/rules/splitting.md, then run my pr pipeline for each slice`
+- **Run several independent changes at once.** Hand over several briefs, and
+  each run gets its own worktree and branch. At most three agents work at
+  once by default (`max_agents` in config); the rest queue.
+
+## Briefs
+
+A run starts from a brief: markdown with a little YAML at the top. The
+handoff skill writes these for you; you can also write one yourself.
 
 ```markdown
 ---
-title: Rate limit the public API
-pipeline: my-pipeline
+title: Rate limit the public API          # required
+pipeline: pr                              # which pipeline (optional if there's only one)
+vars: { ticket: API-123 }                 # values for the pipeline's variables
 acceptance:
   - Requests over the limit get 429 with Retry-After
+  - Limits are configurable per API key
 ---
+
 ## Context
-…
+Why this matters, constraints, links.
+
 ## Plan
-…
+The agreed approach, key decisions, files involved.
 ```
 
-```sh
-ship start --brief brief.md     # starts the daemon if needed and opens the UI
-ship ls                         # active runs (🔔 = waiting for you)
-ship status 3fa                 # any unique part of a run id works
-ship answer 3fa retry --note "try the other approach"
-ship logs 3fa -f
-cd "$(ship cd 3fa)"             # jump into the run's worktree
-```
+Every agent step is told to read the brief, and sees the acceptance
+criteria.
 
-Or, at the end of a Claude Code planning chat, say "hand this to ship". The
-`ship-handoff` skill writes the brief from the conversation and starts the
-run. (`ship init --no-skill` skips both skills.)
+## Writing pipelines by hand
 
-`ship init` maps the pipeline schema for VS Code (`.vscode/settings.json`)
-and, if the repo is a JetBrains project, in `.idea/jsonSchemas.xml`, so
-pipeline YAML gets completion and checking.
+`/ship-design` writes pipelines for you, but they're plain YAML files you can
+read and edit. They live in `.ship/pipelines/<name>.yml`; the file name is
+the pipeline's name. `ship init` sets up VS Code (`.vscode/settings.json`)
+and JetBrains IDEs (`.idea/jsonSchemas.xml`) to autocomplete and check them
+against the schema.
 
-## Templates
-
-A template is a folder with a `template.yml` (`description: …`) and any of
-`pipelines/`, `bin/`, `rules/` and `skills/<skill>/`. `ship add` copies those
-into `.ship/` and `.claude/skills/` (or into `~/.ship` and `~/.claude/skills`
-with `--global`), keeping files you've already edited unless you pass
-`--force`.
-
-Templates come from two places: ones built into `ship` (none yet: they get
-added as pipelines prove themselves in practice, under
-`internal/templates/library/`), and your own in `~/.ship/templates/<name>/`,
-which win on a name clash. `/ship-design` can save a pipeline you've
-designed as a template.
-
-## Global pipelines
-
-Pipelines in `~/.ship/pipelines` are available in every repo. A repo
-pipeline with the same name wins.
-
-```sh
-ship init --global       # ~/.ship and user-level skills in ~/.claude/skills
-ship add <template> --global
-ship ls --pipelines      # shows each pipeline's source: repo or global
-```
-
-Global pipelines still run inside the repo's worktree. Shared helper
-scripts go in `~/.ship/bin` and are called as `"$SHIP_HOME/bin/…"`.
-
-## Pipelines at a glance
+### A complete example
 
 ```yaml
 # yaml-language-server: $schema=../schema/pipeline.json
 version: 1
+description: Implement, review and test a change
 start: implement
-defaults: { max_visits: 3, when_exhausted: check-in, on_error: check-in }
+
+defaults:
+  max_visits: 3            # a step entered more often than this…
+  when_exhausted: check-in # …goes here instead
+  on_error: check-in       # where crashes, timeouts and bad results go
+
 steps:
   implement:
-    agent: /implement          # a skill, or prompt: "…"
-    session: continue          # resume the same Claude session on revisits
-    next: review
+    prompt: Implement the plan in the brief. Commit your work.
+    session: continue      # on a revisit, resume the same Claude session
+    next: review           # one target for every outcome
+
   review:
-    agent: /review
-    next: { pass: gate, changes: implement, stuck: check-in }   # the agent picks one
-  gate:
-    run: make test             # exit 0 → pass, else fail
+    description: Code review
+    prompt: Review the changes on this branch against the brief.
+    model: opus
+    next:                  # the agent picks one of these outcomes
+      pass: test
+      changes: implement
+      stuck: check-in
+
+  test:
+    run: make test         # exit 0 → pass, anything else → fail
     next: { pass: done, fail: implement }
+
   check-in:
-    ask: "Stopped at {{came_from}}. What next?"
-    choices: { retry: $came_from, abandon: stop }
+    ask: "{{brief.title}} stopped at {{came_from}}. What next?"
+    show: [prev.handover]
+    choices:               # button label → where it goes
+      retry: $came_from
+      rework: implement
+      abandon: stop
 ```
 
-There are also `wait` steps (poll a command until it prints an outcome),
-`split` (an agent splits the brief into slices), and `fanout` (one child run
-per slice, in series with stacked branches or in parallel). Every field is
-documented in the JSON Schema (`ship schema`), which also drives editor
-autocomplete.
+A run starts at `start`, and each step's outcome picks the next step through
+`next`. `done` ends the run successfully; `stop` abandons it. Every step
+writes a **handover** (what happened and what's left), which the next step
+receives, so context flows along the pipeline.
+
+### Step types
+
+Each step has exactly one of these:
+
+| Step | What it does | Its outcomes |
+|---|---|---|
+| `agent:` or `prompt:` | Runs Claude Code in the run's worktree. `agent:` is a skill line such as `/review mode=code`; `prompt:` is free text; you can use both. | The keys of `next`: the agent chooses one and explains why in its handover. With a single `next` target, the only outcome is `done`. |
+| `run:` | Runs a bash script in the worktree. | `pass` (exit 0) or `fail`. Map exit codes yourself with `outcomes: {0: pass, 2: flaky, default: fail}`. |
+| `ask:` | Pauses for a person. Uses `choices:` instead of `next:`. `input: none \| optional \| required` controls the note box. | The label of the button pressed. The note becomes the handover. |
+| `wait:` | Polls a command every `every` (default `1m`) until the last line it prints matches a key of `next`. `timeout` defaults to `24h`. | The keys of `next`, plus `timeout` if you map it. |
+| `split:` | An agent splits the brief into slices, following a `rules:` file. `review: true` pauses for your approval. | `ok` (required) plus any others you add, such as `unclear`. |
+| `fanout:` | Runs another pipeline once per slice: `mode: series` (`stack: true` bases each slice's branch on the previous one; `advance_on: <step>` starts the next slice when this one reaches that step) or `mode: parallel` (`max_parallel`). | `done` when every slice finished, otherwise `failed`. |
+
+### Routing, retries and errors
+
+- **Targets** in `next` and `choices` are a step name, `done`, `stop`, or
+  `$came_from` (back to the step that led here; useful for a "retry" button).
+- **Errors.** Every step can also produce `error` (a crash, timeout, invalid
+  agent result or missing variable). Send it somewhere with `on_error:` (per
+  step, or in `defaults`). Otherwise the run pauses and appears in your inbox.
+- **Loops.** `max_visits` caps how often a step runs in one run, so
+  fix-and-review loops can't spin forever. When the cap is hit the run goes
+  to `when_exhausted`, or pauses. Choosing an option in an `ask` step resets
+  the counter of the step it leads to.
+
+### Variables
+
+```yaml
+variables:
+  ticket: { from_brief: true, format: '^[A-Z]+-[0-9]+$' }  # from the brief's vars: (or --var)
+  test:   { value: make test }                             # fixed
+  pr_url: { set_by: open-pr }                              # saved by a step
+  owner:  { ask: "Who should review this?" }               # asked the first time it's used
+```
+
+A `run:` step saves output with `save: { pr_url: last_line }` (or `stdout`,
+`file:<path>`, `json:<dotted.path>`). An agent step lists the variables it
+must return: `save: [pr_title]`.
+
+### Placeholders
+
+Prompts, scripts, questions and branch names can use `{{vars.ticket}}`,
+`{{brief.title}}`, `{{brief.path}}`, `{{run.branch}}`, `{{run.base}}`,
+`{{run.worktree}}`, `{{prev.summary}}`, `{{came_from}}`, and in slice
+pipelines `{{slice.title}}`, `{{slice.number}}` and `{{parent.vars.ticket}}`.
+
+In `run:` and `wait:` scripts each value is inserted as one safely quoted
+word. To run a variable as a command, write `{{raw vars.test}}`. Scripts
+also get environment variables such as `SHIP_RUN_ID`, `SHIP_BRANCH` and
+`SHIP_VAR_TICKET`.
+
+### Agents and worktrees
+
+```yaml
+agent:                       # defaults for every agent step (each can override)
+  model: sonnet              # sonnet | opus | haiku | a full model id
+  effort: medium             # low | medium | high | xhigh | max
+  permission_mode: acceptEdits
+  allowed_tools: ["Bash(make *)"]
+
+workspace:
+  branch: "feat/{{vars.ticket}}"   # default: ship/<run-id>
+  base: main                                  # default: the repo's default branch
+  provider: git              # git (a worktree per run) | treehouse | none (your checkout)
+```
+
+Agents run unattended, in the worktree, with your project's
+`.claude/settings.json`, skills and `CLAUDE.md`. Tools they're refused are
+flagged in the UI. Add what they need to `allowed_tools`.
+
+Put helper scripts in `.ship/bin/` and supporting docs (like splitting rules)
+in `.ship/rules/`. They run from the worktree, so they're versioned with
+your code.
+
+### Checking and trying a pipeline
+
+```sh
+ship validate                 # errors and warnings, with file:line:col
+ship graph <pipeline>         # the flow as a Mermaid diagram
+```
+
+To try a pipeline without spending on real agents, script what each agent
+step should answer and start a run with `--fake-agents`. Visit N of a step
+uses entry N; the last entry repeats.
+
+```yaml
+# fake.yml
+implement: [{outcome: done, summary: "wrote the code"}]
+review:
+  - {outcome: changes, summary: "missing tests"}
+  - {outcome: pass, summary: "looks good"}
+```
+
+```sh
+ship start <pipeline> --brief brief.md --fake-agents fake.yml
+```
+
+## Templates
+
+`ship templates` lists ready-made pipelines and `ship add <name>` copies one
+into `.ship/`, along with any helper scripts, rules and agent skills it
+uses. Files you've already edited are kept unless you pass `--force`.
+
+Templates are built into `ship` (none yet; they'll be added as pipelines
+prove themselves) or your own, in `~/.ship/templates/<name>/`. Yours win if
+the names clash. A template is a folder:
+
+```
+<name>/
+  template.yml        # description: one line shown by `ship templates`
+  pipelines/*.yml     # → .ship/pipelines/
+  bin/*               # → .ship/bin/ (made executable)
+  rules/*             # → .ship/rules/
+  skills/<skill>/     # → .claude/skills/<skill>/
+```
+
+`/ship-design` can save a pipeline you've designed as a template.
+
+## Global pipelines
+
+Pipelines in `~/.ship/pipelines` work in every repo. If a repo has a pipeline
+with the same name, the repo's wins.
+
+```sh
+ship init --global            # sets up ~/.ship, and installs the skills for your user
+ship add <template> --global
+ship ls --pipelines           # shows whether each pipeline comes from the repo or is global
+```
+
+Global pipelines still run inside each repo's worktree, so their helper
+scripts belong in `~/.ship/bin`, called as `"$SHIP_HOME/bin/<script>"`.
 
 ## Where things live
 
 | Path | What |
 |---|---|
-| `<repo>/.ship/` | pipelines, rules, helper scripts, config (committed) |
-| `~/.ship/state/runs/<id>/` | events.jsonl (the source of truth), run.json, brief, visit logs and handovers |
-| `~/.ship/pipelines/` | global pipelines |
-| `~/.ship/daemon.json`, `daemon.log` | the running daemon (127.0.0.1, token-protected) |
-| `<repo-parent>/<repo>.ship/<run-id>` | worktrees (git provider) |
+| `<repo>/.ship/` | pipelines, helper scripts, rules, config (commit these) |
+| `<repo>/.claude/skills/ship-*` | the Claude Code skills |
+| `~/.ship/state/runs/<id>/` | everything about a run: its event log, brief, and each step's input, output and handover |
+| `~/.ship/pipelines/`, `~/.ship/templates/` | global pipelines and your templates |
+| `~/.ship/config.yml` | user config (`.ship/config.yml` overrides it per repo) |
+| `~/.ship/daemon.log` | the background process's log |
+| `<repo-parent>/<repo>.ship/<run-id>/` | run worktrees (released when a run finishes successfully; `ship clean` tidies up the rest) |
 
 ## Development
 
+Build and install your local changes (Go 1.23+):
+
 ```sh
-make test         # unit, golden, engine e2e (fake agents), daemon integration
+make install                  # → ~/.local/bin/ship
+ship serve --restart          # if the daemon is running, switch it to the new build
+```
+
+Tests:
+
+```sh
+make test         # unit, golden, end-to-end with fake agents, daemon integration
 make test-race
-make test-live    # one real Claude call with haiku (a few cents)
-make schema       # regenerate schema/*.json after changing pipeline structs
+make test-live    # one real Claude call with haiku (costs a few cents)
+make schema       # regenerate schema/*.json after changing the pipeline structs
 ```
 
-Agent steps can be scripted for tests and dry runs with
-`ship start --fake-agents script.yml`. Visit N of a step uses entry N (the
-last entry repeats):
+### Publishing a release
 
-```yaml
-implement: [{outcome: done, summary: "wrote code", sleep: 1s}]
-review:
-  - {outcome: changes, summary: "missing tests"}
-  - {outcome: pass, summary: "lgtm"}
+```sh
+scripts/release.sh                  # patch bump; or minor, major, or an exact X.Y.Z
+scripts/release.sh minor --dry-run  # show what would happen
 ```
+
+The script checks you're on a clean, up-to-date `main`, runs the tests,
+builds and installs the new version locally, then tags and pushes. The
+pushed tag triggers the release workflow, which publishes the downloads
+that `install.sh` and `ship update` use.
