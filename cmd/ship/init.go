@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -15,17 +16,20 @@ import (
 )
 
 func (a *app) initCmd() *cobra.Command {
-	var skill, force, global bool
+	var noSkill, legacySkill, force, global bool
 	var repoFlag string
 	cmd := &cobra.Command{
 		Use:   "init",
 		Short: "Create " + brand.Dir + "/ with starter pipelines, rules and schemas",
 		Long: `Create ` + brand.Dir + `/ in the current repo with config.yml, pipelines/feature.yml and
 slice.yml, rules/splitting.md, bin/pr-status and schema/*.json, and map the
-schemas in .vscode/settings.json. Existing files are kept unless --force.
+schemas in .vscode/settings.json. It also installs the Claude Code handoff
+skill (.claude/skills/` + brand.SkillName + `), so you can say "hand this to ` + brand.Name + `" at
+the end of a planning chat. Existing files are kept unless --force.
 
 With --global, write the starter pipelines to ~/` + brand.Dir + `/pipelines instead, so
-they're available in every repo (a repo pipeline of the same name wins).`,
+they're available in every repo (a repo pipeline of the same name wins), and
+install the skill for your user (~/.claude/skills) so it works everywhere.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			var root string
@@ -48,24 +52,25 @@ they're available in every repo (a repo pipeline of the same name wins).`,
 				initfiles.File{Path: rel(root, filepath.Join(schemaDir, "pipeline.json")), Content: pipeline.SchemaJSON(), Mode: 0o644},
 				initfiles.File{Path: rel(root, filepath.Join(schemaDir, "config.json")), Content: config.SchemaJSON(), Mode: 0o644},
 			)
-			if skill && !global {
-				files = append(files, initfiles.Skill())
-			}
 			// Schemas are generated: always refresh them.
 			for _, f := range files {
-				path := filepath.Join(root, f.Path)
-				isSchema := filepath.Dir(path) == schemaDir
-				if _, err := os.Stat(path); err == nil && !force && !isSchema {
-					fmt.Printf("  kept     %s\n", f.Path)
-					continue
-				}
-				if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+				isSchema := filepath.Dir(filepath.Join(root, f.Path)) == schemaDir
+				if err := writeStarter(root, f, f.Path, force || isSchema); err != nil {
 					return err
 				}
-				if err := os.WriteFile(path, f.Content, os.FileMode(f.Mode)); err != nil {
+			}
+			if !noSkill {
+				sk := initfiles.Skill()
+				if global {
+					// User-level skills work in every repo.
+					dir := claudeDir()
+					sk.Path = filepath.Join("skills", brand.SkillName, "SKILL.md")
+					if err := writeStarter(dir, sk, filepath.Join(tildify(dir), sk.Path), force); err != nil {
+						return err
+					}
+				} else if err := writeStarter(root, sk, sk.Path, force); err != nil {
 					return err
 				}
-				fmt.Printf("  wrote    %s\n", f.Path)
 			}
 			if !global {
 				if err := mergeVSCode(root); err != nil {
@@ -79,18 +84,60 @@ they're available in every repo (a repo pipeline of the same name wins).`,
 				fmt.Printf("Global pipelines are in %s. They work in any repo: %s start feature --brief brief.md\n", filepath.Join(a.home, "pipelines"), brand.Name)
 			} else {
 				fmt.Printf("Next: edit %s/pipelines/*.yml, then `%s validate`.\n", brand.Dir, brand.Name)
-				if !skill {
-					fmt.Printf("Tip: `%s init --skill` installs the handoff skill so Claude can start runs for you.\n", brand.Name)
-				}
+			}
+			if !noSkill {
+				fmt.Printf("In Claude Code, finish planning and say \"hand this to %s\" to start a run.\n", brand.Name)
 			}
 			return nil
 		},
 	}
-	cmd.Flags().BoolVar(&skill, "skill", false, "also install the Claude Code handoff skill (.claude/skills/"+brand.SkillName+")")
+	cmd.Flags().BoolVar(&noSkill, "no-skill", false, "don't install the Claude Code handoff skill")
+	// --skill was the old opt-in; the skill is now installed by default.
+	cmd.Flags().BoolVar(&legacySkill, "skill", false, "")
+	cmd.Flags().MarkHidden("skill")
 	cmd.Flags().BoolVar(&force, "force", false, "overwrite existing files")
 	cmd.Flags().BoolVar(&global, "global", false, "write starter pipelines to ~/"+brand.Dir+"/pipelines for every repo")
 	cmd.Flags().StringVar(&repoFlag, "repo", "", "repo path (default: the git repo of the current dir)")
 	return cmd
+}
+
+// writeStarter writes one starter file under root unless it exists (or
+// overwrite is set), printing what happened as label.
+func writeStarter(root string, f initfiles.File, label string, overwrite bool) error {
+	path := filepath.Join(root, f.Path)
+	if _, err := os.Stat(path); err == nil && !overwrite {
+		fmt.Printf("  kept     %s\n", label)
+		return nil
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return err
+	}
+	if err := os.WriteFile(path, f.Content, os.FileMode(f.Mode)); err != nil {
+		return err
+	}
+	fmt.Printf("  wrote    %s\n", label)
+	return nil
+}
+
+// claudeDir is Claude Code's user config dir: $CLAUDE_CONFIG_DIR or ~/.claude.
+func claudeDir() string {
+	if d := os.Getenv("CLAUDE_CONFIG_DIR"); d != "" {
+		return d
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return ".claude"
+	}
+	return filepath.Join(home, ".claude")
+}
+
+func tildify(p string) string {
+	if home, err := os.UserHomeDir(); err == nil {
+		if r, err := filepath.Rel(home, p); err == nil && !strings.HasPrefix(r, "..") {
+			return filepath.Join("~", r)
+		}
+	}
+	return p
 }
 
 func rel(root, path string) string {

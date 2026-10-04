@@ -19,7 +19,7 @@ You need Go 1.23+ to build, git, and the `claude` CLI for agent steps.
 
 ```sh
 cd your-repo
-ship init --skill        # .ship/ with starter pipelines, rules, schemas; Claude handoff skill
+ship init                # .ship/ with starter pipelines, rules, schemas, plus the Claude handoff skill
 ship validate            # errors and warnings with file:line:col
 ```
 
@@ -48,8 +48,10 @@ ship logs 3fa -f
 cd "$(ship cd 3fa)"             # jump into the run's worktree
 ```
 
-Or, in a Claude Code planning chat, say "hand this to ship". The
-`ship-handoff` skill writes the brief and starts the run.
+Or, at the end of a Claude Code planning chat, say "hand this to ship".
+`ship init` installs the `ship-handoff` skill in `.claude/skills/`. It
+writes the brief from the conversation and starts the run. (`--no-skill`
+skips the skill.)
 
 ## Global pipelines
 
@@ -57,7 +59,7 @@ Pipelines in `~/.ship/pipelines` are available in every repo. A repo
 pipeline with the same name wins.
 
 ```sh
-ship init --global       # starter pipelines in ~/.ship/pipelines
+ship init --global       # starter pipelines in ~/.ship/pipelines, handoff skill in ~/.claude/skills
 ship ls --pipelines      # shows each pipeline's source: repo or global
 ```
 
