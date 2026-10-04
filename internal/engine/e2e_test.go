@@ -18,20 +18,20 @@ const e2eFeature = `version: 1
 start: split
 variables:
   ticket: {from_brief: true, format: '^[A-Z]+-[0-9]+$'}
-defaults: {on_error: chef}
+defaults: {on_error: check-in}
 steps:
   split:
     split: /split
     review: true
-    next: {ok: build, unclear: chef}
+    next: {ok: build, unclear: check-in}
   build:
     fanout: slice
     mode: %s
     stack: %v
     advance_on: %s
     max_parallel: 2
-    next: {done: done, failed: chef}
-  chef:
+    next: {done: done, failed: check-in}
+  check-in:
     ask: "stopped at {{came_from}}"
     choices: {retry: $came_from, abandon: stop}
 `
@@ -42,7 +42,7 @@ workspace:
   branch: "{{parent.vars.ticket}}/{{slice.number}}-{{slice.key}}"
 variables:
   test: { value: "true" }
-defaults: {max_visits: 3, when_exhausted: chef, on_error: chef}
+defaults: {max_visits: 3, when_exhausted: check-in, on_error: check-in}
 steps:
   implement:
     agent: /implement
@@ -50,18 +50,18 @@ steps:
     next: review
   review:
     agent: /review
-    next: {pass: gate, changes: implement, stuck: chef}
+    next: {pass: gate, changes: implement, stuck: check-in}
   gate:
     description: Clean tree and green tests
     run: |
       test -z "$(git status --porcelain)" || { echo "uncommitted changes"; exit 1; }
       {{raw vars.test}}
-    next: {pass: at-pass, fail: implement}
-  at-pass:
+    next: {pass: in-review, fail: implement}
+  in-review:
     wait: .ship/bin/pr-status
     every: 50ms
     next: {merged: done, comments: implement}
-  chef:
+  check-in:
     ask: "{{slice.title}} stopped at {{came_from}}"
     choices: {retry: $came_from, abandon: stop}
 `
@@ -152,7 +152,7 @@ func checkGolden(t *testing.T, name, got string) {
 }
 
 func TestE2ESeriesStacked(t *testing.T) {
-	en := newE2E(t, "series", true, "at-pass")
+	en := newE2E(t, "series", true, "in-review")
 	s := en.start("feature", "---\ntitle: Rate limit\nvars: {ticket: API-1}\nacceptance: [limits work]\n---\nPlan.\n", nil, e2eScript(2))
 	s = en.waitStatus(s.ID, store.StatusAsking)
 	if s.PendingAsk == nil || s.PendingAsk.Kind != store.AskKindSplitReview || len(s.ProposedSlices) != 2 {
@@ -187,7 +187,7 @@ func TestE2ESeriesStacked(t *testing.T) {
 			t.Errorf("%s: worktree not released", c.ID)
 		}
 	}
-	if got := visitTrail(c1); got != "implement:done review:changes implement:done review:pass gate:pass at-pass:merged" {
+	if got := visitTrail(c1); got != "implement:done review:changes implement:done review:pass gate:pass in-review:merged" {
 		t.Errorf("child trail %q", got)
 	}
 	checkGolden(t, "series-parent", eventLines(t, en.st, s.ID, map[string]bool{store.EvChildFinished: true}))
@@ -235,8 +235,8 @@ func TestE2EParallel(t *testing.T) {
 }
 
 func TestE2EHaltOnChildStop(t *testing.T) {
-	en := newE2E(t, "series", true, "at-pass")
-	script := e2eScript(2) + "" // review "stuck" for every child → chef → abandon
+	en := newE2E(t, "series", true, "in-review")
+	script := e2eScript(2) + "" // review "stuck" for every child → check-in → abandon
 	script = strings.Replace(script, "review:\n  - {outcome: changes, summary: \"missing tests\"}\n  - {outcome: pass, summary: lgtm}\n", "review:\n  - {outcome: stuck, summary: \"no idea\"}\n", 1)
 	s := en.start("feature", "---\ntitle: Halt\nvars: {ticket: API-3}\n---\n", nil, script)
 	en.waitStatus(s.ID, store.StatusAsking)
@@ -247,7 +247,7 @@ func TestE2EHaltOnChildStop(t *testing.T) {
 	if err := en.e.Do(child, Command{Name: CmdAnswer, Choice: "abandon"}); err != nil {
 		t.Fatal(err)
 	}
-	s = en.waitFor(s.ID, "parent at chef", func(s *store.RunSnapshot) bool { return s.Status == store.StatusAsking && s.CurrentStep == "chef" })
+	s = en.waitFor(s.ID, "parent at check-in", func(s *store.RunSnapshot) bool { return s.Status == store.StatusAsking && s.CurrentStep == "check-in" })
 	if len(s.Children) != 1 {
 		t.Fatalf("halt should stop new children: %+v", s.Children)
 	}
@@ -257,7 +257,7 @@ func TestE2EHaltOnChildStop(t *testing.T) {
 }
 
 func TestSplitReviewReleasesAgentSlot(t *testing.T) {
-	en := newE2E(t, "series", true, "at-pass")
+	en := newE2E(t, "series", true, "in-review")
 	en.e.sem = make(chan struct{}, 1) // max_agents: 1
 	s := en.start("feature", "---\ntitle: One\nvars: {ticket: API-9}\n---\n", nil, e2eScript(1))
 	en.waitStatus(s.ID, store.StatusAsking)

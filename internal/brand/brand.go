@@ -25,6 +25,8 @@ const (
 	ConfigSchemaID = "https://" + Name + ".local/schema/config.json"
 	// SkillName is the handoff skill directory name.
 	SkillName = Name + "-handoff"
+	// DesignSkillName is the user-invoked pipeline design skill.
+	DesignSkillName = Name + "-design"
 )
 
 // Version is set at build time with -ldflags.

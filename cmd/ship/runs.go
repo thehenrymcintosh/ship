@@ -89,7 +89,7 @@ func (a *app) lsCmd() *cobra.Command {
 				if all {
 					fmt.Println("No runs yet.")
 				} else {
-					fmt.Println("Nothing on the line. (`" + brand.Name + " ls --all` shows finished runs.)")
+					fmt.Println("No active runs. (`" + brand.Name + " ls --all` shows finished runs.)")
 				}
 				return nil
 			}

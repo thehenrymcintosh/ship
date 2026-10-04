@@ -15,11 +15,11 @@ visit_finished pass
 transition review→gate (pass, normal)
 visit_started gate #1
 visit_finished pass
-transition gate→at-pass (pass, normal)
-visit_started at-pass #1
+transition gate→in-review (pass, normal)
+visit_started in-review #1
 status_changed waiting
 wait_polled
 visit_finished merged
-transition at-pass→done (merged, normal)
+transition in-review→done (merged, normal)
 workspace_released
 run_finished done

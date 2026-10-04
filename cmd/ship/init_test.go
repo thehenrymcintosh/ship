@@ -29,6 +29,21 @@ func TestInitInstallsHandoffSkill(t *testing.T) {
 	}
 	env := []string{"SHIP_HOME=" + filepath.Join(root, "home"), "CLAUDE_CONFIG_DIR=" + filepath.Join(root, "claude")}
 	skill := filepath.Join(".claude", "skills", "ship-handoff", "SKILL.md")
+	// The repo root and .ship/ are both JetBrains projects; the root already
+	// has a jsonSchemas.xml with another mapping that must survive.
+	os.MkdirAll(filepath.Join(repo, ".idea"), 0o755)
+	os.MkdirAll(filepath.Join(repo, ".ship", ".idea"), 0o755)
+	os.WriteFile(filepath.Join(repo, ".idea", "jsonSchemas.xml"), []byte(`<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="JsonSchemaMappingsProjectConfiguration">
+    <state>
+      <map>
+        <entry key="other"><value><SchemaInfo><option name="name" value="other" /></SchemaInfo></value></entry>
+      </map>
+    </state>
+  </component>
+</project>
+`), 0o644)
 
 	out := runShip(t, repo, env, "init")
 	b, err := os.ReadFile(filepath.Join(repo, skill))
@@ -37,6 +52,28 @@ func TestInitInstallsHandoffSkill(t *testing.T) {
 	}
 	if !strings.Contains(out, "hand this to ship") {
 		t.Errorf("init should mention the handoff:\n%s", out)
+	}
+	design, err := os.ReadFile(filepath.Join(repo, ".claude", "skills", "ship-design", "SKILL.md"))
+	if err != nil || !strings.Contains(string(design), "disable-model-invocation: true") {
+		t.Fatalf("design skill missing or model-invocable: %v", err)
+	}
+	rootXML, _ := os.ReadFile(filepath.Join(repo, ".idea", "jsonSchemas.xml"))
+	for _, want := range []string{`key="other"`, `value=".ship/schema/pipeline.json"`, `value=".ship/pipelines/*.yml"`, `value=".ship/config.yml"`} {
+		if !strings.Contains(string(rootXML), want) {
+			t.Errorf("root .idea/jsonSchemas.xml missing %s:\n%s", want, rootXML)
+		}
+	}
+	shipXML, _ := os.ReadFile(filepath.Join(repo, ".ship", ".idea", "jsonSchemas.xml"))
+	for _, want := range []string{`value="schema/pipeline.json"`, `value="pipelines/*.yml"`, `value="config.yml"`} {
+		if !strings.Contains(string(shipXML), want) {
+			t.Errorf(".ship/.idea/jsonSchemas.xml missing %s:\n%s", want, shipXML)
+		}
+	}
+	// Re-running doesn't duplicate mappings.
+	runShip(t, repo, env, "init")
+	again, _ := os.ReadFile(filepath.Join(repo, ".idea", "jsonSchemas.xml"))
+	if strings.Count(string(again), `key="ship pipeline"`) != 1 {
+		t.Errorf("mapping duplicated:\n%s", again)
 	}
 
 	// --no-skill skips it.

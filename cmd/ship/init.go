@@ -25,7 +25,10 @@ func (a *app) initCmd() *cobra.Command {
 slice.yml, rules/splitting.md, bin/pr-status and schema/*.json, and map the
 schemas in .vscode/settings.json. It also installs the Claude Code handoff
 skill (.claude/skills/` + brand.SkillName + `), so you can say "hand this to ` + brand.Name + `" at
-the end of a planning chat. Existing files are kept unless --force.
+the end of a planning chat, and /` + brand.DesignSkillName + `, a skill you invoke to design
+pipelines in plain language. If the repo (or .ship/) is a JetBrains project,
+the schemas are mapped in its .idea/jsonSchemas.xml. Existing files are kept
+unless --force.
 
 With --global, write the starter pipelines to ~/` + brand.Dir + `/pipelines instead, so
 they're available in every repo (a repo pipeline of the same name wins), and
@@ -60,16 +63,42 @@ install the skill for your user (~/.claude/skills) so it works everywhere.`,
 				}
 			}
 			if !noSkill {
-				sk := initfiles.Skill()
+				// Repo skills go in <repo>/.claude/skills; global ones are
+				// user-level skills, so they work in every repo.
+				skillsDir := filepath.Join(root, ".claude", "skills")
 				if global {
-					// User-level skills work in every repo.
-					dir := claudeDir()
-					sk.Path = filepath.Join("skills", brand.SkillName, "SKILL.md")
-					if err := writeStarter(dir, sk, filepath.Join(tildify(dir), sk.Path), force); err != nil {
+					skillsDir = filepath.Join(claudeDir(), "skills")
+				}
+				for _, sk := range initfiles.Skills() {
+					label := filepath.Join(tildify(skillsDir), sk.Path)
+					if !global {
+						label = rel(root, filepath.Join(skillsDir, sk.Path))
+					}
+					if err := writeStarter(skillsDir, sk, label, force); err != nil {
 						return err
 					}
-				} else if err := writeStarter(root, sk, sk.Path, force); err != nil {
-					return err
+				}
+			}
+			// JetBrains IDEs: map the schemas in every .idea project found.
+			ideaRoots := []string{root, filepath.Join(root, brand.Dir)}
+			if global {
+				ideaRoots = []string{root}
+			}
+			for _, pr := range ideaRoots {
+				if fi, err := os.Stat(filepath.Join(pr, ".idea")); err != nil || !fi.IsDir() {
+					continue
+				}
+				label := filepath.Join(tildify(pr), ".idea", "jsonSchemas.xml")
+				if !global {
+					label = rel(root, filepath.Join(pr, ".idea", "jsonSchemas.xml"))
+				}
+				switch done, err := mergeJetBrains(pr, schemaDir, ideaPatterns(pr, root, global)); {
+				case err != nil:
+					fmt.Fprintf(os.Stderr, "  skipped  %s: %v\n", label, err)
+				case done:
+					fmt.Printf("  updated  %s (JSON schema mappings)\n", label)
+				default:
+					fmt.Printf("  kept     %s\n", label)
 				}
 			}
 			if !global {
@@ -86,12 +115,13 @@ install the skill for your user (~/.claude/skills) so it works everywhere.`,
 				fmt.Printf("Next: edit %s/pipelines/*.yml, then `%s validate`.\n", brand.Dir, brand.Name)
 			}
 			if !noSkill {
-				fmt.Printf("In Claude Code, finish planning and say \"hand this to %s\" to start a run.\n", brand.Name)
+				fmt.Printf("In Claude Code: /%s designs or changes pipelines with you in plain language;\n", brand.DesignSkillName)
+				fmt.Printf("after planning a change, say \"hand this to %s\" to start a run.\n", brand.Name)
 			}
 			return nil
 		},
 	}
-	cmd.Flags().BoolVar(&noSkill, "no-skill", false, "don't install the Claude Code handoff skill")
+	cmd.Flags().BoolVar(&noSkill, "no-skill", false, "don't install the Claude Code skills")
 	// --skill was the old opt-in; the skill is now installed by default.
 	cmd.Flags().BoolVar(&legacySkill, "skill", false, "")
 	cmd.Flags().MarkHidden("skill")

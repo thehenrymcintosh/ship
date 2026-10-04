@@ -127,7 +127,7 @@ form.inline { display: inline-flex; gap: 0.4rem; align-items: center; flex-wrap:
 .badge { display: inline-block; padding: 0.05rem 0.5rem; border-radius: 6px; font-size: 0.76rem; font-weight: 600; background: var(--surface-2); color: var(--muted); border: 1px solid var(--border); }
 .badge.warn { color: var(--warn); border-color: color-mix(in srgb, var(--warn) 35%, transparent); background: color-mix(in srgb, var(--warn) 10%, transparent); }
 .badge.danger { color: var(--danger); border-color: color-mix(in srgb, var(--danger) 35%, transparent); background: color-mix(in srgb, var(--danger) 10%, transparent); }
-.badge.chef { color: var(--st-asking); border-color: color-mix(in srgb, var(--st-asking) 35%, transparent); background: color-mix(in srgb, var(--st-asking) 10%, transparent); }
+.badge.check-in { color: var(--st-asking); border-color: color-mix(in srgb, var(--st-asking) 35%, transparent); background: color-mix(in srgb, var(--st-asking) 10%, transparent); }
 
 .spin { width: 0.7em; height: 0.7em; border-radius: 50%; border: 2px solid currentColor; border-right-color: transparent; display: inline-block; animation: spin 0.9s linear infinite; }
 .spin.small { width: 0.6em; height: 0.6em; border-width: 1.5px; margin-right: 0.25rem; vertical-align: -0.05em; }

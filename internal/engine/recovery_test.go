@@ -50,10 +50,10 @@ review: [{outcome: pass, summary: ok}]
 
 func TestRecoverAskAndWait(t *testing.T) {
 	en := newEnv(t, map[string]string{"p": `version: 1
-start: chef
+start: check-in
 workspace: {provider: none}
 steps:
-  chef:
+  check-in:
     ask: go?
     choices: {go: poll}
   poll:
@@ -87,9 +87,9 @@ steps:
 
 func TestRecoverWorktreeMissing(t *testing.T) {
 	en := newEnv(t, map[string]string{"p": `version: 1
-start: chef
+start: check-in
 steps:
-  chef:
+  check-in:
     ask: go?
     choices: {go: done}
 `})
@@ -108,7 +108,7 @@ steps:
 	if err := en.e.Do(s.ID, Command{Name: CmdReacquire}); err != nil {
 		t.Fatal(err)
 	}
-	if err := en.e.Do(s.ID, Command{Name: CmdGoto, Step: "chef"}); err != nil {
+	if err := en.e.Do(s.ID, Command{Name: CmdGoto, Step: "check-in"}); err != nil {
 		t.Fatal(err)
 	}
 	s = en.waitStatus(s.ID, store.StatusAsking)

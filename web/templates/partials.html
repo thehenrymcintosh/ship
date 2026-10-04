@@ -8,7 +8,7 @@
 {{if and (eq $s.Status "asking") $s.PendingAsk}}{{$a := $s.PendingAsk}}
 <section class="card action ask-{{$a.Kind}}">
   {{if eq $a.Kind "split_review"}}
-    <header class="action-head"><span class="badge chef">Chef</span><h2>{{$a.Question}}</h2><span class="muted">{{ago $a.Since}}</span></header>
+    <header class="action-head"><span class="badge check-in">Check-in</span><h2>{{$a.Question}}</h2><span class="muted">{{ago $a.Since}}</span></header>
     <div class="slices">
       {{range .Slices}}
       <article class="slice">
@@ -30,13 +30,13 @@
       </div>
     </form>
   {{else if eq $a.Kind "var"}}
-    <header class="action-head"><span class="badge chef">Chef</span><h2>{{$a.Question}}</h2><span class="muted">{{ago $a.Since}}</span></header>
+    <header class="action-head"><span class="badge check-in">Check-in</span><h2>{{$a.Question}}</h2><span class="muted">{{ago $a.Since}}</span></header>
     <form class="answer" hx-post="/api/runs/{{$s.ID}}/answer" hx-swap="none">
       <label class="note"><span>Value for <code>{{$a.Var}}</code></span><input name="note" required autocomplete="off"></label>
       <div class="choices"><button class="btn primary">Set and continue</button></div>
     </form>
   {{else}}
-    <header class="action-head"><span class="badge chef">Chef</span><h2>{{$a.Question}}</h2><span class="muted">{{ago $a.Since}}</span></header>
+    <header class="action-head"><span class="badge check-in">Check-in</span><h2>{{$a.Question}}</h2><span class="muted">{{ago $a.Since}}</span></header>
     {{range .Panels}}<details class="panel" open><summary>{{.Title}}</summary><div class="md">{{.HTML}}</div></details>{{end}}
     <form class="answer" hx-post="/api/runs/{{$s.ID}}/answer" hx-swap="none">
       {{if ne $a.Input "none"}}<label class="note"><span>Note {{if eq $a.Input "required"}}<span class="muted">(required)</span>{{else}}<span class="muted">(optional; the next step receives it)</span>{{end}}</span>

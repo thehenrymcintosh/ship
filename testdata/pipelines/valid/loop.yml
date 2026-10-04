@@ -6,7 +6,7 @@ variables:
   out: { set_by: build }
 defaults:
   max_visits: 2
-  when_exhausted: chef
+  when_exhausted: check-in
 steps:
   build:
     run: echo {{raw vars.greeting}}
@@ -14,13 +14,13 @@ steps:
       out: last_line
     next:
       pass: check
-      fail: chef
+      fail: check-in
   check:
     run: test "$(cat counter 2>/dev/null || echo 0)" -ge 1
     next:
       pass: done
       fail: build
-  chef:
+  check-in:
     ask: "Stuck at {{came_from}} with {{vars.out}}. What next?"
     input: optional
     choices:

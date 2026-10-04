@@ -155,7 +155,7 @@
 {{if .Children}}
 <section class="card">
   <header class="card-head"><h2>Slices</h2></header>
-  {{if .Kitchen}}<p class="muted small">{{.Kitchen}}</p>{{end}}
+  {{if .Progress}}<p class="muted small">{{.Progress}}</p>{{end}}
   <ol class="child-rows compact">
     {{range .Children}}<li><a href="/runs/{{.ID}}">{{template "pill" .}} {{with .Slice}}{{.Number}}. {{end}}{{.Title}}</a> <span class="muted small">{{.CurrentStep}}</span></li>{{end}}
   </ol>

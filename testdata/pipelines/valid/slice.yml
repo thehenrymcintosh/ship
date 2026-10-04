@@ -12,8 +12,8 @@ variables:
 
 defaults:
   max_visits: 3
-  when_exhausted: chef
-  on_error: chef
+  when_exhausted: check-in
+  on_error: check-in
 
 steps:
   implement:
@@ -27,7 +27,7 @@ steps:
     next:
       pass: gate
       changes: implement
-      stuck: chef
+      stuck: check-in
 
   gate:
     description: Clean tree and green tests
@@ -48,20 +48,20 @@ steps:
       pr_url: last_line
     next:
       pass: pr-review
-      fail: chef
+      fail: check-in
 
   pr-review:
     agent: /pr-review pr={{vars.pr_url}}
     next:
       pass: ready
       changes: implement
-      stuck: chef
+      stuck: check-in
 
   ready:
     run: gh pr ready {{vars.pr_url}} || true
-    next: at-pass
+    next: in-review
 
-  at-pass:
+  in-review:
     description: Waiting for review on the PR
     wait: .ship/bin/pr-status {{vars.pr_url}}
     every: 5m
@@ -75,20 +75,20 @@ steps:
     agent: /triage pr={{vars.pr_url}}
     next:
       fix: unready
-      nothing: at-pass
-      design: chef
-      intent: chef
+      nothing: in-review
+      design: check-in
+      intent: check-in
 
   unready:
     run: gh pr ready --undo {{vars.pr_url}}
     next: implement
 
-  chef:
+  check-in:
     ask: "{{slice.title}} stopped at {{came_from}}. What next?"
     show: [prev.handover]
     input: optional
     choices:
       retry: $came_from
       rework: implement
-      back to the pass: at-pass
+      back to review: in-review
       abandon: stop

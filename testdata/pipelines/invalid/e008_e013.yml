@@ -13,7 +13,7 @@ steps:
     next: b
   b:
     agent: /do
-    next: {ok: done, help: chef}
-  chef:
+    next: {ok: done, help: check-in}
+  check-in:
     ask: what?
     choices: {stop: stop}

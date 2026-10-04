@@ -14,7 +14,7 @@ import (
 
 // randomEvent produces a plausible event of a random type.
 func randomEvent(rng *rand.Rand, seq int) (string, any) {
-	steps := []string{"implement", "review", "gate", "chef"}
+	steps := []string{"implement", "review", "gate", "check-in"}
 	step := steps[rng.Intn(len(steps))]
 	switch rng.Intn(16) {
 	case 0:

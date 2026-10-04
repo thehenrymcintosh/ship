@@ -191,24 +191,24 @@ func prettyJSON(b []byte) string {
 	return string(out)
 }
 
-// phase is the kitchen word for where a run is: "cooking", "at the pass"…
+// phase is a short plain-language word for where a run is.
 func phase(s *store.RunSnapshot, p *pipeline.Pipeline) string {
 	switch s.Status {
 	case store.StatusStarting:
-		return "prepping"
+		return "setting up"
 	case store.StatusRunning:
 		if lv := s.LastVisit(); lv != nil && lv.Queued {
 			return "queued"
 		}
-		return "cooking"
+		return "working"
 	case store.StatusWaiting:
-		return "at the pass"
+		return "waiting"
 	case store.StatusAsking, store.StatusNeedsAttention:
 		return "needs you"
 	case store.StatusFannedOut:
-		return "on the line"
+		return "running slices"
 	case store.StatusDone:
-		return "served"
+		return "done"
 	}
 	return string(s.Status)
 }
@@ -219,7 +219,7 @@ func phase(s *store.RunSnapshot, p *pipeline.Pipeline) string {
 type RunRow struct {
 	S        *store.RunSnapshot
 	Children []*store.RunSnapshot
-	Kitchen  string // "3 slices on the line · 1 at the pass · …"
+	Progress string // "3 slices · 1 waiting · 1 working · 1 queued"
 	Elapsed  string
 	Inbox    bool
 }
@@ -239,16 +239,16 @@ func elapsed(s *store.RunSnapshot) string {
 	return fmtDur(end.Sub(s.CreatedAt).Round(time.Second))
 }
 
-func kitchenLine(slices int, kids []*store.RunSnapshot) string {
+func sliceProgress(slices int, kids []*store.RunSnapshot) string {
 	counts := map[string]int{}
-	order := []string{"needs you", "cooking", "at the pass", "queued", "served", "stopped", "failed", "cancelled", "prepping"}
+	order := []string{"needs you", "working", "waiting", "queued", "done", "stopped", "failed", "cancelled", "setting up"}
 	for _, k := range kids {
 		counts[phase(k, nil)]++
 	}
 	if waiting := slices - len(kids); waiting > 0 {
 		counts["queued"] += waiting
 	}
-	parts := []string{fmt.Sprintf("%d slices on the line", slices)}
+	parts := []string{fmt.Sprintf("%d slices", slices)}
 	for _, o := range order {
 		if counts[o] > 0 {
 			parts = append(parts, fmt.Sprintf("%d %s", counts[o], o))
@@ -287,7 +287,7 @@ func (d *Daemon) runGroups(filter string) ([]RepoGroup, error) {
 		}
 		row := RunRow{S: s, Children: kids, Elapsed: elapsed(s), Inbox: s.Status.InInbox()}
 		if len(s.Slices) > 0 && len(kids) > 0 {
-			row.Kitchen = kitchenLine(len(s.Slices), kids)
+			row.Progress = sliceProgress(len(s.Slices), kids)
 		}
 		g := groups[s.Repo]
 		if g == nil {
@@ -336,7 +336,7 @@ type RunView struct {
 	CanResume  bool
 	CanRetry   bool
 	Executing  bool
-	Kitchen    string
+	Progress   string
 	ParentT    string
 	Bypass     bool
 }
@@ -380,7 +380,7 @@ func (d *Daemon) runView(id string) (*RunView, error) {
 	sort.Slice(kids, func(i, j int) bool { return kids[i].ID < kids[j].ID })
 	v.Children = kids
 	if len(s.Slices) > 0 && len(kids) > 0 {
-		v.Kitchen = kitchenLine(len(s.Slices), kids)
+		v.Progress = sliceProgress(len(s.Slices), kids)
 	}
 	if s.Parent != nil {
 		if ps, err := d.eng.Snapshot(s.Parent.ID); err == nil {

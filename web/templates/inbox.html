@@ -1,5 +1,5 @@
 {{define "content"}}
-<div class="page-head"><h1>Inbox</h1><p class="muted">Everything waiting for the chef, oldest first.</p></div>
+<div class="page-head"><h1>Inbox</h1><p class="muted">Everything waiting for you, oldest first.</p></div>
 <div id="inbox-list" hx-get="/fragments/inbox" hx-trigger="sse:run throttle:500ms, ship-refresh from:body" hx-swap="innerHTML">
 {{template "inbox-list" .Data}}
 </div>

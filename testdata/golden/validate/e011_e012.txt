@@ -1,5 +1,5 @@
 e011_e012.yml:2:1: warn W102: no path from start reaches done
-e011_e012.yml:4:3: error E012: ask step "chef" has no choices
+e011_e012.yml:4:3: error E012: ask step "check-in" has no choices
 e011_e012.yml:6:3: warn W101: step "s" is unreachable from start
 e011_e012.yml:8:5: error E012: split step "s" has no ok outcome
 e011_e012.yml:9:3: warn W101: step "f" is unreachable from start

@@ -109,16 +109,16 @@ func TestOutcomesAndTargets(t *testing.T) {
 	if got := p.Steps["review"].OutcomeNames(); strings.Join(got, ",") != "pass,changes,stuck" {
 		t.Errorf("review outcomes %v", got)
 	}
-	if got := p.Steps["chef"].OutcomeNames(); strings.Join(got, ",") != "retry,rework,back to the pass,abandon" {
-		t.Errorf("chef outcomes %v", got)
+	if got := p.Steps["check-in"].OutcomeNames(); strings.Join(got, ",") != "retry,rework,back to review,abandon" {
+		t.Errorf("check-in outcomes %v", got)
 	}
 	if tgt, _ := p.Steps["implement"].Target("done"); tgt != "review" {
 		t.Errorf("implement → %s", tgt)
 	}
-	if p.OnError(p.Steps["gate"]) != "chef" || p.MaxVisits(p.Steps["at-pass"]) != 20 || p.MaxVisits(p.Steps["gate"]) != 3 {
+	if p.OnError(p.Steps["gate"]) != "check-in" || p.MaxVisits(p.Steps["in-review"]) != 20 || p.MaxVisits(p.Steps["gate"]) != 3 {
 		t.Error("defaults not applied")
 	}
-	if !strings.Contains(p.Mermaid(), "n_chef -.->|retry| n_implement") {
+	if !strings.Contains(p.Mermaid(), "n_check_in -.->|retry| n_implement") {
 		t.Errorf("mermaid:\n%s", p.Mermaid())
 	}
 }

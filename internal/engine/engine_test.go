@@ -143,7 +143,7 @@ variables:
   out: { set_by: build }
 defaults:
   max_visits: 2
-  when_exhausted: chef
+  when_exhausted: check-in
 workspace:
   provider: none
 steps:
@@ -155,13 +155,13 @@ steps:
       out: last_line
     next:
       pass: check
-      fail: chef
+      fail: check-in
   check:
     run: test "$(wc -l < count.txt)" -ge 3
     next:
       pass: done
       fail: build
-  chef:
+  check-in:
     ask: "Stuck at {{came_from}}. What next?"
     input: optional
     choices:
@@ -175,7 +175,7 @@ func TestRunAskLoopWithExhaustion(t *testing.T) {
 	id := snap.ID
 
 	s := en.waitStatus(id, store.StatusAsking)
-	if got := visitTrail(s); got != "build:pass check:fail build:pass check:fail chef:" {
+	if got := visitTrail(s); got != "build:pass check:fail build:pass check:fail check-in:" {
 		t.Fatalf("trail %q", got)
 	}
 	if s.PendingAsk == nil || s.PendingAsk.Question != "Stuck at build. What next?" || s.Vars["out"] != "hello world" {
@@ -188,7 +188,7 @@ func TestRunAskLoopWithExhaustion(t *testing.T) {
 	if err := en.e.Do(id, Command{Name: CmdAnswer, Choice: "retry", Note: "try once more"}); err != nil {
 		t.Fatal(err)
 	}
-	// build(3) → check is exhausted now → chef, came_from = check.
+	// build(3) → check is exhausted now → check-in, came_from = check.
 	s = en.waitFor(id, "second ask", func(s *store.RunSnapshot) bool { return s.Status == store.StatusAsking && len(s.Visits) > 5 })
 	if s.PendingAsk.Question != "Stuck at check. What next?" {
 		t.Fatalf("question %q trail %s", s.PendingAsk.Question, visitTrail(s))
@@ -197,7 +197,7 @@ func TestRunAskLoopWithExhaustion(t *testing.T) {
 		t.Fatal(err)
 	}
 	s = en.waitStatus(id, store.StatusDone)
-	if got := visitTrail(s); got != "build:pass check:fail build:pass check:fail chef:retry build:pass chef:retry check:pass" {
+	if got := visitTrail(s); got != "build:pass check:fail build:pass check:fail check-in:retry build:pass check-in:retry check:pass" {
 		t.Fatalf("trail %q", got)
 	}
 	// The handover of the ask carries the note.
@@ -215,7 +215,7 @@ func TestRunAskLoopWithExhaustion(t *testing.T) {
 const agentPipeline = `version: 1
 start: implement
 defaults:
-  on_error: chef
+  on_error: check-in
 steps:
   implement:
     agent: /implement
@@ -227,8 +227,8 @@ steps:
     next:
       pass: done
       changes: implement
-      stuck: chef
-  chef:
+      stuck: check-in
+  check-in:
     ask: "stopped at {{came_from}}"
     choices:
       retry: $came_from
@@ -436,8 +436,8 @@ defaults: {max_visits: 0}
 steps:
   a:
     agent: /x
-    next: {again: a, stuck: chef}
-  chef:
+    next: {again: a, stuck: check-in}
+  check-in:
     ask: over budget
     choices: {stop: stop}
 `})

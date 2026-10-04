@@ -16,7 +16,7 @@
 {{define "runs-list"}}
 {{if not .Groups}}
 <div class="empty card">
-  {{if eq .Filter "active"}}<h2>Nothing on the line</h2>
+  {{if eq .Filter "active"}}<h2>No active runs</h2>
   <p>Start a run from a planning chat (“hand this to {{brand}}”), with <code>{{brand}} start &lt;pipeline&gt; --brief brief.md</code>, or from <a href="/pipelines">Pipelines</a>.</p>
   {{else if eq .Filter "inbox"}}<h2>Inbox zero</h2><p>No run is waiting for you.</p>
   {{else}}<h2>No runs here yet</h2>{{end}}
@@ -41,7 +41,7 @@
       </a>
       {{if .Children}}
       <details class="children" {{if not (terminal $s.Status)}}open{{end}}>
-        <summary><span class="minis">{{range .Children}}{{template "mini-pill" .}}{{end}}</span> {{.Kitchen}}</summary>
+        <summary><span class="minis">{{range .Children}}{{template "mini-pill" .}}{{end}}</span> {{.Progress}}</summary>
         <ol class="child-rows">
           {{range .Children}}
           <li><a href="/runs/{{.ID}}">{{template "pill" .}} <span class="slice-n">{{with .Slice}}{{.Number}}{{end}}</span> {{.Title}}

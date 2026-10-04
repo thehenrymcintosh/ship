@@ -129,8 +129,8 @@ start: work
 steps:
   work:
     agent: /work
-    next: {done: chef}
-  chef:
+    next: {done: check-in}
+  check-in:
     ask: "Ship it?"
     choices: {yes: done, no: stop}
 `

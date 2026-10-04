@@ -5,7 +5,7 @@ variables:
 steps:
   a:
     agent: "fix {{vars.missing}} in {{brief.body}}"
-    next: {done: done, stuck: chef}
-  chef:
+    next: {done: done, stuck: check-in}
+  check-in:
     ask: "{{if x}}"
     choices: {stop: stop}

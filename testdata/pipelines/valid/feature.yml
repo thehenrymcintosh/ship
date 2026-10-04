@@ -10,7 +10,7 @@ variables:
     format: '^[A-Z]+-[0-9]+$'
 
 defaults:
-  on_error: chef
+  on_error: check-in
 
 steps:
   split:
@@ -22,20 +22,20 @@ steps:
     review: true
     next:
       ok: build
-      unclear: chef
+      unclear: check-in
 
   build:
     description: Build each slice as a stacked PR
     fanout: slice
     mode: series
     stack: true
-    advance_on: at-pass
+    advance_on: in-review
     on_child_stop: halt
     next:
       done: done
-      failed: chef
+      failed: check-in
 
-  chef:
+  check-in:
     ask: "{{brief.title}} stopped at {{came_from}}. What next?"
     show: [prev.handover]
     input: optional

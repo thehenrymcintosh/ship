@@ -50,8 +50,18 @@ cd "$(ship cd 3fa)"             # jump into the run's worktree
 
 Or, at the end of a Claude Code planning chat, say "hand this to ship".
 `ship init` installs the `ship-handoff` skill in `.claude/skills/`. It
-writes the brief from the conversation and starts the run. (`--no-skill`
-skips the skill.)
+writes the brief from the conversation and starts the run.
+
+To design or change a pipeline without learning the YAML, run
+`/ship-design` in Claude Code, followed by what you want, e.g.
+`/ship-design implement, review, run tests, then open a PR and wait for it to merge`.
+It asks about your workflow, describes the pipeline back in plain words,
+writes the file, and checks it with `ship validate`. It only runs when you
+invoke it. (`--no-skill` skips both skills.)
+
+If the repo is a JetBrains project, `ship init` also maps the schemas in
+`.idea/jsonSchemas.xml`, so pipeline YAML gets completion and checking
+there too.
 
 ## Global pipelines
 
@@ -59,7 +69,7 @@ Pipelines in `~/.ship/pipelines` are available in every repo. A repo
 pipeline with the same name wins.
 
 ```sh
-ship init --global       # starter pipelines in ~/.ship/pipelines, handoff skill in ~/.claude/skills
+ship init --global       # starter pipelines in ~/.ship/pipelines, skills in ~/.claude/skills
 ship ls --pipelines      # shows each pipeline's source: repo or global
 ```
 
@@ -72,7 +82,7 @@ scripts go in `~/.ship/bin` and are called as `"$SHIP_HOME/bin/…"`.
 # yaml-language-server: $schema=../schema/pipeline.json
 version: 1
 start: implement
-defaults: { max_visits: 3, when_exhausted: chef, on_error: chef }
+defaults: { max_visits: 3, when_exhausted: check-in, on_error: check-in }
 steps:
   implement:
     agent: /implement          # a skill, or prompt: "…"
@@ -80,11 +90,11 @@ steps:
     next: review
   review:
     agent: /review
-    next: { pass: gate, changes: implement, stuck: chef }   # the agent picks one
+    next: { pass: gate, changes: implement, stuck: check-in }   # the agent picks one
   gate:
     run: make test             # exit 0 → pass, else fail
     next: { pass: done, fail: implement }
-  chef:
+  check-in:
     ask: "Stopped at {{came_from}}. What next?"
     choices: { retry: $came_from, abandon: stop }
 ```
