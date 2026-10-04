@@ -92,7 +92,56 @@ func TestInitInstallsHandoffSkill(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(root, "claude", "skills", "ship-handoff", "SKILL.md")); err != nil {
 		t.Fatalf("global skill missing: %v", err)
 	}
-	if _, err := os.Stat(filepath.Join(root, "home", "pipelines", "feature.yml")); err != nil {
-		t.Fatalf("global pipelines missing: %v", err)
+	if fi, err := os.Stat(filepath.Join(root, "home", "pipelines")); err != nil || !fi.IsDir() {
+		t.Fatalf("global pipelines dir missing: %v", err)
+	}
+	// init adds no pipelines of its own.
+	if entries, _ := os.ReadDir(filepath.Join(repo, ".ship", "pipelines")); len(entries) != 0 {
+		t.Fatalf("init shouldn't add pipelines, found %d", len(entries))
+	}
+}
+
+func TestTemplatesAndAdd(t *testing.T) {
+	root, _ := filepath.EvalSymlinks(t.TempDir())
+	home := filepath.Join(root, "home")
+	repo := filepath.Join(root, "repo")
+	os.MkdirAll(repo, 0o755)
+	exec.Command("git", "-C", repo, "init", "-q").Run()
+	env := []string{"SHIP_HOME=" + home, "CLAUDE_CONFIG_DIR=" + filepath.Join(root, "claude")}
+
+	if out := runShip(t, repo, env, "templates"); !strings.Contains(out, "No templates yet") {
+		t.Fatalf("empty library: %s", out)
+	}
+	tpl := filepath.Join(home, "templates", "review-loop")
+	files := map[string]string{
+		"template.yml":                   "description: Implement and review until it passes\n",
+		"pipelines/review-loop.yml":      "version: 1\nstart: implement\nsteps:\n  implement:\n    agent: /ship-implement\n    next: check\n  check:\n    run: .ship/bin/check\n    next: {pass: done, fail: implement}\n",
+		"bin/check":                      "#!/bin/sh\nexit 0\n",
+		"skills/ship-implement/SKILL.md": "---\nname: ship-implement\n---\nImplement the brief.\n",
+	}
+	for rel, body := range files {
+		os.MkdirAll(filepath.Dir(filepath.Join(tpl, rel)), 0o755)
+		os.WriteFile(filepath.Join(tpl, rel), []byte(body), 0o644)
+	}
+	out := runShip(t, repo, env, "templates")
+	if !strings.Contains(out, "review-loop") || !strings.Contains(out, "Implement and review until it passes") {
+		t.Fatalf("list: %s", out)
+	}
+	out = runShip(t, repo, env, "add", "review-loop")
+	for _, p := range []string{".ship/pipelines/review-loop.yml", ".ship/bin/check", ".claude/skills/ship-implement/SKILL.md"} {
+		if _, err := os.Stat(filepath.Join(repo, p)); err != nil {
+			t.Fatalf("%s missing after add:\n%s", p, out)
+		}
+	}
+	if st, _ := os.Stat(filepath.Join(repo, ".ship", "bin", "check")); st.Mode().Perm()&0o100 == 0 {
+		t.Fatal("bin/check should be executable")
+	}
+	if !strings.Contains(out, "ship start review-loop") {
+		t.Errorf("add output: %s", out)
+	}
+	cmd := exec.Command(shipBin, "add", "nope")
+	cmd.Dir, cmd.Env = repo, append(os.Environ(), env...)
+	if cmd.Run(); cmd.ProcessState.ExitCode() != exitNotFound {
+		t.Fatalf("unknown template exit %d", cmd.ProcessState.ExitCode())
 	}
 }

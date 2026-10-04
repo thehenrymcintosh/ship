@@ -16,7 +16,9 @@ the workflow in plain language, then write and check the file yourself.
 
 1. **Look first.** Run `ship ls --pipelines` to see the existing pipelines and
    where each comes from (repo or global). Read any that are relevant. If the
-   user wants to change one, start from it.
+   user wants to change one, start from it. Also run `ship templates`: if a
+   template is close to what they want, suggest `ship add <template>` and
+   adapt the result rather than starting from scratch.
 2. **Understand the workflow.** Ask short questions, a few at a time, only
    about what you can't infer:
    - What starts the work, and what does "done" look like?
@@ -37,7 +39,12 @@ the workflow in plain language, then write and check the file yourself.
 5. **Check it.** Run `ship validate <file>` and fix every error. Explain any
    warning that remains in one sentence; some are worth keeping. Then run
    `ship graph <name>` and walk the user through the flow in words.
-6. **Offer a dry run** when it would help:
+6. **Offer to keep it as a template** if it's something they'd reuse in other
+   repos: copy it to `~/.ship/templates/<name>/` with a `template.yml`
+   (`description: …`), the pipeline under `pipelines/`, and any helper scripts
+   (`bin/`), rules (`rules/`) and agent skills it calls (`skills/<skill>/`).
+   It then shows up in `ship templates`.
+7. **Offer a dry run** when it would help:
    `ship start <name> --brief brief.md --fake-agents script.yml --no-open`,
    with a small script of agent outcomes (format below), so they can watch
    the flow without spending on real agents.

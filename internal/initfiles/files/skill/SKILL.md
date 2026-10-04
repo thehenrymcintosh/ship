@@ -6,7 +6,9 @@ description: Hand a planned piece of work over to a ship pipeline. Use when the 
 # Hand over to ship
 
 1. Run `ship ls --pipelines` to see available pipelines. If more than one could fit and the user
-   didn't say, ask which one.
+   didn't say, ask which one. If there are none, stop and tell the user to create one first:
+   either run `/ship-design` (it designs a pipeline with them in plain language) or pick a
+   template with `ship templates` and `ship add <template>`.
 2. Write a brief from this conversation in exactly this format:
 
    ---

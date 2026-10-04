@@ -71,7 +71,7 @@ func main() {
 	root.PersistentFlags().BoolVar(&a.noColor, "no-color", false, "disable colour")
 
 	root.AddCommand(
-		a.initCmd(), a.validateCmd(), a.schemaCmd(), a.graphCmd(),
+		a.initCmd(), a.templatesCmd(), a.addCmd(), a.validateCmd(), a.schemaCmd(), a.graphCmd(),
 		a.startCmd(), a.lsCmd(), a.statusCmd(), a.logsCmd(),
 		a.answerCmd(), a.reviewCmd(),
 		a.simpleCmd("retry", "Retry the current step (needs attention, or a pending check-in)", engine.CmdRetry, "retry"),
