@@ -6,9 +6,11 @@ tests, open a PR, wait for it to merge", and `ship` runs it for each piece of
 work you hand it. Agents do the writing and reviewing, scripts do the
 checking, and you're asked only when a decision needs a person.
 
-Each run gets its own git worktree, so several can run side by side without
-touching your checkout. Runs survive crashes and reboots, and you watch them
-live in a local web UI.
+All of a run's work happens in its own git worktree, on its own branch, so
+several runs can go side by side without touching your checkout, and you can
+jump into any of them, see exactly what's been done, step in, or stop the
+run and finish the job yourself. Runs survive crashes and reboots, and you
+watch them live in a local web UI.
 
 ## Install
 
@@ -29,9 +31,10 @@ ship update --check    # only says whether there's a newer one
 ```
 
 You need git and the [`claude` CLI](https://docs.anthropic.com/en/docs/claude-code).
-[treehouse](https://github.com/kunchenguid/treehouse) is optional, as a
-faster way to provide worktrees. To build from source, see
-[Development](#development).
+If [treehouse](https://github.com/kunchenguid/treehouse) is installed,
+`ship` leases its worktrees from treehouse's pool instead of creating them
+itself (see [Worktrees](#worktrees-jumping-in-and-taking-over)). To build from
+source, see [Development](#development).
 
 ## Quick start
 
@@ -135,6 +138,76 @@ Each of these is one `/ship-design` conversation away.
 - **Run several independent changes at once.** Hand over several briefs, and
   each run gets its own worktree and branch. At most three agents work at
   once by default (`max_agents` in config); the rest queue.
+
+## Worktrees: jumping in and taking over
+
+Every run works in a separate git worktree, a full checkout of your repo on
+the run's own branch (`ship/<run-id>` unless the pipeline names it). Agents,
+scripts and your tests all run there. Your main checkout is never touched,
+so you can keep working while runs go.
+
+**Find it.** `cd "$(ship cd <run>)"` drops you into a run's worktree. On the
+run's page in the UI, the worktree path has buttons to copy it or open it in
+your editor or a terminal.
+
+**See what's happened.** It's a normal git checkout, so the history and the
+diff tell you everything:
+
+```sh
+cd "$(ship cd 3fa)"
+git log --oneline main..       # what the run has committed
+git diff main...               # everything it's changed so far
+git status                     # anything not committed yet
+```
+
+For the story behind the changes, each step's handover says what it did and
+what's left. They're on the run's page in the UI, via `ship status <run>`
+and `ship logs <run> <step> --stream handover`, and on disk in
+`~/.ship/state/runs/<id>/visits/`.
+
+**Step in without stopping the run.** When a run is waiting for you (a
+question, or a step that needs attention), you can edit, fix or commit in
+its worktree first. When you answer or retry, the next step picks up your
+changes. To redirect a run that's mid-step, `ship goto <run> <step>` stops
+the current step and continues from the one you name, for example after you've
+fixed something by hand, `ship goto 3fa test`. Avoid editing while an agent
+is actively working there: you'll both be changing the same files.
+
+**Stop it and take over.** `ship cancel <run>` (or **Cancel run** in the UI)
+stops the run and leaves its worktree and branch exactly as they are. Carry
+on from there yourself: finish the change, commit, push, open the PR. When
+you're done with the worktree, `ship clean --run <run>` removes it (the
+branch stays). `ship clean` refuses if there are uncommitted changes, unless
+you pass `--force`.
+
+**After a run.** A run that finishes successfully releases its worktree, but
+its branch stays, so `git switch ship/<run-id>` (or `git log ship/<run-id>`)
+in your checkout still gets you everything. Runs that stop, fail or are
+cancelled keep their worktree for you to inspect, until `ship clean`.
+
+### With treehouse
+
+If [treehouse](https://github.com/kunchenguid/treehouse) is on your PATH,
+`ship` uses it automatically. Instead of creating a worktree, each run
+**leases** one from treehouse's pool of pre-warmed worktrees, on the run's
+branch, so it starts faster. Your `treehouse.toml` decides where the pool
+lives and what's set up in new worktrees.
+
+- `treehouse status` lists the worktrees `ship` holds, with `ship:<run-id>`
+  as the lease holder. Leased worktrees are never handed to anyone else or
+  pruned.
+- Everything above works the same: `ship cd` gives you the leased path.
+- When a run finishes, `ship` returns the lease, and treehouse resets the
+  worktree for reuse. Your commits stay on the run's branch. A cancelled,
+  stopped or failed run keeps its lease, so you can take over, until
+  `ship clean` returns it. Like treehouse itself, `ship clean` won't
+  discard uncommitted work without `--force`.
+- `ship` only ever returns leases it holds.
+
+To choose explicitly, set `workspace.provider` in `.ship/config.yml`, in
+`~/.ship/config.yml`, or in a pipeline: `auto` (the default: treehouse if
+installed, otherwise git), `git`, `treehouse` (fails if treehouse is
+missing), or `none` (work directly in your checkout, one run at a time).
 
 ## Briefs
 
@@ -277,8 +350,8 @@ agent:                       # defaults for every agent step (each can override)
 
 workspace:
   branch: "feat/{{vars.ticket}}"   # default: ship/<run-id>
-  base: main                                  # default: the repo's default branch
-  provider: git              # git (a worktree per run) | treehouse | none (your checkout)
+  base: main                       # default: the repo's default branch
+  provider: auto                   # auto | git | treehouse | none (see Worktrees)
 ```
 
 Agents run unattended, in the worktree, with your project's
@@ -357,7 +430,7 @@ scripts belong in `~/.ship/bin`, called as `"$SHIP_HOME/bin/<script>"`.
 | `~/.ship/pipelines/`, `~/.ship/templates/` | global pipelines and your templates |
 | `~/.ship/config.yml` | user config (`.ship/config.yml` overrides it per repo) |
 | `~/.ship/daemon.log` | the background process's log |
-| `<repo-parent>/<repo>.ship/<run-id>/` | run worktrees (released when a run finishes successfully; `ship clean` tidies up the rest) |
+| `<repo-parent>/<repo>.ship/<run-id>/` | run worktrees, when they're not leased from treehouse (released when a run finishes successfully; `ship clean` tidies up the rest) |
 
 ## Development
 

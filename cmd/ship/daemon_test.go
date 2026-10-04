@@ -57,7 +57,7 @@ func newHarness(t *testing.T, pipelines map[string]string) *harness {
 		}
 	}
 	os.MkdirAll(h.home, 0o700)
-	os.WriteFile(filepath.Join(h.home, "config.yml"), []byte("notifications: false\nworkspace:\n  fetch: false\n  git:\n    dir: \""+root+"/wt/{run}\"\n"), 0o644)
+	os.WriteFile(filepath.Join(h.home, "config.yml"), []byte("notifications: false\nworkspace:\n  provider: git\n  fetch: false\n  git:\n    dir: \""+root+"/wt/{run}\"\n"), 0o644)
 	h.startDaemon()
 	t.Cleanup(h.stopDaemon)
 	return h

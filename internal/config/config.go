@@ -28,7 +28,7 @@ type Config struct {
 
 // Workspace configures workspace providers.
 type Workspace struct {
-	Provider      string `yaml:"provider" jsonschema:"enum=git,enum=treehouse,enum=none"`
+	Provider      string `yaml:"provider" jsonschema:"enum=auto,enum=git,enum=treehouse,enum=none"`
 	Fetch         bool   `yaml:"fetch"`
 	ReleaseOnDone bool   `yaml:"release_on_done"`
 	Git           Git    `yaml:"git"`
@@ -53,11 +53,14 @@ type Retention struct {
 	KeepRunsDays int `yaml:"keep_runs_days" jsonschema:"minimum=0"`
 }
 
+// ProviderAuto picks treehouse when it's installed, else git worktrees.
+const ProviderAuto = "auto"
+
 // Defaults returns the built-in configuration.
 func Defaults() Config {
 	return Config{
 		Workspace: Workspace{
-			Provider:      "git",
+			Provider:      ProviderAuto,
 			Fetch:         true,
 			ReleaseOnDone: true,
 			Git:           Git{Dir: "{repo_parent}/{repo}" + brand.WorktreeSuffix + "/{run}", Setup: []string{}},

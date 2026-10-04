@@ -114,6 +114,7 @@
         "provider": {
           "type": "string",
           "enum": [
+            "auto",
             "git",
             "treehouse",
             "none"

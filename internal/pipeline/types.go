@@ -51,7 +51,7 @@ type Pipeline struct {
 
 // Workspace configures where a run works.
 type Workspace struct {
-	Provider string `yaml:"provider,omitempty" jsonschema:"enum=git,enum=treehouse,enum=none"`
+	Provider string `yaml:"provider,omitempty" jsonschema:"enum=auto,enum=git,enum=treehouse,enum=none"`
 	Branch   string `yaml:"branch,omitempty"`
 	Base     string `yaml:"base,omitempty"`
 	Reuse    string `yaml:"reuse,omitempty" jsonschema:"enum=parent,enum=none"`

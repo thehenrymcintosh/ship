@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"sort"
@@ -92,14 +93,35 @@ func New(o Options) *Engine {
 	if o.BaseEnv == nil {
 		o.BaseEnv = os.Environ()
 	}
+	// Workspace commands see the same environment as steps.
+	providers := o.Providers
+	o.Providers = func(name string, cfg config.Config) (workspace.Provider, error) {
+		p, err := providers(name, cfg)
+		if th, ok := p.(*treehouse.Provider); ok && th.Env == nil {
+			th.Env = o.BaseEnv
+		}
+		return p, err
+	}
 	ctx, cancel := context.WithCancel(context.Background())
 	return &Engine{o: o, runners: map[string]*runner{}, sem: make(chan struct{}, o.MaxAgents), ctx: ctx, stop: cancel, listeners: map[int]func(string, store.Event){}}
 }
 
+// ResolveProvider turns "auto" (or "") into a concrete provider: treehouse
+// when it's on PATH, otherwise git worktrees.
+func ResolveProvider(name string) string {
+	if name != "" && name != config.ProviderAuto {
+		return name
+	}
+	if _, err := exec.LookPath("treehouse"); err == nil {
+		return "treehouse"
+	}
+	return "git"
+}
+
 // DefaultProviders builds the built-in workspace providers.
 func DefaultProviders(name string, cfg config.Config) (workspace.Provider, error) {
-	switch name {
-	case "", "git":
+	switch ResolveProvider(name) {
+	case "git":
 		return &gitws.Provider{DirTemplate: cfg.Workspace.Git.Dir, Fetch: cfg.Workspace.Fetch, Setup: cfg.Workspace.Git.Setup}, nil
 	case "treehouse":
 		return &treehouse.Provider{}, nil
@@ -478,6 +500,9 @@ func (e *Engine) Start(ctx context.Context, req StartRequest) (*store.RunSnapsho
 	if p.Workspace != nil && p.Workspace.Provider != "" {
 		provider = p.Workspace.Provider
 	}
+	// Resolve "auto" now and record the result, so the run keeps the same
+	// provider through recovery and cleanup.
+	provider = ResolveProvider(provider)
 	if req.child != nil && req.child.reuse != nil {
 		provider = parentProvider
 	}

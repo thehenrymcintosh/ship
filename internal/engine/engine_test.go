@@ -53,6 +53,7 @@ func newEnv(t *testing.T, pipelines map[string]string) *env {
 	en := &env{t: t, repo: repo, home: filepath.Join(root, "home")}
 	en.cfg = config.Defaults()
 	en.cfg.Workspace.Fetch = false
+	en.cfg.Workspace.Provider = "git" // not auto: results mustn't depend on treehouse being installed
 	en.cfg.Workspace.Git.Dir = filepath.Join(root, "worktrees", "{run}")
 	en.st, _ = store.New(filepath.Join(en.home, "state"))
 	en.e = en.newEngine()

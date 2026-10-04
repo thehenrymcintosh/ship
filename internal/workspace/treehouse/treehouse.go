@@ -22,6 +22,10 @@ import (
 type Provider struct {
 	// Binary is the CLI (default "treehouse").
 	Binary string
+	// Env is the environment every treehouse command runs with (nil = this
+	// process's). Lease, status and return must agree on TREEHOUSE_ROOT and
+	// friends, or a lease could be taken from one pool and returned to another.
+	Env []string
 }
 
 // Name implements workspace.Provider.
@@ -49,6 +53,9 @@ func (p *Provider) Check(ctx context.Context, repo string) error {
 func (p *Provider) run(ctx context.Context, dir string, env []string, args ...string) ([]byte, error) {
 	cmd := exec.CommandContext(ctx, p.bin(), args...)
 	cmd.Dir = dir
+	if len(env) == 0 {
+		env = p.Env
+	}
 	if len(env) > 0 {
 		cmd.Env = env
 	}
