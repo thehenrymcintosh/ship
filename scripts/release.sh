@@ -51,7 +51,9 @@ echo "Building and installing $tag locally…"
 run make install VERSION="$next"
 
 run git tag -a "$tag" -m "ship $tag"
-if $push; then
+if $dry; then
+  echo "Dry run: nothing was installed, tagged or pushed."
+elif $push; then
   run git push -q origin main
   run git push -q origin "$tag"
   echo "Pushed $tag. GitHub Actions is building the release:"
