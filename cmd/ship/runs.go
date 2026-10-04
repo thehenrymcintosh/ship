@@ -155,7 +155,7 @@ func (a *app) listPipelines(repoFlag string) error {
 		return printJSON(rows)
 	}
 	if len(rows) == 0 {
-		fmt.Printf("No pipelines. `%s init` adds starters to this repo; `%s init --global` adds them for every repo.\n", brand.Name, brand.Name)
+		fmt.Printf("No pipelines yet. Design one with /%s in Claude Code, or start from a template: `%s templates`, then `%s add <template>`.\n", brand.DesignSkillName, brand.Name, brand.Name)
 		return nil
 	}
 	tw := tabwriter.NewWriter(os.Stdout, 0, 2, 2, ' ', 0)
