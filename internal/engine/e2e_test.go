@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/merlin-digital/ship/internal/store"
+	"github.com/thehenrymcintosh/ship/internal/store"
 )
 
 var updateGolden = flag.Bool("update", false, "rewrite golden files")

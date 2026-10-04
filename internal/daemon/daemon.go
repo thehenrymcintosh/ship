@@ -20,15 +20,15 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/merlin-digital/ship/internal/agent"
-	"github.com/merlin-digital/ship/internal/agent/claude"
-	"github.com/merlin-digital/ship/internal/agent/fake"
-	"github.com/merlin-digital/ship/internal/brand"
-	"github.com/merlin-digital/ship/internal/config"
-	"github.com/merlin-digital/ship/internal/engine"
-	"github.com/merlin-digital/ship/internal/notify"
-	"github.com/merlin-digital/ship/internal/proc"
-	"github.com/merlin-digital/ship/internal/store"
+	"github.com/thehenrymcintosh/ship/internal/agent"
+	"github.com/thehenrymcintosh/ship/internal/agent/claude"
+	"github.com/thehenrymcintosh/ship/internal/agent/fake"
+	"github.com/thehenrymcintosh/ship/internal/brand"
+	"github.com/thehenrymcintosh/ship/internal/config"
+	"github.com/thehenrymcintosh/ship/internal/engine"
+	"github.com/thehenrymcintosh/ship/internal/notify"
+	"github.com/thehenrymcintosh/ship/internal/proc"
+	"github.com/thehenrymcintosh/ship/internal/store"
 )
 
 // Files in the home dir.

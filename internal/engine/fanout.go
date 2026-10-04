@@ -6,10 +6,10 @@ import (
 	"os"
 	"strings"
 
-	"github.com/merlin-digital/ship/internal/engine/steps"
-	"github.com/merlin-digital/ship/internal/pipeline"
-	"github.com/merlin-digital/ship/internal/store"
-	"github.com/merlin-digital/ship/internal/workspace"
+	"github.com/thehenrymcintosh/ship/internal/engine/steps"
+	"github.com/thehenrymcintosh/ship/internal/pipeline"
+	"github.com/thehenrymcintosh/ship/internal/store"
+	"github.com/thehenrymcintosh/ship/internal/workspace"
 )
 
 // fanoutExec runs a child pipeline per slice and supervises the children.

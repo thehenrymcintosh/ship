@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/merlin-digital/ship/internal/store"
+	"github.com/thehenrymcintosh/ship/internal/store"
 )
 
 // restart shuts the engine down (as on SIGTERM) and starts a new one that

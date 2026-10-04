@@ -7,7 +7,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/merlin-digital/ship/internal/tmpl"
+	"github.com/thehenrymcintosh/ship/internal/tmpl"
 )
 
 // Severity of a finding.

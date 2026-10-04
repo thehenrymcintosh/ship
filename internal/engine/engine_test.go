@@ -11,10 +11,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/merlin-digital/ship/internal/agent"
-	"github.com/merlin-digital/ship/internal/agent/fake"
-	"github.com/merlin-digital/ship/internal/config"
-	"github.com/merlin-digital/ship/internal/store"
+	"github.com/thehenrymcintosh/ship/internal/agent"
+	"github.com/thehenrymcintosh/ship/internal/agent/fake"
+	"github.com/thehenrymcintosh/ship/internal/config"
+	"github.com/thehenrymcintosh/ship/internal/store"
 )
 
 type env struct {

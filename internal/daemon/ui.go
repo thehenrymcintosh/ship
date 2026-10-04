@@ -19,12 +19,12 @@ import (
 	"sync"
 	"time"
 
-	"github.com/merlin-digital/ship/internal/brand"
-	"github.com/merlin-digital/ship/internal/brief"
-	"github.com/merlin-digital/ship/internal/engine"
-	"github.com/merlin-digital/ship/internal/pipeline"
-	"github.com/merlin-digital/ship/internal/store"
-	"github.com/merlin-digital/ship/web"
+	"github.com/thehenrymcintosh/ship/internal/brand"
+	"github.com/thehenrymcintosh/ship/internal/brief"
+	"github.com/thehenrymcintosh/ship/internal/engine"
+	"github.com/thehenrymcintosh/ship/internal/pipeline"
+	"github.com/thehenrymcintosh/ship/internal/store"
+	"github.com/thehenrymcintosh/ship/web"
 )
 
 // --- templates -------------------------------------------------------------

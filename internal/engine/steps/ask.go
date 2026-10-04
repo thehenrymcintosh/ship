@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/merlin-digital/ship/internal/pipeline"
-	"github.com/merlin-digital/ship/internal/store"
-	"github.com/merlin-digital/ship/internal/tmpl"
+	"github.com/thehenrymcintosh/ship/internal/pipeline"
+	"github.com/thehenrymcintosh/ship/internal/store"
+	"github.com/thehenrymcintosh/ship/internal/tmpl"
 )
 
 // Ask executes `ask` steps.

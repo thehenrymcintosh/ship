@@ -13,7 +13,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/merlin-digital/ship/internal/brand"
+	"github.com/thehenrymcintosh/ship/internal/brand"
 )
 
 // Client talks to the daemon's API.

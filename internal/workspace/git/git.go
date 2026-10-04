@@ -12,8 +12,8 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/merlin-digital/ship/internal/proc"
-	"github.com/merlin-digital/ship/internal/workspace"
+	"github.com/thehenrymcintosh/ship/internal/proc"
+	"github.com/thehenrymcintosh/ship/internal/workspace"
 )
 
 // Git runs git in dir and returns trimmed stdout.

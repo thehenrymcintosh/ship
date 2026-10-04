@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/merlin-digital/ship/internal/workspace"
+	"github.com/thehenrymcintosh/ship/internal/workspace"
 )
 
 // Status is a run status.

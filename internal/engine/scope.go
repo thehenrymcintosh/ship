@@ -10,11 +10,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/merlin-digital/ship/internal/brief"
-	"github.com/merlin-digital/ship/internal/engine/steps"
-	"github.com/merlin-digital/ship/internal/pipeline"
-	"github.com/merlin-digital/ship/internal/store"
-	"github.com/merlin-digital/ship/internal/tmpl"
+	"github.com/thehenrymcintosh/ship/internal/brief"
+	"github.com/thehenrymcintosh/ship/internal/engine/steps"
+	"github.com/thehenrymcintosh/ship/internal/pipeline"
+	"github.com/thehenrymcintosh/ship/internal/store"
+	"github.com/thehenrymcintosh/ship/internal/tmpl"
 )
 
 // scopeInput is what a template scope is built from.

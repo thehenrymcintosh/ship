@@ -14,7 +14,7 @@ import (
 	"golang.org/x/text/language"
 	"golang.org/x/text/message"
 
-	"github.com/merlin-digital/ship/internal/brand"
+	"github.com/thehenrymcintosh/ship/internal/brand"
 )
 
 //go:embed preamble.tmpl

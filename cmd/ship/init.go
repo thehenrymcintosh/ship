@@ -8,10 +8,10 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/merlin-digital/ship/internal/brand"
-	"github.com/merlin-digital/ship/internal/config"
-	"github.com/merlin-digital/ship/internal/initfiles"
-	"github.com/merlin-digital/ship/internal/pipeline"
+	"github.com/thehenrymcintosh/ship/internal/brand"
+	"github.com/thehenrymcintosh/ship/internal/config"
+	"github.com/thehenrymcintosh/ship/internal/initfiles"
+	"github.com/thehenrymcintosh/ship/internal/pipeline"
 )
 
 func (a *app) initCmd() *cobra.Command {

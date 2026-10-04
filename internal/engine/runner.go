@@ -14,18 +14,18 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/merlin-digital/ship/internal/agent"
-	"github.com/merlin-digital/ship/internal/agent/fake"
-	"github.com/merlin-digital/ship/internal/brand"
-	"github.com/merlin-digital/ship/internal/brief"
-	"github.com/merlin-digital/ship/internal/config"
-	"github.com/merlin-digital/ship/internal/engine/steps"
-	"github.com/merlin-digital/ship/internal/pipeline"
-	"github.com/merlin-digital/ship/internal/proc"
-	"github.com/merlin-digital/ship/internal/store"
-	"github.com/merlin-digital/ship/internal/tmpl"
-	"github.com/merlin-digital/ship/internal/workspace"
-	gitws "github.com/merlin-digital/ship/internal/workspace/git"
+	"github.com/thehenrymcintosh/ship/internal/agent"
+	"github.com/thehenrymcintosh/ship/internal/agent/fake"
+	"github.com/thehenrymcintosh/ship/internal/brand"
+	"github.com/thehenrymcintosh/ship/internal/brief"
+	"github.com/thehenrymcintosh/ship/internal/config"
+	"github.com/thehenrymcintosh/ship/internal/engine/steps"
+	"github.com/thehenrymcintosh/ship/internal/pipeline"
+	"github.com/thehenrymcintosh/ship/internal/proc"
+	"github.com/thehenrymcintosh/ship/internal/store"
+	"github.com/thehenrymcintosh/ship/internal/tmpl"
+	"github.com/thehenrymcintosh/ship/internal/workspace"
+	gitws "github.com/thehenrymcintosh/ship/internal/workspace/git"
 )
 
 // runner owns one run: its goroutine is the only writer of the run's state.

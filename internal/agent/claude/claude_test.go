@@ -12,7 +12,7 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/merlin-digital/ship/internal/agent"
+	"github.com/thehenrymcintosh/ship/internal/agent"
 )
 
 func TestParserGolden(t *testing.T) {

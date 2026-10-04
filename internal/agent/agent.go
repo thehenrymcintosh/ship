@@ -11,7 +11,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/merlin-digital/ship/internal/pipeline"
+	"github.com/thehenrymcintosh/ship/internal/pipeline"
 )
 
 // StepAgentConfig is the effective agent configuration of a step.

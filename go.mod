@@ -1,4 +1,4 @@
-module github.com/merlin-digital/ship
+module github.com/thehenrymcintosh/ship
 
 go 1.23
 

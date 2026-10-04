@@ -12,8 +12,8 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/merlin-digital/ship/internal/agent"
-	"github.com/merlin-digital/ship/internal/proc"
+	"github.com/thehenrymcintosh/ship/internal/agent"
+	"github.com/thehenrymcintosh/ship/internal/proc"
 )
 
 // Valid values for Validate.

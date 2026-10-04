@@ -10,10 +10,10 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/merlin-digital/ship/internal/agent"
-	"github.com/merlin-digital/ship/internal/pipeline"
-	"github.com/merlin-digital/ship/internal/store"
-	"github.com/merlin-digital/ship/internal/tmpl"
+	"github.com/thehenrymcintosh/ship/internal/agent"
+	"github.com/thehenrymcintosh/ship/internal/pipeline"
+	"github.com/thehenrymcintosh/ship/internal/store"
+	"github.com/thehenrymcintosh/ship/internal/tmpl"
 )
 
 // Executor runs one visit. The error is for engine bugs, not step failures:

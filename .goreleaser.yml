@@ -9,7 +9,7 @@ builds:
     goarch: [arm64, amd64]
     flags: [-trimpath]
     ldflags:
-      - -s -w -X github.com/merlin-digital/ship/internal/brand.Version={{.Version}}
+      - -s -w -X github.com/thehenrymcintosh/ship/internal/brand.Version={{.Version}}
 archives:
   - formats: [tar.gz]
     name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
@@ -17,10 +17,10 @@ checksum:
   name_template: checksums.txt
 brews:
   - repository:
-      owner: merlin-digital
+      owner: thehenrymcintosh
       name: homebrew-tap
     directory: Formula
-    homepage: https://github.com/merlin-digital/ship
+    homepage: https://github.com/thehenrymcintosh/ship
     description: Define, run and watch local agentic-coding pipelines
     install: |
       bin.install "ship"

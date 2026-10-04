@@ -5,7 +5,7 @@ import (
 
 	"github.com/invopop/jsonschema"
 
-	"github.com/merlin-digital/ship/internal/brand"
+	"github.com/thehenrymcintosh/ship/internal/brand"
 )
 
 // StepNamePattern is the allowed form of step names.

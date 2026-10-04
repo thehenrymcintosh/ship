@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/merlin-digital/ship/internal/workspace"
+	"github.com/thehenrymcintosh/ship/internal/workspace"
 )
 
 // NewTestRepo creates a repo with one commit on main.

@@ -13,10 +13,10 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/merlin-digital/ship/internal/brand"
-	"github.com/merlin-digital/ship/internal/engine"
-	"github.com/merlin-digital/ship/internal/pipeline"
-	"github.com/merlin-digital/ship/internal/store"
+	"github.com/thehenrymcintosh/ship/internal/brand"
+	"github.com/thehenrymcintosh/ship/internal/engine"
+	"github.com/thehenrymcintosh/ship/internal/pipeline"
+	"github.com/thehenrymcintosh/ship/internal/store"
 )
 
 func ago(t time.Time) string {

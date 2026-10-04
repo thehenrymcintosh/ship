@@ -5,7 +5,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/merlin-digital/ship/internal/proc"
+	"github.com/thehenrymcintosh/ship/internal/proc"
 )
 
 func runShell(ctx context.Context, dir string, env []string, script string) error {

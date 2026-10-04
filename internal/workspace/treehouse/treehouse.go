@@ -13,9 +13,9 @@ import (
 	"os/exec"
 	"strings"
 
-	"github.com/merlin-digital/ship/internal/brand"
-	"github.com/merlin-digital/ship/internal/workspace"
-	"github.com/merlin-digital/ship/internal/workspace/git"
+	"github.com/thehenrymcintosh/ship/internal/brand"
+	"github.com/thehenrymcintosh/ship/internal/workspace"
+	"github.com/thehenrymcintosh/ship/internal/workspace/git"
 )
 
 // Provider is the treehouse provider.

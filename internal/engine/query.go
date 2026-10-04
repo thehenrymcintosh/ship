@@ -9,9 +9,9 @@ import (
 	"sort"
 	"time"
 
-	"github.com/merlin-digital/ship/internal/pipeline"
-	"github.com/merlin-digital/ship/internal/store"
-	"github.com/merlin-digital/ship/internal/workspace"
+	"github.com/thehenrymcintosh/ship/internal/pipeline"
+	"github.com/thehenrymcintosh/ship/internal/store"
+	"github.com/thehenrymcintosh/ship/internal/workspace"
 )
 
 // RunPipeline loads a run's pipeline snapshot.

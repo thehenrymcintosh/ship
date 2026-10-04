@@ -22,9 +22,9 @@ import (
 
 	"github.com/goccy/go-yaml"
 
-	"github.com/merlin-digital/ship/internal/agent"
-	"github.com/merlin-digital/ship/internal/brand"
-	"github.com/merlin-digital/ship/internal/pipeline"
+	"github.com/thehenrymcintosh/ship/internal/agent"
+	"github.com/thehenrymcintosh/ship/internal/brand"
+	"github.com/thehenrymcintosh/ship/internal/pipeline"
 )
 
 // ScriptEnv names the env var holding the script path.

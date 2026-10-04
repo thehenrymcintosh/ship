@@ -5,8 +5,8 @@ import (
 	"context"
 	"os"
 
-	"github.com/merlin-digital/ship/internal/workspace"
-	"github.com/merlin-digital/ship/internal/workspace/git"
+	"github.com/thehenrymcintosh/ship/internal/workspace"
+	"github.com/thehenrymcintosh/ship/internal/workspace/git"
 )
 
 // Provider is the `none` provider.

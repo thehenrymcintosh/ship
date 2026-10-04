@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/merlin-digital/ship/internal/workspace"
+	"github.com/thehenrymcintosh/ship/internal/workspace"
 )
 
 // randomEvent produces a plausible event of a random type.

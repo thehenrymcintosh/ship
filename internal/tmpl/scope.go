@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/merlin-digital/ship/internal/brand"
+	"github.com/thehenrymcintosh/ship/internal/brand"
 )
 
 // Scope holds the values placeholders resolve to, keyed by full path

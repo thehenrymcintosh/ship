@@ -1,6 +1,6 @@
 BIN     := ship
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo 0.1.0-dev)
-LDFLAGS := -s -w -X github.com/merlin-digital/ship/internal/brand.Version=$(VERSION)
+LDFLAGS := -s -w -X github.com/thehenrymcintosh/ship/internal/brand.Version=$(VERSION)
 
 .PHONY: build schema test test-race test-live lint clean
 

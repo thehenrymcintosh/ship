@@ -7,10 +7,10 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/merlin-digital/ship/internal/config"
-	"github.com/merlin-digital/ship/internal/daemon"
-	"github.com/merlin-digital/ship/internal/engine"
-	"github.com/merlin-digital/ship/internal/pipeline"
+	"github.com/thehenrymcintosh/ship/internal/config"
+	"github.com/thehenrymcintosh/ship/internal/daemon"
+	"github.com/thehenrymcintosh/ship/internal/engine"
+	"github.com/thehenrymcintosh/ship/internal/pipeline"
 )
 
 // validateOpts returns validation options for a repo's config.

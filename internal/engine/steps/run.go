@@ -12,9 +12,9 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/merlin-digital/ship/internal/pipeline"
-	"github.com/merlin-digital/ship/internal/proc"
-	"github.com/merlin-digital/ship/internal/tmpl"
+	"github.com/thehenrymcintosh/ship/internal/pipeline"
+	"github.com/thehenrymcintosh/ship/internal/proc"
+	"github.com/thehenrymcintosh/ship/internal/tmpl"
 )
 
 // maxCapture caps how much stdout is kept in memory for `save`.

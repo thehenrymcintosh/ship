@@ -7,8 +7,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/merlin-digital/ship/internal/agent"
-	"github.com/merlin-digital/ship/internal/store"
+	"github.com/thehenrymcintosh/ship/internal/agent"
+	"github.com/thehenrymcintosh/ship/internal/store"
 )
 
 // Hub fans engine updates out to SSE subscribers. It implements

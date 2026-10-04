@@ -5,7 +5,7 @@ import (
 	"embed"
 	"strings"
 
-	"github.com/merlin-digital/ship/internal/brand"
+	"github.com/thehenrymcintosh/ship/internal/brand"
 )
 
 //go:embed files

@@ -10,8 +10,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/merlin-digital/ship/internal/daemon"
-	"github.com/merlin-digital/ship/internal/store"
+	"github.com/thehenrymcintosh/ship/internal/daemon"
+	"github.com/thehenrymcintosh/ship/internal/store"
 )
 
 // post sends a control command to the daemon and prints the new status.

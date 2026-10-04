@@ -12,8 +12,8 @@ import (
 	"github.com/goccy/go-yaml"
 	"github.com/invopop/jsonschema"
 
-	"github.com/merlin-digital/ship/internal/brand"
-	"github.com/merlin-digital/ship/internal/pipeline"
+	"github.com/thehenrymcintosh/ship/internal/brand"
+	"github.com/thehenrymcintosh/ship/internal/pipeline"
 )
 
 // Config is the merged configuration.
