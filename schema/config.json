@@ -1,0 +1,137 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ship.local/schema/config.json",
+  "$ref": "#/$defs/Config",
+  "$defs": {
+    "AgentConfig": {
+      "properties": {
+        "cli": {
+          "type": "string"
+        },
+        "model": {
+          "type": "string"
+        },
+        "effort": {
+          "type": "string"
+        },
+        "permission_mode": {
+          "type": "string"
+        },
+        "allowed_tools": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "disallowed_tools": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "extra_args": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object"
+    },
+    "Config": {
+      "properties": {
+        "workspace": {
+          "$ref": "#/$defs/Workspace"
+        },
+        "agent": {
+          "$ref": "#/$defs/AgentConfig"
+        },
+        "max_agents": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "notifications": {
+          "type": "boolean"
+        },
+        "ui": {
+          "$ref": "#/$defs/UI"
+        },
+        "retention": {
+          "$ref": "#/$defs/Retention"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object"
+    },
+    "Git": {
+      "properties": {
+        "dir": {
+          "type": "string"
+        },
+        "setup": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object"
+    },
+    "Retention": {
+      "properties": {
+        "keep_runs_days": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "additionalProperties": false,
+      "type": "object"
+    },
+    "UI": {
+      "properties": {
+        "port": {
+          "type": "integer",
+          "maximum": 65535,
+          "minimum": 1
+        },
+        "open_on_start": {
+          "type": "boolean"
+        },
+        "editor": {
+          "type": "string"
+        },
+        "terminal": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object"
+    },
+    "Workspace": {
+      "properties": {
+        "provider": {
+          "type": "string",
+          "enum": [
+            "git",
+            "treehouse",
+            "none"
+          ]
+        },
+        "fetch": {
+          "type": "boolean"
+        },
+        "release_on_done": {
+          "type": "boolean"
+        },
+        "git": {
+          "$ref": "#/$defs/Git"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object"
+    }
+  },
+  "title": "ship config"
+}

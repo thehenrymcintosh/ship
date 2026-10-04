@@ -1,0 +1,30 @@
+{{define "layout"}}<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{.Title}} · {{brand}}</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='8' fill='%230f766e'/><path d='M8 21h16l-2 4H10zM16 7c-4 0-7 3-7 7v5h14v-5c0-4-3-7-7-7z' fill='white'/></svg>">
+<link rel="stylesheet" href="/static/app.css">
+<script>try{var t=localStorage.getItem("ship-theme");if(t)document.documentElement.dataset.theme=t}catch(e){}</script>
+<script src="/static/htmx.min.js" defer></script>
+<script src="/static/htmx-sse.js" defer></script>
+<script src="/static/app.js" defer></script>
+{{if or (eq .Page "run") (eq .Page "pipelines")}}<script src="/static/elk.min.js" defer></script>{{end}}
+</head>
+<body hx-ext="sse" sse-connect="/api/events{{if .Run}}?run={{.Run}}{{end}}" data-page="{{.Page}}" data-run="{{.Run}}">
+<header class="topbar">
+  <a class="brand" href="/"><span class="brand-mark" aria-hidden="true">⌂</span>{{brand}}</a>
+  <nav>
+    <a href="/" {{if eq .Page "runs"}}aria-current="page"{{end}}>Runs</a>
+    <a href="/inbox" {{if eq .Page "inbox"}}aria-current="page"{{end}}>Inbox <span id="inbox-count" class="count{{if not .Inbox}} zero{{end}}">{{.Inbox}}</span></a>
+    <a href="/pipelines" {{if eq .Page "pipelines"}}aria-current="page"{{end}}>Pipelines</a>
+  </nav>
+  <button class="icon-btn theme-toggle" type="button" title="Toggle light/dark" aria-label="Toggle theme">◐</button>
+</header>
+<main class="page page-{{.Page}}">
+{{template "content" .}}
+</main>
+<div id="toasts" aria-live="polite"></div>
+</body>
+</html>{{end}}

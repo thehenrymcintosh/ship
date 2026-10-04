@@ -1,0 +1,173 @@
+{{define "content"}}{{$v := .Data}}
+<div id="run-header" hx-get="/fragments/runs/{{$v.S.ID}}/header" hx-trigger="sse:run throttle:500ms, ship-refresh from:body" hx-swap="innerHTML">{{template "run-header" $v}}</div>
+<div class="run-grid">
+  <div class="run-main">
+    <section class="card graph-card">
+      <header class="card-head"><h2>Pipeline</h2><span class="muted">{{$v.S.Pipeline}} · click a step to filter the timeline</span></header>
+      <div id="graph" class="graph" data-src="/api/runs/{{$v.S.ID}}/graph" aria-label="Pipeline graph"><p class="muted">Laying out…</p></div>
+    </section>
+    <div id="run-action" hx-get="/fragments/runs/{{$v.S.ID}}/action" hx-trigger="sse:run throttle:500ms, ship-refresh from:body" hx-swap="innerHTML">{{template "run-action" $v}}</div>
+    <section class="card timeline-card">
+      <header class="card-head"><h2>Timeline</h2><span id="timeline-filter" class="muted"></span></header>
+      <div id="run-timeline" hx-get="/fragments/runs/{{$v.S.ID}}/timeline" hx-trigger="sse:run throttle:700ms, ship-refresh from:body" hx-swap="innerHTML">{{template "run-timeline" $v}}</div>
+    </section>
+  </div>
+  <aside id="run-side" class="run-side" hx-get="/fragments/runs/{{$v.S.ID}}/side" hx-trigger="sse:run throttle:1s, ship-refresh from:body" hx-swap="innerHTML">{{template "run-side" $v}}</aside>
+</div>
+{{end}}
+
+{{define "run-header"}}{{$s := .S}}
+<div class="run-head">
+  <div class="run-head-main">
+    {{if $s.Parent}}<a class="crumb" href="/runs/{{$s.Parent.ID}}">← {{.ParentT}}{{with $s.Slice}} · slice {{.Number}} of {{.Count}}{{end}}</a>{{end}}
+    <h1>{{$s.Title}}</h1>
+    <div class="facts">
+      {{template "pill" $s}}
+      {{if not (terminal $s.Status)}}<span class="phase">{{phase $s .P}}</span>{{end}}
+      <span title="pipeline">{{$s.Pipeline}}</span>
+      {{if $s.Branch}}<span class="branch" title="branch ← base"><code>{{$s.Branch}}</code> ← <code>{{$s.Base}}</code></span>{{end}}
+      {{with money $s.CostUSD}}<span class="cost" title="agent cost">{{.}}</span>{{end}}
+      <span class="muted" title="{{$s.CreatedAt}}">started {{ago $s.CreatedAt}}</span>
+      <span class="muted id">{{$s.ID}}</span>
+    </div>
+    <div class="badges">
+      {{if $s.BaseMoved}}<span class="badge warn" title="The base branch moved since this slice started; a restack may be needed">parent slice changed — restack may be needed</span>{{end}}
+      {{if $s.WorkspaceMissing}}<span class="badge danger">worktree missing</span>{{end}}
+      {{if $s.PermissionDenials}}<span class="badge warn" title="Tool calls the agent wasn't allowed to make; consider allowed_tools">{{plural $s.PermissionDenials "permission denial"}}</span>{{end}}
+      {{if .Bypass}}<span class="badge danger" title="permission_mode: bypassPermissions">bypassPermissions</span>{{end}}
+      {{if $s.FakeAgents}}<span class="badge">fake agents</span>{{end}}
+    </div>
+    {{with $s.Workspace}}
+    <div class="worktree">
+      <code class="path" title="worktree">{{.Path}}</code>
+      <button class="btn small ghost" type="button" data-copy="{{.Path}}">Copy</button>
+      <button class="btn small ghost" hx-post="/api/runs/{{$s.ID}}/open" hx-vals='{"what":"editor"}' hx-swap="none">Open in editor</button>
+      <button class="btn small ghost" hx-post="/api/runs/{{$s.ID}}/open" hx-vals='{"what":"terminal"}' hx-swap="none">Terminal</button>
+    </div>
+    {{end}}
+  </div>
+  {{if not (terminal $s.Status)}}
+  <details class="controls">
+    <summary class="btn">Controls ▾</summary>
+    <div class="menu">
+      <button class="btn" hx-post="/api/runs/{{$s.ID}}/retry" hx-swap="none" {{if not .CanRetry}}disabled title="Available when the run needs attention or a check-in is pending"{{end}}>Retry</button>
+      <form class="inline" hx-post="/api/runs/{{$s.ID}}/goto" hx-swap="none" hx-confirm="Go to this step? A running step is stopped.">
+        <select name="step" aria-label="Step">{{range .Steps}}<option>{{.}}</option>{{end}}<option>done</option><option>stop</option></select>
+        <button class="btn">Go to step</button>
+      </form>
+      <button class="btn" hx-post="/api/runs/{{$s.ID}}/resume-session" hx-swap="none" {{if not .CanResume}}disabled title="Available after an agent step was interrupted"{{end}}>Resume session</button>
+      <button class="btn danger" hx-post="/api/runs/{{$s.ID}}/cancel" hx-confirm="Cancel this run{{if $s.Children}} and its children{{end}}?" hx-swap="none">Cancel run</button>
+    </div>
+  </details>
+  {{end}}
+</div>
+{{end}}
+
+{{define "run-timeline"}}{{$v := .}}
+{{if not .Visits}}<p class="muted empty-line">{{if eq .S.Status "starting"}}Getting the worktree ready…{{else}}No visits yet.{{end}}</p>{{end}}
+<ol class="timeline">
+{{$ask := .S.PendingAsk}}
+{{range .Visits}}
+  {{$waiting := and $ask (eq $ask.Seq .Seq)}}
+  <li>
+  <details class="visit vt-{{.Type}}{{if .Running}} live{{end}}" data-seq="{{.Seq}}" data-step="{{.Step}}" data-type="{{.Type}}">
+    <summary>
+      <span class="seq">{{.Seq}}</span>
+      <span class="vstep"><span class="glyph" aria-hidden="true">{{glyph .Type}}</span>{{.Step}}{{if gt .VisitNumber 1}} <span class="muted">#{{.VisitNumber}}</span>{{end}}</span>
+      {{if .Running}}{{if .Queued}}<span class="chip queued">waiting for a free agent</span>{{else if $waiting}}<span class="chip asking">waiting for you</span>{{else}}<span class="chip running"><span class="spin small" aria-hidden="true"></span>{{if eq .Type "wait"}}polling{{if .Polls}} · {{.Polls}}{{end}}{{else}}running{{end}}</span>{{end}}
+      {{else if .Interrupted}}<span class="chip warn">interrupted</span>
+      {{else}}<span class="chip oc-{{.Outcome}}">{{.Outcome}}</span>{{end}}
+      <span class="vsum">{{if .Error}}<code>{{.Error.Reason}}</code> {{end}}{{trunc 140 .Summary}}</span>
+      <span class="vmeta">{{with dur .DurationMS}}<span>{{.}}</span>{{end}}{{with money .CostUSD}}<span>{{.}}</span>{{end}}{{if .PermissionDenials}}<span class="warn-text" title="permission denials">⚠ {{.PermissionDenials}}</span>{{end}}{{if .CameFrom}}<span class="muted" title="came from">← {{.CameFrom}}</span>{{end}}</span>
+    </summary>
+    <div class="visit-body">
+      <div class="tabs" role="tablist">
+        {{if eq .Type "fanout"}}<button role="tab" data-tab="live" aria-selected="true">Lanes</button>{{else}}<button role="tab" data-tab="live" aria-selected="true">Live</button>{{end}}
+        {{if ne .Type "fanout"}}<button role="tab" data-tab="input">Input</button>{{end}}
+        <button role="tab" data-tab="handover">Handover</button>
+        <button role="tab" data-tab="result">Result JSON</button>
+      </div>
+      <div class="tab-pane" data-pane></div>
+    </div>
+  </details>
+  </li>
+{{end}}
+</ol>
+{{end}}
+
+{{define "visit-tab"}}
+{{if .Empty}}<p class="muted">{{.Empty}}</p>
+{{else if eq .Tab "result"}}<pre class="json">{{.JSON}}</pre>
+{{else if eq .Tab "live"}}
+  {{if .Lanes}}
+  <ol class="lanes">
+    {{range .Lanes}}
+    <li class="lane"><a href="/runs/{{.ID}}">{{template "pill" .}} <strong>{{with .Slice}}{{.Number}}. {{end}}{{.Title}}</strong>
+      <span class="muted">{{.CurrentStep}}</span> <code>{{.Branch}}</code>{{if .BaseMoved}} <span class="badge warn">base moved</span>{{end}}</a></li>
+    {{end}}
+  </ol>
+  {{else if or (eq .Type "agent") (eq .Type "split")}}
+  <div class="feed" data-live="agent" data-seq="{{.Seq}}">
+    {{range .Feed}}{{template "feed-item" .}}{{end}}
+    {{if not .Feed}}<p class="muted feed-empty">The agent hasn't said anything yet.</p>{{end}}
+  </div>
+  {{if .Stderr}}<details class="stderr"><summary>stderr</summary><pre class="log">{{.Stderr}}</pre></details>{{end}}
+  {{else}}
+  <pre class="log" data-live="output" data-seq="{{.Seq}}">{{.Stdout}}{{if .Stderr}}<span class="stderr-text">{{.Stderr}}</span>{{end}}</pre>
+  {{if and (not .Stdout) (not .Stderr)}}<p class="muted log-empty">No output yet.</p>{{end}}
+  {{end}}
+{{else}}<div class="md">{{.HTML}}</div>{{end}}
+{{end}}
+
+{{define "feed-item"}}
+{{if eq .Kind "text"}}<div class="say md">{{.Text}}</div>
+{{else if eq .Kind "tool_use"}}<details class="tool"><summary><span class="tool-name">{{.Name}}</span> <span class="muted">{{.Text}}</span></summary><pre>{{.Detail}}</pre></details>
+{{else if eq .Kind "tool_result"}}<details class="tool-result{{if .IsError}} err{{end}}"><summary>{{if .IsError}}error{{else}}result{{end}}</summary><pre>{{.Detail}}</pre></details>
+{{else}}<div class="sys{{if .IsError}} err{{end}}">{{.Text}}</div>{{end}}
+{{end}}
+
+{{define "run-side"}}{{$s := .S}}
+<section class="card">
+  <header class="card-head"><h2>Brief</h2><a class="muted small" href="/api/runs/{{$s.ID}}/brief" target="_blank">raw</a></header>
+  {{if .Acceptance}}<h3 class="sub">Acceptance criteria</h3><ul class="accept">{{range .Acceptance}}<li>{{.}}</li>{{end}}</ul>{{end}}
+  <details class="brief-body"><summary>Context and plan</summary><div class="md">{{.BriefHTML}}</div></details>
+</section>
+{{if .VarNames}}
+<section class="card">
+  <header class="card-head"><h2>Variables</h2></header>
+  <dl class="vars">
+    {{range .VarNames}}{{$val := index $s.Vars .}}
+    <div class="var">
+      <dt title="{{index $.VarDesc .}}">{{.}}</dt>
+      <dd>
+        {{if terminal $s.Status}}<code>{{$val}}</code>{{else}}
+        <form class="var-form" hx-post="/api/runs/{{$s.ID}}/vars" hx-swap="none">
+          <input type="hidden" name="name" value="{{.}}">
+          <input name="value" value="{{$val}}" placeholder="not set" aria-label="{{.}}">
+          <button class="btn small ghost">Set</button>
+        </form>{{end}}
+      </dd>
+    </div>
+    {{end}}
+  </dl>
+</section>
+{{end}}
+{{if .Children}}
+<section class="card">
+  <header class="card-head"><h2>Slices</h2></header>
+  {{if .Kitchen}}<p class="muted small">{{.Kitchen}}</p>{{end}}
+  <ol class="child-rows compact">
+    {{range .Children}}<li><a href="/runs/{{.ID}}">{{template "pill" .}} {{with .Slice}}{{.Number}}. {{end}}{{.Title}}</a> <span class="muted small">{{.CurrentStep}}</span></li>{{end}}
+  </ol>
+</section>
+{{end}}
+<section class="card small-print">
+  <dl class="kv">
+    <div><dt>Repo</dt><dd><code>{{$s.Repo}}</code></dd></div>
+    <div><dt>Provider</dt><dd>{{$s.Provider}}</dd></div>
+    <div><dt>Transitions</dt><dd>{{$s.Transitions}}</dd></div>
+    {{if $s.FinishedAt}}<div><dt>Finished</dt><dd>{{ago (deref $s.FinishedAt)}}</dd></div>{{end}}
+  </dl>
+  <button class="btn small ghost" hx-post="/api/runs/{{$s.ID}}/open" hx-vals='{"what":"run_dir"}' hx-swap="none">Open run folder</button>
+</section>
+{{end}}

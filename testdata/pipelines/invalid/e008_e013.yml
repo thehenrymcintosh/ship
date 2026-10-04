@@ -1,0 +1,19 @@
+version: 1
+start: a
+variables:
+  url: { set_by: b }
+  two: { value: x, from_brief: true }
+  none: {}
+  stray: { value: y }
+steps:
+  a:
+    run: echo hi
+    save:
+      stray: last_line
+    next: b
+  b:
+    agent: /do
+    next: {ok: done, help: chef}
+  chef:
+    ask: what?
+    choices: {stop: stop}

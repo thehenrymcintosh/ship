@@ -1,0 +1,20 @@
+version: 1
+start: a
+variables:
+  test: { value: make test }
+  url: { set_by: c }
+steps:
+  a:
+    run: |
+      {{vars.test}}
+      echo {{vars.url}}
+    next: {pass: b, fail: a}
+  b:
+    agent: /impl
+    next: {pass: c}
+  c:
+    run: echo x
+    save: {url: last_line}
+    next: {pass: b, fail: c}
+  orphan:
+    run: "true"

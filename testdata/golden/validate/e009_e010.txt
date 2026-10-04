@@ -1,0 +1,4 @@
+e009_e010.yml:4:31: error E010: format of "ticket" doesn't compile: error parsing regexp: missing closing ]: `[A-Z`
+e009_e010.yml:7:5: error E009: unknown variable "missing" (declare it under variables:)
+e009_e010.yml:7:5: error E009: unknown placeholder brief.body
+e009_e010.yml:10:5: error E009: template: unexpected placeholder "if x" (no logic or filters are supported) (at byte 0)

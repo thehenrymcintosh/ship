@@ -1,0 +1,28 @@
+version: 1
+description: run/ask loop used by the M1 engine tests
+start: build
+variables:
+  greeting: { value: hello world }
+  out: { set_by: build }
+defaults:
+  max_visits: 2
+  when_exhausted: chef
+steps:
+  build:
+    run: echo {{raw vars.greeting}}
+    save:
+      out: last_line
+    next:
+      pass: check
+      fail: chef
+  check:
+    run: test "$(cat counter 2>/dev/null || echo 0)" -ge 1
+    next:
+      pass: done
+      fail: build
+  chef:
+    ask: "Stuck at {{came_from}} with {{vars.out}}. What next?"
+    input: optional
+    choices:
+      retry: $came_from
+      abandon: stop

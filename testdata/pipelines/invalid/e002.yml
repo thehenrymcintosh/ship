@@ -1,0 +1,11 @@
+version: 1
+start: a
+colour: blue
+steps:
+  a:
+    run: "true"
+    max_visits: many
+  b:
+    ask: ok?
+    choices: {yes: done}
+    next: done

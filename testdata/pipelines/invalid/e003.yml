@@ -1,0 +1,9 @@
+version: 1
+start: a
+steps:
+  a:
+    run: "true"
+    ask: "both?"
+    choices: {x: done}
+  b:
+    description: nothing

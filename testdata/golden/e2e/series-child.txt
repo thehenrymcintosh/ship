@@ -1,0 +1,25 @@
+run_created
+workspace_acquired
+status_changed running
+visit_started implement #1
+visit_finished done
+transition implement→review (done, normal)
+visit_started review #1
+visit_finished changes
+transition review→implement (changes, normal)
+visit_started implement #2
+visit_finished done
+transition implement→review (done, normal)
+visit_started review #2
+visit_finished pass
+transition review→gate (pass, normal)
+visit_started gate #1
+visit_finished pass
+transition gate→at-pass (pass, normal)
+visit_started at-pass #1
+status_changed waiting
+wait_polled
+visit_finished merged
+transition at-pass→done (merged, normal)
+workspace_released
+run_finished done

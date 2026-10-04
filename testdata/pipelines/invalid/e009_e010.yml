@@ -1,0 +1,11 @@
+version: 1
+start: a
+variables:
+  ticket: { from_brief: true, format: "[A-Z" }
+steps:
+  a:
+    agent: "fix {{vars.missing}} in {{brief.body}}"
+    next: {done: done, stuck: chef}
+  chef:
+    ask: "{{if x}}"
+    choices: {stop: stop}

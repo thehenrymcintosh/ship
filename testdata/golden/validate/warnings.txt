@@ -1,0 +1,5 @@
+warnings.yml:2:1: warn W102: no path from start reaches done
+warnings.yml:7:3: warn W103: step "a" uses vars.url, which may not be set yet (it's set by "c", and a path reaches "a" without passing it)
+warnings.yml:8:5: warn W105: {{vars.test}} is substituted as one quoted word but its value "make test" contains spaces; write {{raw vars.test}} to run it as a command
+warnings.yml:12:3: warn W106: agent step "b" has no outcome leading to a human (ask) and no on_error; an error will park the run
+warnings.yml:19:3: warn W101: step "orphan" is unreachable from start

@@ -1,0 +1,2 @@
+e007.yml:4:3: error E007: fanout step "f" can be reached without passing a split step
+e007.yml:5:5: error E006: pipelines include each other in a cycle: e007 → e007

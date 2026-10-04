@@ -1,0 +1,58 @@
+{{define "content"}}
+<div class="page-head">
+  <h1>Runs</h1>
+  <nav class="filters" aria-label="Filter runs">
+    <a href="/?filter=active" {{if eq $.Filter "active"}}aria-current="true"{{end}}>Active</a>
+    <a href="/?filter=inbox" {{if eq $.Filter "inbox"}}aria-current="true"{{end}}>Inbox</a>
+    <a href="/?filter=finished" {{if eq $.Filter "finished"}}aria-current="true"{{end}}>Finished</a>
+    <a href="/?filter=all" {{if eq $.Filter "all"}}aria-current="true"{{end}}>All</a>
+  </nav>
+</div>
+<div id="runs-list" hx-get="/fragments/runs?filter={{.Filter}}" hx-trigger="sse:run throttle:500ms, ship-refresh from:body, every 30s" hx-swap="innerHTML">
+{{template "runs-list" (dict "Groups" .Data "Filter" .Filter)}}
+</div>
+{{end}}
+
+{{define "runs-list"}}
+{{if not .Groups}}
+<div class="empty card">
+  {{if eq .Filter "active"}}<h2>Nothing on the line</h2>
+  <p>Start a run from a planning chat (“hand this to {{brand}}”), with <code>{{brand}} start &lt;pipeline&gt; --brief brief.md</code>, or from <a href="/pipelines">Pipelines</a>.</p>
+  {{else if eq .Filter "inbox"}}<h2>Inbox zero</h2><p>No run is waiting for you.</p>
+  {{else}}<h2>No runs here yet</h2>{{end}}
+</div>
+{{end}}
+{{range .Groups}}
+<section class="repo-group">
+  <h2 class="repo-name" title="{{.Repo}}">{{.Name}} <span class="muted path">{{.Repo}}</span></h2>
+  <ul class="run-rows">
+  {{range .Rows}}{{$s := .S}}
+    <li class="run-row{{if .Inbox}} in-inbox{{end}}">
+      <a class="run-link" href="/runs/{{$s.ID}}">
+        {{template "pill" $s}}
+        <span class="run-title">{{$s.Title}}{{if .Inbox}} <span class="bell" title="Waiting for you">🔔</span>{{end}}</span>
+        <span class="run-meta">
+          <span class="pipeline">{{$s.Pipeline}}</span>
+          {{if not (terminal $s.Status)}}<span class="step">{{with $s.LastVisit}}{{if .Running}}<span class="spin small" aria-hidden="true"></span>{{end}}{{end}}{{$s.CurrentStep}}</span>{{end}}
+          <span class="elapsed" title="elapsed">{{.Elapsed}}</span>
+          {{with money $s.CostUSD}}<span class="cost">{{.}}</span>{{end}}
+          <span class="id muted">{{short $s.ID}}</span>
+        </span>
+      </a>
+      {{if .Children}}
+      <details class="children" {{if not (terminal $s.Status)}}open{{end}}>
+        <summary><span class="minis">{{range .Children}}{{template "mini-pill" .}}{{end}}</span> {{.Kitchen}}</summary>
+        <ol class="child-rows">
+          {{range .Children}}
+          <li><a href="/runs/{{.ID}}">{{template "pill" .}} <span class="slice-n">{{with .Slice}}{{.Number}}{{end}}</span> {{.Title}}
+            <span class="run-meta"><span class="step">{{.CurrentStep}}</span><span class="branch"><code>{{.Branch}}</code></span>{{with money .CostUSD}}<span class="cost">{{.}}</span>{{end}}</span></a></li>
+          {{end}}
+        </ol>
+      </details>
+      {{end}}
+    </li>
+  {{end}}
+  </ul>
+</section>
+{{end}}
+{{end}}

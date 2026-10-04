@@ -1,0 +1,9 @@
+version: 1
+start: s
+steps:
+  s:
+    split: /split
+    next: {ok: f}
+  f:
+    fanout: ghost
+    next: {done: done, failed: stop}

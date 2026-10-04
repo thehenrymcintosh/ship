@@ -1,0 +1,21 @@
+run_created
+workspace_acquired
+status_changed running
+visit_started split #1
+slices_proposed
+ask_pending
+status_changed asking
+command
+command
+ask_answered approve
+slices_approved
+visit_finished ok
+transition split→build (ok, human)
+visit_started build #1
+status_changed fanned_out
+child_started a
+child_started b
+visit_finished done
+transition build→done (done, normal)
+workspace_released
+run_finished done

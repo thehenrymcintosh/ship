@@ -1,0 +1,3 @@
+e004_e005.yml:2:1: error E004: start names unknown step "nowhere"
+e004_e005.yml:4:3: error E005: step name "done" is reserved
+e004_e005.yml:9:7: error E004: unknown target "missing" (expected a step name, done, stop or $came_from)

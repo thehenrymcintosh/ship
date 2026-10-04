@@ -1,0 +1,14 @@
+version: 1
+start: chef
+steps:
+  chef:
+    ask: what?
+  s:
+    split: /split
+    next: {fine: done}
+  f:
+    fanout: e011_e012
+    next: {done: done}
+  back:
+    ask: again?
+    choices: {retry: $came_from}

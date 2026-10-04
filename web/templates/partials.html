@@ -1,0 +1,64 @@
+{{define "pill"}}<span class="pill st-{{.Status}}" title="{{.StatusReason}}">{{if eq .Status "running"}}<span class="spin" aria-hidden="true"></span>{{end}}{{.Status}}</span>{{end}}
+
+{{define "mini-pill"}}<span class="mini st-{{.Status}}" title="{{.ID}} · {{.Status}}{{if .StatusReason}} — {{.StatusReason}}{{end}}"></span>{{end}}
+
+{{/* run-action: the pending action panel (asks, split review, needs attention). Data: *RunView */}}
+{{define "run-action"}}
+{{$s := .S}}
+{{if and (eq $s.Status "asking") $s.PendingAsk}}{{$a := $s.PendingAsk}}
+<section class="card action ask-{{$a.Kind}}">
+  {{if eq $a.Kind "split_review"}}
+    <header class="action-head"><span class="badge chef">Chef</span><h2>{{$a.Question}}</h2><span class="muted">{{ago $a.Since}}</span></header>
+    <div class="slices">
+      {{range .Slices}}
+      <article class="slice">
+        <header><span class="slice-n">{{.Number}}</span><strong>{{.Title}}</strong> <code>{{.Key}}</code></header>
+        {{if .Acceptance}}<ul class="accept">{{range .Acceptance}}<li>{{.}}</li>{{end}}</ul>{{end}}
+        <details><summary>Brief</summary><div class="md">{{.Body}}</div></details>
+      </article>
+      {{end}}
+    </div>
+    <form class="answer" hx-post="/api/runs/{{$s.ID}}/split-review" hx-swap="none">
+      <label class="note"><span>Note <span class="muted">(required to re-split)</span></span>
+        <textarea name="note" rows="2" placeholder="e.g. merge the API and UI slices"></textarea></label>
+      <div class="choices">
+        <button class="btn primary" name="action" value="approve">Approve {{len .Slices}} slices</button>
+        <button class="btn" name="action" value="resplit">Re-split</button>
+        <button class="btn" name="action" value="reload" title="Re-read the slice files after editing them">Reload files</button>
+        <button class="btn ghost" type="button" hx-post="/api/runs/{{$s.ID}}/open" hx-vals='{"what":"slices"}' hx-swap="none">Open folder</button>
+        <button class="btn danger ghost" name="action" value="stop">Stop</button>
+      </div>
+    </form>
+  {{else if eq $a.Kind "var"}}
+    <header class="action-head"><span class="badge chef">Chef</span><h2>{{$a.Question}}</h2><span class="muted">{{ago $a.Since}}</span></header>
+    <form class="answer" hx-post="/api/runs/{{$s.ID}}/answer" hx-swap="none">
+      <label class="note"><span>Value for <code>{{$a.Var}}</code></span><input name="note" required autocomplete="off"></label>
+      <div class="choices"><button class="btn primary">Set and continue</button></div>
+    </form>
+  {{else}}
+    <header class="action-head"><span class="badge chef">Chef</span><h2>{{$a.Question}}</h2><span class="muted">{{ago $a.Since}}</span></header>
+    {{range .Panels}}<details class="panel" open><summary>{{.Title}}</summary><div class="md">{{.HTML}}</div></details>{{end}}
+    <form class="answer" hx-post="/api/runs/{{$s.ID}}/answer" hx-swap="none">
+      {{if ne $a.Input "none"}}<label class="note"><span>Note {{if eq $a.Input "required"}}<span class="muted">(required)</span>{{else}}<span class="muted">(optional; the next step receives it)</span>{{end}}</span>
+        <textarea name="note" rows="2" {{if eq $a.Input "required"}}required{{end}}></textarea></label>{{end}}
+      <div class="choices">{{range $i, $c := $a.Choices}}<button class="btn{{if eq $i 0}} primary{{end}}" name="choice" value="{{$c}}">{{$c}}</button>{{end}}</div>
+    </form>
+  {{end}}
+</section>
+{{else if eq $s.Status "needs_attention"}}
+<section class="card action attention">
+  <header class="action-head"><span class="badge warn">Needs attention</span><h2>{{$s.StatusReason}}</h2><span class="muted">{{ago $s.UpdatedAt}}</span></header>
+  {{with $s.LastVisit}}{{if .Error}}<p class="error-line"><code>{{.Error.Reason}}</code> {{.Error.Message}}</p>{{end}}{{end}}
+  <div class="choices">
+    <button class="btn primary" hx-post="/api/runs/{{$s.ID}}/retry" hx-swap="none">Retry step</button>
+    {{if .CanResume}}<button class="btn" hx-post="/api/runs/{{$s.ID}}/resume-session" hx-swap="none" title="Resume the interrupted agent session">Resume agent session</button>{{end}}
+    {{if $s.WorkspaceMissing}}<button class="btn" hx-post="/api/runs/{{$s.ID}}/reacquire" hx-swap="none">Re-acquire worktree</button>{{end}}
+    <form class="inline" hx-post="/api/runs/{{$s.ID}}/goto" hx-swap="none">
+      <select name="step" aria-label="Step">{{range .Steps}}<option>{{.}}</option>{{end}}<option>done</option><option>stop</option></select>
+      <button class="btn">Go to step</button>
+    </form>
+    <button class="btn danger ghost" hx-post="/api/runs/{{$s.ID}}/cancel" hx-confirm="Cancel this run?" hx-swap="none">Cancel run</button>
+  </div>
+</section>
+{{end}}
+{{end}}

@@ -1,0 +1,10 @@
+version: 1
+start: nowhere
+steps:
+  done:
+    run: "true"
+  a:
+    run: "true"
+    next:
+      pass: missing
+      fail: stop

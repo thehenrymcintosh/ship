@@ -1,0 +1,422 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ship.local/schema/pipeline.json",
+  "$ref": "#/$defs/Pipeline",
+  "$defs": {
+    "AgentConfig": {
+      "properties": {
+        "cli": {
+          "type": "string"
+        },
+        "model": {
+          "type": "string"
+        },
+        "effort": {
+          "type": "string"
+        },
+        "permission_mode": {
+          "type": "string"
+        },
+        "allowed_tools": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "disallowed_tools": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "extra_args": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object"
+    },
+    "Defaults": {
+      "properties": {
+        "max_visits": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "when_exhausted": {
+          "type": "string"
+        },
+        "on_error": {
+          "type": "string"
+        },
+        "timeout": {
+          "$ref": "#/$defs/Duration"
+        },
+        "output_tail": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "additionalProperties": false,
+      "type": "object"
+    },
+    "Duration": {
+      "type": "string",
+      "pattern": "^([0-9]+(\\.[0-9]+)?(ns|us|µs|ms|s|m|h|d))+$",
+      "description": "Go duration syntax plus d for days: 90s, 5m, 2h, 7d."
+    },
+    "Limits": {
+      "properties": {
+        "max_transitions": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "max_budget_usd": {
+          "type": "number",
+          "minimum": 0
+        }
+      },
+      "additionalProperties": false,
+      "type": "object"
+    },
+    "Next": {
+      "oneOf": [
+        {
+          "type": "string"
+        },
+        {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "type": "object"
+        }
+      ],
+      "description": "Where to go next: one target for every outcome, or a map outcome → target. A step name, `done`, `stop` or `$came_from`."
+    },
+    "OrderedMap": {
+      "additionalProperties": {
+        "type": "string"
+      },
+      "type": "object"
+    },
+    "Pipeline": {
+      "properties": {
+        "version": {
+          "type": "integer",
+          "enum": [
+            1
+          ]
+        },
+        "name": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "start": {
+          "type": "string",
+          "description": "Name of the first step."
+        },
+        "workspace": {
+          "$ref": "#/$defs/Workspace"
+        },
+        "agent": {
+          "$ref": "#/$defs/AgentConfig"
+        },
+        "variables": {
+          "additionalProperties": {
+            "$ref": "#/$defs/Variable"
+          },
+          "propertyNames": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_-]*$"
+          },
+          "type": "object"
+        },
+        "defaults": {
+          "$ref": "#/$defs/Defaults"
+        },
+        "limits": {
+          "$ref": "#/$defs/Limits"
+        },
+        "steps": {
+          "additionalProperties": {
+            "$ref": "#/$defs/Step"
+          },
+          "propertyNames": {
+            "pattern": "^[a-z][a-z0-9_-]*$"
+          },
+          "type": "object",
+          "description": "Map of step name → step."
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "version",
+        "start",
+        "steps"
+      ]
+    },
+    "Save": {
+      "oneOf": [
+        {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        {
+          "additionalProperties": {
+            "type": "string",
+            "pattern": "^(last_line|stdout|file:.+|json:.+)$"
+          },
+          "type": "object"
+        }
+      ],
+      "description": "Agent steps: a list of variables the agent must return. Run steps: a map variable → source (last_line | stdout | file:\u003cpath\u003e | json:\u003cdotted.path\u003e)."
+    },
+    "Step": {
+      "properties": {
+        "description": {
+          "type": "string"
+        },
+        "next": {
+          "$ref": "#/$defs/Next"
+        },
+        "max_visits": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "when_exhausted": {
+          "type": "string"
+        },
+        "on_error": {
+          "type": "string"
+        },
+        "timeout": {
+          "$ref": "#/$defs/Duration"
+        },
+        "env": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "type": "object"
+        },
+        "agent": {
+          "type": "string",
+          "description": "Agent step: a skill invocation such as `/review mode=code`."
+        },
+        "prompt": {
+          "type": "string",
+          "description": "Agent step: free-text prompt (appended after `agent` when both are set)."
+        },
+        "cli": {
+          "type": "string"
+        },
+        "model": {
+          "type": "string"
+        },
+        "effort": {
+          "type": "string"
+        },
+        "permission_mode": {
+          "type": "string"
+        },
+        "allowed_tools": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "disallowed_tools": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "extra_args": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "session": {
+          "type": "string",
+          "enum": [
+            "fresh",
+            "continue"
+          ]
+        },
+        "context": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "save": {
+          "$ref": "#/$defs/Save"
+        },
+        "save_on": {
+          "type": "string",
+          "enum": [
+            "pass",
+            "any"
+          ]
+        },
+        "run": {
+          "type": "string",
+          "description": "Run step: a bash script. Exit 0 → pass, otherwise fail."
+        },
+        "shell": {
+          "type": "string",
+          "enum": [
+            "bash"
+          ]
+        },
+        "outcomes": {
+          "$ref": "#/$defs/OrderedMap",
+          "description": "Run step: map exit code (or `default`) → outcome name."
+        },
+        "ask": {
+          "type": "string",
+          "description": "Ask step: a question for a human. Use `choices` instead of `next`."
+        },
+        "show": {
+          "items": {
+            "type": "string",
+            "enum": [
+              "prev.handover",
+              "brief",
+              "vars",
+              "slices"
+            ]
+          },
+          "type": "array"
+        },
+        "input": {
+          "type": "string",
+          "enum": [
+            "none",
+            "optional",
+            "required"
+          ]
+        },
+        "choices": {
+          "$ref": "#/$defs/OrderedMap",
+          "description": "Ask step: label → target. Labels become the outcome."
+        },
+        "wait": {
+          "type": "string",
+          "description": "Wait step: a command polled every `every` until its last line names an outcome."
+        },
+        "every": {
+          "$ref": "#/$defs/Duration"
+        },
+        "split": {
+          "type": "string",
+          "description": "Split step: an agent splits the brief into slices."
+        },
+        "rules": {
+          "type": "string"
+        },
+        "max_slices": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "review": {
+          "type": "boolean"
+        },
+        "fanout": {
+          "type": "string",
+          "description": "Fanout step: runs the named pipeline once per slice."
+        },
+        "mode": {
+          "type": "string",
+          "enum": [
+            "series",
+            "parallel"
+          ]
+        },
+        "stack": {
+          "type": "boolean"
+        },
+        "advance_on": {
+          "type": "string"
+        },
+        "max_parallel": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "on_child_stop": {
+          "type": "string",
+          "enum": [
+            "halt",
+            "continue"
+          ]
+        }
+      },
+      "additionalProperties": false,
+      "type": "object"
+    },
+    "Variable": {
+      "properties": {
+        "value": {
+          "type": "string"
+        },
+        "from_brief": {
+          "type": "boolean"
+        },
+        "ask": {
+          "type": "string"
+        },
+        "set_by": {
+          "type": "string"
+        },
+        "from_parent": {
+          "type": "string"
+        },
+        "format": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "prompt": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object"
+    },
+    "Workspace": {
+      "properties": {
+        "provider": {
+          "type": "string",
+          "enum": [
+            "git",
+            "treehouse",
+            "none"
+          ]
+        },
+        "branch": {
+          "type": "string"
+        },
+        "base": {
+          "type": "string"
+        },
+        "reuse": {
+          "type": "string",
+          "enum": [
+            "parent",
+            "none"
+          ]
+        }
+      },
+      "additionalProperties": false,
+      "type": "object"
+    }
+  },
+  "title": "ship pipeline"
+}

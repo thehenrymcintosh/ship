@@ -1,0 +1,6 @@
+version: 1
+start: f
+steps:
+  f:
+    fanout: e007
+    next: {done: done, failed: stop}

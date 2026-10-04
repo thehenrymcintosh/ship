@@ -1,0 +1,2 @@
+e003.yml:4:3: error E003: step "a" must have exactly one type key (agent/prompt, run, ask, wait, split, fanout); found: run, ask
+e003.yml:8:3: error E003: step "b" must have exactly one type key (agent/prompt, run, ask, wait, split, fanout); found: none

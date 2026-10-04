@@ -1,0 +1,2 @@
+e014_w104.yml:4:3: error E014: unknown agent cli "nope"
+e014_w104.yml:8:5: warn W104: permission_mode: bypassPermissions lets the agent run anything without asking

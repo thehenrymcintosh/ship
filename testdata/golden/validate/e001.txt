@@ -1,0 +1,1 @@
+e001.yml:4:6: error E001: sequence end token ']' not found

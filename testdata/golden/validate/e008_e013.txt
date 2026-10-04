@@ -1,0 +1,4 @@
+e008_e013.yml:4:10: error E008: step "b" doesn't save "url" (add it to the step's save)
+e008_e013.yml:5:3: error E013: variable "two" has several sources: value, from_brief
+e008_e013.yml:6:3: error E013: variable "none" has no source (value, from_brief, ask, set_by or from_parent)
+e008_e013.yml:12:7: error E008: step "a" saves "stray", but the variable isn't declared with set_by: a

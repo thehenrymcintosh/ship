@@ -1,0 +1,28 @@
+# Release to GitHub Releases plus a Homebrew tap (M6).
+version: 2
+project_name: ship
+builds:
+  - main: ./cmd/ship
+    binary: ship
+    env: [CGO_ENABLED=0]
+    goos: [darwin, linux]
+    goarch: [arm64, amd64]
+    flags: [-trimpath]
+    ldflags:
+      - -s -w -X github.com/merlin-digital/ship/internal/brand.Version={{.Version}}
+archives:
+  - formats: [tar.gz]
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+checksum:
+  name_template: checksums.txt
+brews:
+  - repository:
+      owner: merlin-digital
+      name: homebrew-tap
+    directory: Formula
+    homepage: https://github.com/merlin-digital/ship
+    description: Define, run and watch local agentic-coding pipelines
+    install: |
+      bin.install "ship"
+    test: |
+      system "#{bin}/ship", "version"

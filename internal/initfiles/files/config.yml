@@ -1,0 +1,20 @@
+# yaml-language-server: $schema=schema/config.json
+# Project config for ship. Everything here is optional; values merge over
+# ~/.ship/config.yml (maps merge key by key, lists replace).
+
+# workspace:
+#   provider: git            # git | treehouse | none
+#   fetch: true              # fetch the base branch before creating a worktree
+#   release_on_done: true
+#   git:
+#     dir: "{repo_parent}/{repo}.ship/{run}"
+#     setup:                 # run in each new worktree
+#       - cp ../.env .
+#       - npm ci
+
+# agent:
+#   cli: claude
+#   model: sonnet
+#   effort: medium
+#   permission_mode: acceptEdits
+#   allowed_tools: ["Bash(make *)"]

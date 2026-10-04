@@ -1,0 +1,2 @@
+e002.yml:3:1: error E002: unknown field "colour" in pipeline
+e002.yml:7:5: error E002: steps.a.max_visits: got string, want integer

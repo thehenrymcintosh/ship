@@ -1,0 +1,49 @@
+{{define "content"}}{{$v := .Data}}
+<div class="page-head">
+  <h1>Pipelines</h1>
+  <form class="inline add-repo" method="get" action="/pipelines">
+    <input name="repo" placeholder="/path/to/repo" value="{{$v.Extra}}" aria-label="Repository path">
+    <button class="btn">Show repo</button>
+  </form>
+</div>
+{{if not $v.Repos}}{{if not $v.Global}}
+<div class="empty card"><h2>No pipelines yet</h2>
+<p>Run <code>{{brand}} init</code> in a repo to add starter pipelines, or put shared ones in <code>~/.{{brand}}/pipelines</code>, then show the repo above.</p></div>
+{{end}}{{end}}
+{{range $v.Repos}}
+<section class="repo-group">
+  <h2 class="repo-name" title="{{.Path}}">{{.Name}} <span class="muted path">{{.Path}}</span></h2>
+  {{if not .Cards}}<p class="muted">No pipelines in <code>{{.Path}}/.{{brand}}/pipelines</code>; global pipelines below work here too.</p>{{end}}
+  <div class="pipeline-cards">{{range .Cards}}{{template "pipeline-card" .}}{{end}}</div>
+</section>
+{{end}}
+{{if $v.Global}}
+<section class="repo-group">
+  <h2 class="repo-name">Global <span class="muted path">~/.{{brand}}/pipelines · available in every repo; a repo pipeline with the same name wins</span></h2>
+  <div class="pipeline-cards">{{range $v.Global}}{{template "pipeline-card" .}}{{end}}</div>
+</section>
+{{end}}
+{{end}}
+
+{{define "pipeline-card"}}
+<article class="card pipeline">
+  <header class="card-head"><h3>{{.Name}}{{if .Global}} <span class="badge">global</span>{{end}}</h3>{{if .Errors}}<span class="badge danger">invalid</span>{{end}}</header>
+  {{if .Description}}<p>{{.Description}}</p>{{end}}
+  {{if .Pipeline}}<div class="graph small-graph" data-src="/api/pipelines/{{.Name}}/graph?repo={{.Repo}}"></div>{{end}}
+  {{if .Findings}}<ul class="findings">{{range .Findings}}<li class="sev-{{.Severity}}"><code>{{.Code}}</code> <span class="muted">{{basename .File}}:{{.Line}}</span> {{.Message}}</li>{{end}}</ul>{{end}}
+  {{if not .Errors}}
+  <details class="start">
+    <summary class="btn primary">Start run</summary>
+    <form class="start-form" hx-post="/api/runs" hx-encoding="multipart/form-data" hx-swap="none">
+      <input type="hidden" name="pipeline" value="{{.Name}}">
+      {{if .Repo}}<input type="hidden" name="repo" value="{{.Repo}}">
+      {{else}}<label><span>Repository</span><input name="repo" required placeholder="/path/to/repo"></label>{{end}}
+      <label><span>Brief</span><textarea name="brief" rows="10" placeholder="---&#10;title: Short imperative title&#10;acceptance:&#10;  - a testable criterion&#10;---&#10;&#10;## Context&#10;…&#10;&#10;## Plan&#10;…"></textarea></label>
+      <label><span>…or upload a brief file</span><input type="file" name="brief_file" accept=".md,text/markdown,text/plain"></label>
+      {{range .FromBrief}}<label><span><code>{{.Name}}</code> {{with .Prompt}}<span class="muted">{{.}}</span>{{end}}</span><input name="vars.{{.Name}}" {{with .Format}}pattern="{{.}}" title="must match {{.}}"{{end}} placeholder="from the brief if left empty"></label>{{end}}
+      <div class="choices"><button class="btn primary">Start</button></div>
+    </form>
+  </details>
+  {{end}}
+</article>
+{{end}}

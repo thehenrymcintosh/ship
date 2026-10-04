@@ -1,0 +1,1 @@
+e006.yml:8:5: error E006: fanout names missing pipeline "ghost"

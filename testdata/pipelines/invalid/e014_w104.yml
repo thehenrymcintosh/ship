@@ -1,0 +1,9 @@
+version: 1
+start: a
+steps:
+  a:
+    agent: /x
+    cli: nope
+    effort: extreme
+    permission_mode: bypassPermissions
+    on_error: stop
