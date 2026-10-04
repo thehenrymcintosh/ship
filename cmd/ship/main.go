@@ -78,7 +78,7 @@ func main() {
 		a.gotoCmd(),
 		a.simpleCmd("cancel", "Cancel a run (and its children)", engine.CmdCancel, "cancel"),
 		a.simpleCmd("resume-session", "Resume an interrupted agent session", engine.CmdResumeSession, "resume-session"),
-		a.setCmd(), a.openCmd(), a.cdCmd(), a.cleanCmd(), a.serveCmd(), a.versionCmd(),
+		a.setCmd(), a.openCmd(), a.cdCmd(), a.cleanCmd(), a.serveCmd(), a.updateCmd(), a.versionCmd(),
 	)
 	err := root.Execute()
 	if err == nil {

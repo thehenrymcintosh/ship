@@ -1,4 +1,5 @@
-# Release to GitHub Releases plus a Homebrew tap (M6).
+# Release archives and checksums to GitHub Releases on every v* tag.
+# install.sh and `ship update` download these.
 version: 2
 project_name: ship
 builds:
@@ -12,17 +13,7 @@ builds:
       - -s -w -X github.com/thehenrymcintosh/ship/internal/brand.Version={{.Version}}
 archives:
   - formats: [tar.gz]
+    files: [README.md]
     name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
 checksum:
   name_template: checksums.txt
-brews:
-  - repository:
-      owner: thehenrymcintosh
-      name: homebrew-tap
-    directory: Formula
-    homepage: https://github.com/thehenrymcintosh/ship
-    description: Define, run and watch local agentic-coding pipelines
-    install: |
-      bin.install "ship"
-    test: |
-      system "#{bin}/ship", "version"

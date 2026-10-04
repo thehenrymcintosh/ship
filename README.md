@@ -9,10 +9,32 @@ live in a local web UI.
 ## Install
 
 ```sh
-make build            # → bin/ship (static, CGO_ENABLED=0)
+curl -fsSL https://raw.githubusercontent.com/thehenrymcintosh/ship/main/install.sh | sh
 ```
 
-You need Go 1.23+ to build, git, and the `claude` CLI for agent steps.
+This installs the latest release for macOS or Linux (arm64/amd64) to
+`~/.local/bin`, after checking it against the release checksums. Set
+`SHIP_INSTALL_DIR` to put it elsewhere, or `SHIP_VERSION=v0.2.0` to pin a
+version.
+
+To update later:
+
+```sh
+ship update            # latest release; restarts the daemon onto it
+ship update --check    # just say whether there's a newer one
+```
+
+You need git, and the `claude` CLI for agent steps. To build from source
+instead (Go 1.23+): `make build`, which writes `bin/ship`.
+
+### Publishing a release
+
+Push a version tag. The release workflow runs the tests and publishes the
+archives that `install.sh` and `ship update` download:
+
+```sh
+git tag v0.2.0 && git push origin v0.2.0
+```
 [treehouse](https://github.com/kunchenguid/treehouse) is optional.
 
 ## Quick start

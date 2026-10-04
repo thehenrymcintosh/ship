@@ -25,6 +25,8 @@ const (
 	ConfigSchemaID = "https://" + Name + ".local/schema/config.json"
 	// SkillName is the handoff skill directory name.
 	SkillName = Name + "-handoff"
+	// Repo is the GitHub repo releases are published to (owner/name).
+	Repo = "thehenrymcintosh/" + Name
 	// DesignSkillName is the user-invoked pipeline design skill.
 	DesignSkillName = Name + "-design"
 )
