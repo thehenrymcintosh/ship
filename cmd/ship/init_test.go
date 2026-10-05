@@ -112,8 +112,9 @@ func TestTemplatesAndAdd(t *testing.T) {
 	exec.Command("git", "-C", repo, "init", "-q").Run()
 	env := []string{"SHIP_HOME=" + home, "CLAUDE_CONFIG_DIR=" + filepath.Join(root, "claude")}
 
-	if out := runShip(t, repo, env, "templates"); !strings.Contains(out, "No templates yet") {
-		t.Fatalf("empty library: %s", out)
+	// The built-in ones are listed before the user has any.
+	if out := runShip(t, repo, env, "templates"); !strings.Contains(out, "rigorous") || !strings.Contains(out, "built-in") {
+		t.Fatalf("built-in library: %s", out)
 	}
 	tpl := filepath.Join(home, "templates", "review-loop")
 	files := map[string]string{
@@ -141,6 +142,12 @@ func TestTemplatesAndAdd(t *testing.T) {
 	}
 	if !strings.Contains(out, "ship start review-loop") {
 		t.Errorf("add output: %s", out)
+	}
+	out = runShip(t, repo, env, "add", "rigorous")
+	for _, p := range []string{".ship/pipelines/rigorous.yml", ".claude/skills/ship-review/SKILL.md"} {
+		if _, err := os.Stat(filepath.Join(repo, p)); err != nil {
+			t.Fatalf("%s missing after add rigorous:\n%s", p, out)
+		}
 	}
 	cmd := exec.Command(shipBin, "add", "nope")
 	cmd.Dir, cmd.Env = repo, append(os.Environ(), env...)
