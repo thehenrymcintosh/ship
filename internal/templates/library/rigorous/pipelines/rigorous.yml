@@ -36,7 +36,7 @@ steps:
     next: { done: review, stuck: check-in }
 
   review-decision:
-    ask: "The review of \"{{brief.title}}\" raised findings that need your call. Your note is passed to every later step."
+    ask: "The review of \"{{brief.title}}\" raised findings that need your call. A note for the whole run reaches every later step; one for the next step only the fixer."
     show: [prev.handover]
     input: optional
     choices:
