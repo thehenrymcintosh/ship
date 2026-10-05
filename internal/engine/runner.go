@@ -697,6 +697,13 @@ func (r *runner) duringVisit(c Command, v *steps.Visit) *abortReq {
 		}
 		r.emitUser(c)
 		return &abortReq{to: c.Step, cmd: c}
+	case CmdUpgrade:
+		// The visit keeps its own step; it ends as a goto would.
+		if err := r.upgrade(c); err != nil {
+			reply(c, err)
+			return nil
+		}
+		return &abortReq{to: c.Step, cmd: c}
 	case CmdRetry:
 		s := r.snap()
 		if s.Status != store.StatusAsking || s.PendingAsk == nil || s.PendingAsk.Kind != store.AskKindAsk || v.CameFrom == "" {
@@ -718,6 +725,39 @@ func (r *runner) duringVisit(c Command, v *steps.Visit) *abortReq {
 	default:
 		reply(c, conflict("%s isn't possible while a step is running", c.Name))
 	}
+	return nil
+}
+
+// upgrade swaps in the pipeline Engine.Upgrade staged next to the run's
+// snapshot and versions the run again. c.Step must be a step of it.
+func (r *runner) upgrade(c Command) error {
+	pd := filepath.Join(r.dir, store.PipelineDir)
+	stage, old := pd+".next", pd+".old"
+	s := r.snap()
+	f, findings := pipeline.NewLoader(stage).Load(s.Pipeline)
+	if f == nil {
+		msg := "the new pipeline wasn't staged"
+		if len(findings) > 0 {
+			msg = findings[0].String()
+		}
+		return invalid("%s", msg)
+	}
+	if _, ok := f.Pipeline.Steps[c.Step]; !ok {
+		return invalid("unknown step %q (steps: %s)", c.Step, strings.Join(f.Pipeline.SortedSteps(), ", "))
+	}
+	_ = os.RemoveAll(old)
+	if err := os.Rename(pd, old); err != nil {
+		return err
+	}
+	if err := os.Rename(stage, pd); err != nil {
+		_ = os.Rename(old, pd)
+		return err
+	}
+	_ = os.RemoveAll(old)
+	r.pipe = f.Pipeline
+	r.emitUser(c)
+	r.emit(store.EvUpgraded, store.Upgraded{FromVersion: s.PipelineVersion, FromHash: s.PipelineHash, Step: c.Step, Warnings: c.Warnings})
+	r.versionPipeline()
 	return nil
 }
 
@@ -931,6 +971,16 @@ func (r *runner) parked() bool {
 					continue
 				}
 				r.emitUser(c)
+				r.halted = false
+				r.transition(s.CurrentStep, c.Step, "", store.ReasonManual, true)
+				r.setStatus(store.StatusRunning, "")
+				reply(c, nil)
+				return true
+			case CmdUpgrade:
+				if err := r.upgrade(c); err != nil {
+					reply(c, err)
+					continue
+				}
 				r.halted = false
 				r.transition(s.CurrentStep, c.Step, "", store.ReasonManual, true)
 				r.setStatus(store.StatusRunning, "")
@@ -1317,6 +1367,18 @@ func (r *runner) holdPaused() bool {
 				// Going to a step resumes the run there.
 				r.requestResume(Command{Name: CmdResume, Source: c.Source})
 				r.emitUser(c)
+				s := r.snap()
+				r.transition(s.CurrentStep, c.Step, "", store.ReasonManual, true)
+				r.setStatus(store.StatusRunning, "")
+				reply(c, nil)
+				return true
+			case CmdUpgrade:
+				// Upgrading resumes the run at the chosen step, like goto.
+				if err := r.upgrade(c); err != nil {
+					reply(c, err)
+					continue
+				}
+				r.requestResume(Command{Name: CmdResume, Source: c.Source})
 				s := r.snap()
 				r.transition(s.CurrentStep, c.Step, "", store.ReasonManual, true)
 				r.setStatus(store.StatusRunning, "")

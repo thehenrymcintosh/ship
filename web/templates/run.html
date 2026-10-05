@@ -36,6 +36,7 @@
       {{if $s.PermissionDenials}}<span class="badge warn" title="Tool calls the agent wasn't allowed to make; consider allowed_tools">{{plural $s.PermissionDenials "permission denial"}}</span>{{end}}
       {{if .Bypass}}<span class="badge danger" title="permission_mode: bypassPermissions">bypassPermissions</span>{{end}}
       {{if $s.FakeAgents}}<span class="badge">fake agents</span>{{end}}
+      {{range $s.Warnings}}<span class="badge warn" title="{{.}}">{{.}}</span>{{end}}
       {{if and $s.PauseRequested (ne $s.Status "paused")}}<span class="badge warn" title="The step that's running finishes first">{{if eq $s.Status "asking"}}pausing once you've answered{{else}}pausing after this step{{end}}</span>{{end}}
     </div>
     {{with $s.Workspace}}

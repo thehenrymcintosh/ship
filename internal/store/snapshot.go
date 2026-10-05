@@ -138,8 +138,10 @@ type RunSnapshot struct {
 	PauseRequested    bool              `json:"pause_requested,omitempty"`
 	PR                *PRStatus         `json:"pr,omitempty"`
 	PipelineVersion   int               `json:"pipeline_version,omitempty"`
+	Upgrades          int               `json:"upgrades,omitempty"` // times moved onto a newer pipeline
 	PipelineHash      string            `json:"pipeline_hash,omitempty"`
 	HistoryDir        string            `json:"history_dir,omitempty"`
+	Warnings          []string          `json:"warnings,omitempty"`
 	CreatedAt         time.Time         `json:"created_at"`
 	UpdatedAt         time.Time         `json:"updated_at"`
 	FinishedAt        *time.Time        `json:"finished_at,omitempty"`
@@ -225,6 +227,7 @@ func Apply(s *RunSnapshot, e Event) error {
 		s.Provider, s.Branch, s.Base = d.Provider, d.Branch, d.Base
 		s.FakeAgents, s.ShipVersion = d.FakeAgents, d.ShipVersion
 		s.PipelineVersion, s.PipelineHash, s.HistoryDir = d.PipelineVersion, d.PipelineHash, d.HistoryDir
+		s.Warnings = d.Warnings
 		for k, v := range d.Vars {
 			s.Vars[k] = v
 		}
@@ -374,6 +377,13 @@ func Apply(s *RunSnapshot, e Event) error {
 			return err
 		}
 		s.PipelineVersion, s.PipelineHash = d.Version, d.Hash
+	case EvUpgraded:
+		var d Upgraded
+		if err := dec(&d); err != nil {
+			return err
+		}
+		s.PipelineVersion, s.PipelineHash, s.Warnings = 0, "", d.Warnings
+		s.Upgrades++
 	case EvBaseMoved:
 		s.BaseMoved = true
 	case EvStatusChanged:

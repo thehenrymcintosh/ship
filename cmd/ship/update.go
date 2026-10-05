@@ -75,6 +75,13 @@ daemon so it uses the new version.`,
 			}
 			fmt.Printf("Updated %s %s → %s (%s)\n", brand.Name, current, strings.TrimPrefix(tag, "v"), exe)
 
+			// The new binary carries the new skills; refresh unedited copies.
+			sk := exec.Command(exe, "--home", a.home, "refresh-skills")
+			sk.Stdout, sk.Stderr = os.Stdout, os.Stderr
+			if err := sk.Run(); err != nil {
+				fmt.Fprintf(os.Stderr, "Couldn't update the skills (%v); run `%s init` in each repo.\n", err, brand.Name)
+			}
+
 			// A running daemon keeps the old code until it restarts.
 			if daemon.Running(a.home) {
 				fmt.Println("Restarting the daemon (it waits for running agent/script steps to finish)…")

@@ -49,6 +49,7 @@ func (d *Daemon) routes() http.Handler {
 	api("POST /api/runs/{id}/resume", d.command(engine.CmdResume))
 	api("POST /api/runs/{id}/pr/trigger", d.command(engine.CmdPRTrigger))
 	api("POST /api/runs/{id}/reacquire", d.command(engine.CmdReacquire))
+	api("POST /api/runs/{id}/upgrade", d.upgrade)
 	api("POST /api/runs/{id}/open", d.openThing)
 	api("GET /api/runs/{id}/feedback", d.runFeedback)
 	api("POST /api/runs/{id}/feedback", d.addFeedback)
@@ -345,7 +346,7 @@ func (d *Daemon) startRun(w http.ResponseWriter, r *http.Request) {
 	if r.Header.Get("HX-Request") == "true" {
 		w.Header().Set("HX-Redirect", "/runs/"+url.PathEscape(snap.ID))
 	}
-	writeJSON(w, http.StatusCreated, map[string]string{"id": snap.ID, "url": u})
+	writeJSON(w, http.StatusCreated, map[string]any{"id": snap.ID, "url": u, "warnings": snap.Warnings})
 }
 
 func (d *Daemon) getRun(w http.ResponseWriter, r *http.Request) {
@@ -556,6 +557,37 @@ func (d *Daemon) command(name string) http.HandlerFunc {
 		}
 		writeJSON(w, 200, snap)
 	}
+}
+
+// upgrade moves a run onto its pipeline as it is now; body {step}.
+func (d *Daemon) upgrade(w http.ResponseWriter, r *http.Request) {
+	id, ok := d.resolve(w, r)
+	if !ok {
+		return
+	}
+	var b CommandBody
+	if err := decode(r, &b); err != nil {
+		writeErr(w, 400, "bad_request", err.Error())
+		return
+	}
+	src := "ui"
+	if r.Header.Get("X-Ship-Client") == "cli" {
+		src = "cli"
+	}
+	if _, err := d.eng.Upgrade(r.Context(), id, b.Step, src); err != nil {
+		writeEngineErr(w, err)
+		return
+	}
+	time.Sleep(30 * time.Millisecond)
+	if r.Header.Get("HX-Request") == "true" {
+		w.Header().Set("HX-Trigger", "ship-refresh")
+	}
+	snap, err := d.eng.Snapshot(id)
+	if err != nil {
+		writeEngineErr(w, err)
+		return
+	}
+	writeJSON(w, 200, snap)
 }
 
 func (d *Daemon) openThing(w http.ResponseWriter, r *http.Request) {

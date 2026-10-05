@@ -99,7 +99,11 @@ global ~/` + brand.Dir + `/pipelines.`,
 			if err != nil {
 				return err
 			}
-			var res struct{ ID, URL string }
+			var res struct {
+				ID       string   `json:"id"`
+				URL      string   `json:"url"`
+				Warnings []string `json:"warnings"`
+			}
 			body := daemon.StartBody{Repo: repo, Pipeline: name, Brief: string(data), Vars: given, FakeAgents: fakeAgents}
 			if err := c.Do("POST", "/api/runs", body, &res); err != nil {
 				return startError(err)
@@ -108,6 +112,9 @@ global ~/` + brand.Dir + `/pipelines.`,
 				return printJSON(res)
 			}
 			fmt.Printf("Started %s\n%s\n", a.bold(res.ID), res.URL)
+			for _, w := range res.Warnings {
+				fmt.Fprintln(os.Stderr, a.color("33", "warning: "+w))
+			}
 			cfg, _ := config.Load(a.home, repo)
 			if !noOpen && cfg.UI.OpenOnStart {
 				openBrowser(c.UIURL("/runs/" + res.ID))

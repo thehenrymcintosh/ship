@@ -76,6 +76,8 @@ func main() {
 		a.answerCmd(), a.reviewCmd(),
 		a.simpleCmd("retry", "Retry the current step (needs attention, or a pending check-in)", engine.CmdRetry, "retry"),
 		a.gotoCmd(),
+		a.upgradeCmd(),
+		a.refreshSkillsCmd(),
 		a.simpleCmd("cancel", "Cancel a run (and its children)", engine.CmdCancel, "cancel"),
 		a.pauseCmd(), a.resumeCmd(), a.prCmd(),
 		a.simpleCmd("resume-session", "Resume an interrupted agent session", engine.CmdResumeSession, "resume-session"),

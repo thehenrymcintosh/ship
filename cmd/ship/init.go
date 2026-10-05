@@ -13,6 +13,7 @@ import (
 	"github.com/thehenrymcintosh/ship/internal/config"
 	"github.com/thehenrymcintosh/ship/internal/initfiles"
 	"github.com/thehenrymcintosh/ship/internal/pipeline"
+	"github.com/thehenrymcintosh/ship/internal/store"
 )
 
 func (a *app) initCmd() *cobra.Command {
@@ -35,8 +36,11 @@ No pipelines are added: design one with /` + brand.DesignSkillName + `, or copy 
 ` + "`" + brand.Name + ` templates` + "`" + ` and ` + "`" + brand.Name + ` add <template>` + "`" + `.
 
 With --global, set up ~/` + brand.Dir + ` (for pipelines shared by every repo) and
-install the skills for your user (~/.claude/skills). Existing files are kept
-unless --force.`,
+install the skills for your user (~/.claude/skills).
+
+Run it again to update the skills: copies you haven't edited are replaced
+with this version's (` + "`" + brand.Name + ` update` + "`" + ` does this for you); edited ones are
+kept unless --force.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			root, shipDir := a.home, a.home
@@ -72,14 +76,12 @@ unless --force.`,
 				if global {
 					skillsDir = filepath.Join(claudeDir(), "skills")
 				}
-				for _, sk := range initfiles.Skills() {
-					label := filepath.Join(tildify(skillsDir), sk.Path)
-					if !global {
-						label = rel(root, filepath.Join(skillsDir, sk.Path))
-					}
-					if err := writeStarter(skillsDir, sk, label, force); err != nil {
-						return err
-					}
+				label := func(p string) string { return rel(root, p) }
+				if global {
+					label = tildify
+				}
+				if err := syncSkills(skillsDir, force, label, true); err != nil {
+					return err
 				}
 			}
 			// JetBrains IDEs: map the schemas in every .idea project found.
@@ -135,6 +137,62 @@ unless --force.`,
 	cmd.Flags().BoolVar(&global, "global", false, "set up ~/"+brand.Dir+" and user-level skills instead of this repo")
 	cmd.Flags().StringVar(&repoFlag, "repo", "", "repo path (default: the git repo of the current dir)")
 	return cmd
+}
+
+// syncSkills installs or updates the init skills in dir and prints what it
+// did; quiet leaves out the ones already current.
+func syncSkills(dir string, force bool, label func(string) string, verbose bool) error {
+	results, err := initfiles.Sync(dir, force)
+	for _, r := range results {
+		switch r.Action {
+		case initfiles.Wrote:
+			fmt.Printf("  wrote    %s\n", label(r.Path))
+		case initfiles.Updated:
+			fmt.Printf("  updated  %s\n", label(r.Path))
+		case initfiles.Edited:
+			fmt.Printf("  kept     %s (you've edited it; --force replaces it)\n", label(r.Path))
+		case initfiles.Unchanged:
+			if verbose {
+				fmt.Printf("  kept     %s (current)\n", label(r.Path))
+			}
+		}
+	}
+	return err
+}
+
+// refreshSkillsCmd updates the init skills wherever they're installed: for
+// the user, and in every repo ship has runs for. `update` runs it with the
+// new binary, which carries the new skills.
+func (a *app) refreshSkillsCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:    "refresh-skills",
+		Short:  "Update the skills `init` installed, wherever they are (run by `update`)",
+		Hidden: true,
+		Args:   cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			dirs := []string{filepath.Join(claudeDir(), "skills")}
+			seen := map[string]bool{}
+			var runs []*store.RunSnapshot
+			if st, err := a.store(); err == nil {
+				runs, _ = st.List()
+			}
+			for _, s := range runs {
+				if s.Repo != "" && !seen[s.Repo] {
+					seen[s.Repo] = true
+					dirs = append(dirs, filepath.Join(s.Repo, ".claude", "skills"))
+				}
+			}
+			for _, d := range dirs {
+				if !initfiles.Installed(d) {
+					continue
+				}
+				if err := syncSkills(d, false, tildify, false); err != nil {
+					fmt.Fprintf(os.Stderr, "  skipped  %s: %v\n", tildify(d), err)
+				}
+			}
+			return nil
+		},
+	}
 }
 
 // writeStarter writes one starter file under root unless it exists (or

@@ -176,3 +176,28 @@ func (e *Engine) PipelineStatus(repo, name string) (label string, open int) {
 	}
 	return label, open
 }
+
+// UnsyncedFiles lists the skills, rules and scripts a pipeline uses that a
+// run's worktree won't see as they are in the checkout: runs check out the
+// base branch, so files that are uncommitted, or committed but not on the
+// base, are invisible to the run's agents and scripts.
+func (e *Engine) UnsyncedFiles(ctx context.Context, repo, base string, closure []*pipeline.File) []string {
+	var out []string
+	for _, p := range e.Fingerprint(repo, closure).Parts {
+		if p.Missing || p.Path == "" || p.Kind == history.KindPipeline {
+			continue
+		}
+		rel, err := filepath.Rel(repo, p.Path)
+		if err != nil || strings.HasPrefix(rel, "..") {
+			continue // user-level files are read live, not from the worktree
+		}
+		if untracked, err := gitws.Git(ctx, repo, "ls-files", "--others", "--exclude-standard", "--", rel); err == nil && untracked != "" {
+			out = append(out, fmt.Sprintf("%s %s isn't committed, so this run won't see it (commit it to %s)", p.Kind, rel, base))
+			continue
+		}
+		if _, err := gitws.Git(ctx, repo, "diff", "--quiet", base, "--", rel); err != nil {
+			out = append(out, fmt.Sprintf("%s %s differs from %s (uncommitted or not merged there), so this run uses %s's version", p.Kind, rel, base, base))
+		}
+	}
+	return out
+}

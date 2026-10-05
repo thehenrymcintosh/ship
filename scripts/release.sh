@@ -45,7 +45,7 @@ git fetch -q origin main
 
 echo "Releasing $last → $tag"
 echo "Running tests…"
-go test ./... >/dev/null || die "tests failed (run: go test ./...)"
+go test -count=1 ./... >/dev/null || die "tests failed (run: go test -count=1 ./...)"
 
 echo "Building and installing $tag locally…"
 run make install VERSION="$next"

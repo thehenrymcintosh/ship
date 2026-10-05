@@ -178,7 +178,7 @@ form.inline { display: inline-flex; gap: 0.4rem; align-items: center; flex-wrap:
 /* graph */
 .graph { overflow-x: auto; min-height: 120px; }
 .graph-note { font-size: 0.8rem; margin: 0.25rem 0 0; text-align: center; }
-.graph svg { display: block; margin: 0 auto; max-width: 100%; height: auto; }
+.graph svg { display: block; margin: 0 auto; max-width: none; height: auto; }
 .small-graph { min-height: 80px; margin: 0.5rem 0; }
 .node rect { fill: var(--surface); stroke: var(--border); stroke-width: 1.5; }
 .node text { fill: var(--text); font: 12px var(--font); }
@@ -205,6 +205,8 @@ form.inline { display: inline-flex; gap: 0.4rem; align-items: center; flex-wrap:
 .action-head { display: flex; gap: 0.6rem; align-items: baseline; flex-wrap: wrap; margin-bottom: 0.75rem; }
 .action-head h2 { flex: 1 1 16rem; }
 .answer { display: grid; gap: 0.75rem; margin-top: 0.5rem; }
+.upgrade-card { border-style: dashed; }
+.upgrade-card p { margin: 0; }
 .choices { display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center; }
 .panel { border: 1px solid var(--border); border-radius: 8px; padding: 0.5rem 0.75rem; margin: 0.5rem 0; background: var(--surface-2); }
 .panel > summary { cursor: pointer; font-weight: 600; font-size: 0.9rem; }

@@ -608,3 +608,25 @@ fix: [{outcome: done, summary: "added the test", `+commit+`}]
 		}
 	}
 }
+
+func TestWarnsAboutFilesTheRunWontSee(t *testing.T) {
+	en := newEnv(t, map[string]string{"p": "version: 1\nstart: a\nsteps:\n  a: {agent: /my-skill, next: done}\n"})
+	skill := filepath.Join(en.repo, ".claude", "skills", "my-skill", "SKILL.md")
+	os.MkdirAll(filepath.Dir(skill), 0o755)
+	writeFile(t, skill, "---\nname: my-skill\n---\nv1\n")
+	script := "a: [{outcome: done, summary: ok}]\n"
+	s := en.start("p", "", nil, script)
+	if len(s.Warnings) != 1 || !strings.Contains(s.Warnings[0], "skill .claude/skills/my-skill isn't committed") {
+		t.Fatalf("untracked: %v", s.Warnings)
+	}
+	en.waitStatus(s.ID, store.StatusDone)
+	gitRun(t, en.repo, "add", "-A")
+	gitRun(t, en.repo, "commit", "-qm", "skill")
+	if s := en.start("p", "", nil, script); len(s.Warnings) != 0 {
+		t.Fatalf("committed: %v", s.Warnings)
+	}
+	writeFile(t, skill, "---\nname: my-skill\n---\nv2\n")
+	if s := en.start("p", "", nil, script); len(s.Warnings) != 1 || !strings.Contains(s.Warnings[0], "differs from main") {
+		t.Fatalf("modified: %v", s.Warnings)
+	}
+}

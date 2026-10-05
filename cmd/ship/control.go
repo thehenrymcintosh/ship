@@ -17,23 +17,29 @@ import (
 
 // post sends a control command to the daemon and prints the new status.
 func (a *app) post(run, endpoint string, body map[string]any) error {
+	_, err := a.postSnap(run, endpoint, body)
+	return err
+}
+
+// postSnap sends a run command and prints (and returns) the run after it.
+func (a *app) postSnap(run, endpoint string, body map[string]any) (*store.RunSnapshot, error) {
 	id, err := a.resolveRun(run)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	c, err := daemon.Ensure(a.home)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	var s store.RunSnapshot
 	if err := c.Do("POST", "/api/runs/"+id+"/"+endpoint, body, &s); err != nil {
-		return err
+		return nil, err
 	}
 	if a.json {
-		return printJSON(s)
+		return &s, printJSON(s)
 	}
 	fmt.Printf("%s  %s  %s\n", shortRef(s.ID), a.status(s.Status), s.CurrentStep)
-	return nil
+	return &s, nil
 }
 
 func (a *app) answerCmd() *cobra.Command {
@@ -130,6 +136,36 @@ func (a *app) gotoCmd() *cobra.Command {
 			return a.post(args[0], "goto", map[string]any{"step": args[1]})
 		},
 	}
+}
+
+func (a *app) upgradeCmd() *cobra.Command {
+	var step string
+	cmd := &cobra.Command{
+		Use:   "upgrade <run>",
+		Short: "Move a run onto its pipeline as it is now and continue at a step",
+		Long: `Move a run onto the current version of its pipeline (fixing a pipeline
+mid-run, for example) and continue at --step: the current step by default.
+A running step is stopped, as with goto, and the run is versioned again.
+
+The run's agents still read skills, rules and scripts from its worktree;
+you're warned about any the worktree has an older copy of.`,
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			s, err := a.postSnap(args[0], "upgrade", map[string]any{"step": step})
+			if err != nil || a.json {
+				return err
+			}
+			if s.PipelineVersion > 0 {
+				fmt.Printf("now on %s v%d\n", s.Pipeline, s.PipelineVersion)
+			}
+			for _, w := range s.Warnings {
+				fmt.Println(a.color("33", "warning: "+w))
+			}
+			return nil
+		},
+	}
+	cmd.Flags().StringVar(&step, "step", "", "step to continue at (default: the current step)")
+	return cmd
 }
 
 func (a *app) setCmd() *cobra.Command {

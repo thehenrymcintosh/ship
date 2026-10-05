@@ -5,6 +5,21 @@
 {{/* run-action: the pending action panel (asks, split review, needs attention, PR watch). Data: *RunView */}}
 {{define "run-action"}}
 {{$s := .S}}
+{{with .Upgrade}}
+<section class="card upgrade-card">
+  {{if .Err}}
+  <p class="small"><span class="badge warn">pipeline edited</span> <span class="muted">The {{$s.Pipeline}} pipeline has errors now, so this run can't move onto it:</span> <code class="small">{{.Err}}</code></p>
+  {{else}}
+  <header class="action-head"><span class="badge">pipeline edited</span><h2>{{$s.Pipeline}} has changed since this run took its copy</h2></header>
+  <form class="choices" hx-post="/api/runs/{{$s.ID}}/upgrade" hx-swap="none" hx-confirm="Move this run onto the edited pipeline? A running step is stopped.">
+    <label class="muted small" for="upgrade-step">continue at</label>
+    <select id="upgrade-step" name="step">{{$d := .Default}}{{range .Steps}}<option{{if eq . $d}} selected{{end}}>{{.}}</option>{{end}}</select>
+    <button class="btn primary small">Upgrade run</button>
+    <span class="muted small">Skills and scripts still come from the run's worktree.</span>
+  </form>
+  {{end}}
+</section>
+{{end}}
 {{with $s.PR}}{{if $.WatchingPR}}
 <section class="card pr-card">
   <header class="action-head"><span class="badge">PR</span>

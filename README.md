@@ -30,6 +30,10 @@ ship update            # installs the latest release and restarts ship's backgro
 ship update --check    # only says whether there's a newer one
 ```
 
+`ship update` also updates the skills `ship init` installed, for your user
+and in every repo you've run ship in. Copies you've edited are kept
+(`ship init --force` in a repo replaces them).
+
 You need git and the [`claude` CLI](https://docs.anthropic.com/en/docs/claude-code).
 If [treehouse](https://github.com/kunchenguid/treehouse) is installed,
 `ship` leases its worktrees from treehouse's pool instead of creating them
@@ -113,6 +117,7 @@ takes a run, any unique part of its id works (`3fa`, `rate-limit`).
 | `ship answer <run> [choice] --note "…"` | Answer a question (prompts for the choice if you leave it out) |
 | `ship pause <run>` / `ship resume <run>` | Hold a run after its current step, and carry on later (`--all` includes its slices) |
 | `ship retry <run>`, `ship goto <run> <step>`, `ship cancel <run>` | Step in manually |
+| `ship upgrade <run> [--step s]` | Move a run onto its pipeline as you've since edited it |
 | `ship cd <run>` | Print the worktree path: `cd "$(ship cd 3fa)"` |
 | `ship open [run]` | Open the web UI |
 | `ship validate` | Check this repo's pipelines |
@@ -189,6 +194,17 @@ around or make changes, then `ship resume <run>`. A paused run isn't in your
 inbox and stays paused across restarts. For a run that's splitting work into
 slices, pausing stops it starting new slices while the running ones carry
 on. `--all` (**Pause all**) pauses those too.
+
+**Fix the pipeline mid-run.** A run works from its own copy of the pipeline,
+taken when it started, so editing the file doesn't change runs in flight.
+When a run hits a problem in the pipeline itself, fix the file, then
+`ship upgrade <run> --step <step>` (or **Upgrade run** on the run's page,
+which appears once the file has changed) moves the run onto the new version
+and continues at the step you pick, by default the one it's on (or, at a
+check-in, the step that led there). A running step is stopped, as with goto,
+and the run counts as the new version from then on. Skills, rules and scripts
+still come from the run's worktree: commit fixes to those on the run's branch
+(ship warns about any it can see are out of date there).
 
 **Stop it and take over.** `ship cancel <run>` (or **Cancel run** in the UI)
 stops the run and leaves its worktree and branch exactly as they are. Carry

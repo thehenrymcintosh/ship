@@ -3,6 +3,7 @@
 package engine
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"encoding/hex"
@@ -303,6 +304,7 @@ const (
 	CmdPause         = "pause"
 	CmdResume        = "resume"
 	CmdPRTrigger     = "pr_trigger"
+	CmdUpgrade       = "upgrade" // sent by Upgrade, which stages the pipeline
 )
 
 // Command is a manual control.
@@ -314,9 +316,11 @@ type Command struct {
 	Step   string
 	Var    string
 	Value  string
-	All    bool   // pause/resume: child runs too
-	Source string // cli | ui | engine
-	reply  chan error
+	All    bool // pause/resume: child runs too
+	// upgrade: notes on files the run's worktree has an older copy of
+	Warnings []string
+	Source   string // cli | ui | engine
+	reply    chan error
 }
 
 // Do sends a command to a run and waits for it to take effect.
@@ -359,6 +363,95 @@ func (e *Engine) Do(id string, c Command) error {
 	case <-time.After(2 * time.Minute):
 		return conflict("run %s didn't respond", id)
 	}
+}
+
+// Upgrade moves a run onto its pipeline as it is now (from the repo, or the
+// global pipelines) and continues it at step, the current step by default.
+// The current visit, if any, ends like a goto. It returns warnings about
+// skills, rules and scripts the run's worktree has an older copy of.
+func (e *Engine) Upgrade(ctx context.Context, id, step, source string) ([]string, error) {
+	snap, err := e.Snapshot(id)
+	if err != nil {
+		return nil, &Error{Kind: KindNotFound, Msg: fmt.Sprintf("run %s not found", id)}
+	}
+	if snap.Status.Terminal() {
+		return nil, conflict("run %s is %s", id, snap.Status)
+	}
+	live, err := e.LivePipeline(snap)
+	if err != nil {
+		return nil, err
+	}
+	if step == "" {
+		step = snap.CurrentStep
+	}
+	if _, ok := live.Pipeline.Steps[step]; !ok {
+		return nil, invalid("step %q isn't in the new %s pipeline; choose one of: %s", step, snap.Pipeline, strings.Join(live.Pipeline.SortedSteps(), ", "))
+	}
+	closure := live.Closure
+	stage := filepath.Join(e.o.Store.RunDir(id), store.PipelineDir+".next")
+	_ = os.RemoveAll(stage)
+	if err := os.MkdirAll(stage, 0o700); err != nil {
+		return nil, err
+	}
+	for _, cf := range closure {
+		if err := os.WriteFile(filepath.Join(stage, cf.Name+".yml"), cf.Source, 0o600); err != nil {
+			_ = os.RemoveAll(stage)
+			return nil, err
+		}
+	}
+	var warnings []string
+	if snap.Workspace != nil && snap.Provider != "none" && snap.Branch != "" {
+		warnings = e.UnsyncedFiles(ctx, snap.Repo, snap.Branch, closure)
+	}
+	if err := e.Do(id, Command{Name: CmdUpgrade, Step: step, Source: source, Warnings: warnings}); err != nil {
+		_ = os.RemoveAll(stage)
+		return nil, err
+	}
+	return warnings, nil
+}
+
+// Live is a run's pipeline as it is now, outside the run's snapshot.
+type Live struct {
+	Pipeline *pipeline.Pipeline
+	Closure  []*pipeline.File
+	Changed  bool // differs from the run's snapshot
+}
+
+// LivePipeline loads and validates a run's pipeline (and the pipelines it
+// fans out to) as they are now, the way Start would for a new run.
+func (e *Engine) LivePipeline(snap *store.RunSnapshot) (*Live, error) {
+	cfg, err := e.o.LoadConfig(snap.Repo)
+	if err != nil {
+		return nil, invalid("%v", err)
+	}
+	opts := e.ValidateOptions(cfg)
+	opts.IsChild = snap.Parent != nil
+	if snap.FakeAgents != "" {
+		opts.AgentCheck = nil
+	}
+	loader := e.Loader(snap.Repo)
+	f, findings := loader.Validate(snap.Pipeline, opts)
+	if f == nil || pipeline.HasErrors(findings) {
+		if len(findings) == 0 {
+			findings = []pipeline.Finding{{Severity: pipeline.SevError, Code: "E006", Message: "pipeline " + snap.Pipeline + " not found"}}
+		}
+		return nil, &Error{Kind: KindInvalid, Msg: "pipeline " + snap.Pipeline + " has errors", Findings: findings}
+	}
+	closure, err := loader.Closure(snap.Pipeline)
+	if err != nil {
+		return nil, invalid("%v", err)
+	}
+	l := &Live{Pipeline: f.Pipeline, Closure: closure}
+	dir := filepath.Join(e.o.Store.RunDir(snap.ID), store.PipelineDir)
+	entries, _ := os.ReadDir(dir)
+	l.Changed = len(entries) != len(closure)
+	for _, cf := range closure {
+		old, err := os.ReadFile(filepath.Join(dir, cf.Name+".yml"))
+		if err != nil || !bytes.Equal(old, cf.Source) {
+			l.Changed = true
+		}
+	}
+	return l, nil
 }
 
 // --- starting --------------------------------------------------------------
@@ -619,6 +712,9 @@ func (e *Engine) Start(ctx context.Context, req StartRequest) (*store.RunSnapsho
 	// Where the pipeline's history lives. The version itself is recorded
 	// once the worktree exists, from what the run's agents will actually use.
 	created.HistoryDir = HistoryDir(e.Loader(req.Repo), req.Repo, e.Home(), name)
+	if provider != "none" && provider != parentProvider {
+		created.Warnings = e.UnsyncedFiles(ctx, req.Repo, base, closure)
+	}
 	if req.child != nil {
 		created.Parent = &store.ParentRef{ID: req.child.parent.ID, Step: req.child.step}
 		created.Slice = snapForScope.Slice

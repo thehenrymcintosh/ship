@@ -125,6 +125,9 @@ func (a *app) addCmd() *cobra.Command {
 			if pipeline.HasErrors(findings) {
 				return fail(exitUser, "template %s added, but its pipelines have errors (above)", tpl.Name)
 			}
+			if !global {
+				fmt.Printf("Commit these files: runs work in git worktrees checked out from your base branch, so agents only see committed skills, scripts and rules.\n")
+			}
 			names := tpl.Pipelines()
 			if len(names) > 0 {
 				fmt.Printf("Added %s. Start a run with `%s start %s --brief brief.md`, or adapt it with /%s.\n", tpl.Name, brand.Name, names[0], brand.DesignSkillName)

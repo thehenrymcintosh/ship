@@ -45,6 +45,7 @@ const (
 	EvResumed           = "resumed"
 	EvVersioned         = "pipeline_versioned"
 	EvPRPolled          = "pr_polled"
+	EvUpgraded          = "pipeline_upgraded"
 )
 
 // Actors.
@@ -83,6 +84,9 @@ type RunCreated struct {
 	PipelineVersion int    `json:"pipeline_version,omitempty"`
 	PipelineHash    string `json:"pipeline_hash,omitempty"`
 	HistoryDir      string `json:"history_dir,omitempty"`
+	// Warnings about the run's setup, e.g. files its pipeline uses that its
+	// worktree won't have.
+	Warnings []string `json:"warnings,omitempty"`
 }
 
 // WorkspaceAcquired records a lease.
@@ -248,6 +252,15 @@ type PauseChange struct {
 type Versioned struct {
 	Version int    `json:"version"`
 	Hash    string `json:"hash"`
+}
+
+// Upgraded records a run moving onto the pipeline as it is now. The run is
+// versioned again (a pipeline_versioned event follows).
+type Upgraded struct {
+	FromVersion int      `json:"from_version,omitempty"`
+	FromHash    string   `json:"from_hash,omitempty"`
+	Step        string   `json:"step"`
+	Warnings    []string `json:"warnings,omitempty"` // replace the run's setup warnings
 }
 
 // PRStatus is the latest observation of the PR a pr step watches.

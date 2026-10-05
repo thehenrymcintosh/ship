@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"compress/gzip"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"html/template"
 	"io"
@@ -346,6 +347,38 @@ type RunView struct {
 	Version    string
 	Feedback   []history.Item
 	WatchingPR bool // a pr step is polling right now
+	Upgrade    *UpgradeView
+}
+
+// UpgradeView offers to move a run onto its pipeline as edited since.
+type UpgradeView struct {
+	Steps   []string // of the new pipeline
+	Default string
+	Err     string // the edited pipeline doesn't validate
+}
+
+func (d *Daemon) upgradeView(s *store.RunSnapshot) *UpgradeView {
+	live, err := d.eng.LivePipeline(s)
+	if err != nil {
+		var ee *engine.Error
+		if errors.As(err, &ee) && len(ee.Findings) > 0 {
+			return &UpgradeView{Err: ee.Findings[0].String()}
+		}
+		return &UpgradeView{Err: err.Error()}
+	}
+	if !live.Changed {
+		return nil
+	}
+	u := &UpgradeView{Steps: live.Pipeline.SortedSteps()}
+	// At a check-in, the step that led there is usually the one to redo.
+	want := s.CurrentStep
+	if st := live.Pipeline.Steps[want]; st != nil && st.Type() == pipeline.TypeAsk && s.CameFrom != "" {
+		want = s.CameFrom
+	}
+	if _, ok := live.Pipeline.Steps[want]; ok {
+		u.Default = want
+	}
+	return u
 }
 
 func (d *Daemon) runView(id string) (*RunView, error) {
@@ -393,6 +426,9 @@ func (d *Daemon) runView(id string) (*RunView, error) {
 		if ps, err := d.eng.Snapshot(s.Parent.ID); err == nil {
 			v.ParentT = ps.Title
 		}
+	}
+	if !s.Status.Terminal() {
+		v.Upgrade = d.upgradeView(s)
 	}
 	lv := s.LastVisit()
 	v.CanResume = s.Status == store.StatusNeedsAttention && lv != nil && lv.Interrupted && lv.SessionID != ""
