@@ -63,6 +63,7 @@ func (d *Daemon) routes() http.Handler {
 	api("GET /api/events", d.events)
 	api("POST /api/shutdown", d.shutdown)
 	api("POST /api/clean", d.clean)
+	api("POST /api/prune", d.prune)
 	d.uiRoutes(mux)
 	return d.guard(mux)
 }
@@ -862,11 +863,43 @@ func (d *Daemon) clean(w http.ResponseWriter, r *http.Request) {
 		}
 		b.Run = id
 	}
-	cfg, _ := d.eng.Config("")
-	res, err := d.eng.Clean(r.Context(), engine.CleanOptions{RunID: b.Run, Force: b.Force, DryRun: b.DryRun, KeepDays: cfg.Retention.KeepRunsDays})
+	res, err := d.eng.Clean(r.Context(), engine.CleanOptions{RunID: b.Run, Force: b.Force, DryRun: b.DryRun})
 	if err != nil {
 		writeEngineErr(w, err)
 		return
+	}
+	writeJSON(w, 200, res)
+}
+
+func (d *Daemon) prune(w http.ResponseWriter, r *http.Request) {
+	var b struct {
+		OlderThan string `json:"older_than"` // e.g. 30d; default retention.keep_runs_days
+		Force     bool   `json:"force"`
+		DryRun    bool   `json:"dry_run"`
+	}
+	if err := decode(r, &b); err != nil {
+		writeErr(w, 400, "bad_request", err.Error())
+		return
+	}
+	o := engine.PruneOptions{Force: b.Force, DryRun: b.DryRun}
+	if b.OlderThan != "" {
+		d, err := pipeline.ParseDuration(b.OlderThan)
+		if err != nil {
+			writeErr(w, 400, "bad_request", err.Error())
+			return
+		}
+		o.OlderThan = d
+	} else {
+		cfg, _ := d.eng.Config("")
+		o.OlderThan = time.Duration(cfg.Retention.KeepRunsDays) * 24 * time.Hour
+	}
+	res, err := d.eng.Prune(r.Context(), o)
+	if err != nil {
+		writeEngineErr(w, err)
+		return
+	}
+	if r.Header.Get("HX-Request") == "true" {
+		w.Header().Set("HX-Trigger", "ship-refresh")
 	}
 	writeJSON(w, 200, res)
 }

@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"os"
 	"path/filepath"
 	"sort"
 	"time"
@@ -93,21 +92,18 @@ func (e *Engine) Inbox() ([]InboxItem, error) {
 
 // CleanOptions controls Clean.
 type CleanOptions struct {
-	RunID    string
-	Force    bool
-	DryRun   bool
-	KeepDays int
+	RunID  string
+	Force  bool
+	DryRun bool
 }
 
 // CleanResult reports what Clean did (or would do).
 type CleanResult struct {
 	Released []string `json:"released"`
-	Deleted  []string `json:"deleted"`
 	Errors   []string `json:"errors,omitempty"`
 }
 
-// Clean releases worktrees kept by terminal runs and deletes run dirs older
-// than KeepDays whose worktrees are gone.
+// Clean releases worktrees kept by terminal runs. Prune deletes their state.
 func (e *Engine) Clean(ctx context.Context, o CleanOptions) (CleanResult, error) {
 	var res CleanResult
 	ids, err := e.o.Store.IDs()
@@ -134,16 +130,6 @@ func (e *Engine) Clean(ctx context.Context, o CleanOptions) (CleanResult, error)
 				res.Released = append(res.Released, id)
 				snap.Workspace = nil
 			}
-		}
-		if o.RunID == "" && o.KeepDays > 0 && snap.Workspace == nil && snap.FinishedAt != nil &&
-			time.Since(*snap.FinishedAt) > time.Duration(o.KeepDays)*24*time.Hour {
-			if !o.DryRun {
-				if err := os.RemoveAll(e.o.Store.RunDir(id)); err != nil {
-					res.Errors = append(res.Errors, fmt.Sprintf("%s: %v", id, err))
-					continue
-				}
-			}
-			res.Deleted = append(res.Deleted, id)
 		}
 	}
 	return res, nil

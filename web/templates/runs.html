@@ -7,6 +7,9 @@
     <a href="/?filter=finished" {{if eq $.Filter "finished"}}aria-current="true"{{end}}>Finished</a>
     <a href="/?filter=all" {{if eq $.Filter "all"}}aria-current="true"{{end}}>All</a>
   </nav>
+  {{if eq $.Filter "finished"}}<button class="btn small ghost prune-btn" data-prune hx-post="/api/prune" hx-vals='{"older_than":"30d"}' hx-swap="none"
+    hx-confirm="Delete what ship keeps about runs that finished more than 30 days ago (logs, transcripts, handovers)? Runs that still have a worktree are kept. This can't be undone."
+    title="Same as ship prune">Prune finished runs older than 30 days</button>{{end}}
 </div>
 <div id="usage-card" hx-get="/fragments/usage" hx-trigger="load, sse:run throttle:3s, ship-refresh from:body, every 60s" hx-swap="innerHTML"></div>
 <div id="runs-list" hx-get="/fragments/runs?filter={{.Filter}}" hx-trigger="sse:run throttle:500ms, ship-refresh from:body, every 30s" hx-swap="innerHTML">

@@ -41,7 +41,21 @@
   document.addEventListener("htmx:afterRequest", function (e) {
     var form = e.detail.elt.closest && e.detail.elt.closest("form.var-form");
     if (form && e.detail.successful) toast("Variable set", true);
+    if (e.detail.elt.hasAttribute && e.detail.elt.hasAttribute("data-prune") && e.detail.successful) {
+      try {
+        var res = JSON.parse(e.detail.xhr.responseText), n = (res.pruned || []).length, kept = (res.skipped || []).length;
+        var msg = n ? "Deleted " + n + " run" + (n === 1 ? "" : "s") + ", freeing " + bytes(res.bytes) : "Nothing to prune";
+        if (kept) msg += ". Kept " + kept + " that still " + (kept === 1 ? "has a worktree" : "have worktrees") + " (ship prune --force)";
+        toast(msg, true);
+      } catch (err) {}
+    }
   });
+
+  function bytes(n) {
+    var units = ["B", "KB", "MB", "GB", "TB"], i = 0;
+    while (n >= 1024 && i < units.length - 1) { n /= 1024; i++; }
+    return (i ? n.toFixed(1) : n) + " " + units[i];
+  }
 
   // ---- copy ----------------------------------------------------------------
   document.addEventListener("click", function (e) {

@@ -130,6 +130,8 @@ takes a run, any unique part of its id works (`3fa`, `rate-limit`).
 | `ship usage` | Claude's usage limits, and what each run spent this window |
 | `ship focus <run>` | Pause every other active run so this one can finish |
 | `ship upgrade <run> [--step s]` | Move a run onto its pipeline as you've since edited it |
+| `ship clean [--run r]` | Remove the worktrees of finished runs |
+| `ship prune [--older-than 30d] [--dry-run]` | Delete the records of runs that finished long ago |
 | `ship cd <run>` | Print the worktree path: `cd "$(ship cd 3fa)"` |
 | `ship open [run]` | Open the web UI |
 | `ship validate` | Check this repo's pipelines |
@@ -229,6 +231,17 @@ you pass `--force`.
 its branch stays, so `git switch ship/<run-id>` (or `git log ship/<run-id>`)
 in your checkout still gets you everything. Runs that stop, fail or are
 cancelled keep their worktree for you to inspect, until `ship clean`.
+
+**Clearing out old runs.** ship keeps everything about a run (its event log,
+agent transcripts, handovers) in `~/.ship/state/runs/`, and transcripts add
+up. `ship prune` deletes the records of runs that finished more than 30 days
+ago (`--older-than 7d` to change it, or `retention.keep_runs_days` in the
+config). A run's slices go with it. Runs still going are never touched, and
+runs that still have a worktree are kept, so you don't lose work, unless you
+pass `--force`, which removes the worktree too. `--dry-run` lists what would
+go and how much space it frees. Pipeline history and feedback live in the
+repo and are kept. The runs page's **Finished** filter has the same thing as
+a button.
 
 ### With treehouse
 
@@ -697,7 +710,7 @@ scripts belong in `~/.ship/bin`, called as `"$SHIP_HOME/bin/<script>"`.
 | `<repo>/.ship/` | pipelines, helper scripts, rules, config (commit these) |
 | `<repo>/.ship/history/<pipeline>/` | the pipeline's versions, feedback, refinement proposals and reports (commit these) |
 | `<repo>/.claude/skills/ship-*` | the Claude Code skills |
-| `~/.ship/state/runs/<id>/` | everything about a run: its event log, brief, and each step's input, output and handover |
+| `~/.ship/state/runs/<id>/` | everything about a run: its event log, brief, and each step's input, output and handover (`ship prune` clears out old ones) |
 | `~/.ship/pipelines/`, `~/.ship/templates/` | global pipelines and your templates |
 | `~/.ship/config.yml` | user config (`.ship/config.yml` overrides it per repo) |
 | `~/.ship/daemon.log` | the background process's log |

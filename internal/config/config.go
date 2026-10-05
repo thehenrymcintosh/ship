@@ -48,7 +48,7 @@ type UI struct {
 	Terminal    string `yaml:"terminal"`
 }
 
-// Retention controls `ship clean`.
+// Retention controls `ship prune`: finished runs older than this are pruned.
 type Retention struct {
 	KeepRunsDays int `yaml:"keep_runs_days" jsonschema:"minimum=0"`
 }

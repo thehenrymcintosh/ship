@@ -12,6 +12,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/thehenrymcintosh/ship/internal/daemon"
+	"github.com/thehenrymcintosh/ship/internal/engine"
 	"github.com/thehenrymcintosh/ship/internal/engine/steps"
 	"github.com/thehenrymcintosh/ship/internal/store"
 )
@@ -229,7 +230,7 @@ func (a *app) cleanCmd() *cobra.Command {
 	var force, dry bool
 	cmd := &cobra.Command{
 		Use:   "clean",
-		Short: "Release worktrees of finished runs and delete old run dirs",
+		Short: "Release the worktrees of finished runs (ship prune deletes their records)",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			c, err := daemon.Ensure(a.home)
@@ -238,7 +239,6 @@ func (a *app) cleanCmd() *cobra.Command {
 			}
 			var res struct {
 				Released []string `json:"released"`
-				Deleted  []string `json:"deleted"`
 				Errors   []string `json:"errors"`
 			}
 			if err := c.Do("POST", "/api/clean", map[string]any{"run": run, "force": force, "dry_run": dry}, &res); err != nil {
@@ -254,13 +254,10 @@ func (a *app) cleanCmd() *cobra.Command {
 			for _, id := range res.Released {
 				fmt.Printf("worktree %sreleased  %s\n", verb, id)
 			}
-			for _, id := range res.Deleted {
-				fmt.Printf("run dir %sdeleted    %s\n", verb, id)
-			}
 			for _, e := range res.Errors {
 				fmt.Fprintln(os.Stderr, a.color("31", e))
 			}
-			if len(res.Released)+len(res.Deleted) == 0 && len(res.Errors) == 0 {
+			if len(res.Released) == 0 && len(res.Errors) == 0 {
 				fmt.Println("Nothing to clean.")
 			}
 			if len(res.Errors) > 0 {
@@ -273,6 +270,81 @@ func (a *app) cleanCmd() *cobra.Command {
 	cmd.Flags().BoolVar(&force, "force", false, "release dirty worktrees too")
 	cmd.Flags().BoolVar(&dry, "dry-run", false, "show what would happen")
 	return cmd
+}
+
+func (a *app) pruneCmd() *cobra.Command {
+	var olderThan string
+	var force, dry bool
+	cmd := &cobra.Command{
+		Use:   "prune",
+		Short: "Delete the records of finished runs older than 30 days",
+		Long: `Delete what ship keeps about finished runs (event logs, transcripts,
+handovers) once they finished longer ago than --older-than. Slices go with
+their run. Active runs are never touched, and runs that still have a
+worktree are kept unless --force, which removes the worktree too. Pipeline
+history and feedback in the repo are kept.
+
+The default age is retention.keep_runs_days in the config (30).`,
+		Args: cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			c, err := daemon.Ensure(a.home)
+			if err != nil {
+				return err
+			}
+			var res engine.PruneResult
+			if err := c.Do("POST", "/api/prune", map[string]any{"older_than": olderThan, "force": force, "dry_run": dry}, &res); err != nil {
+				return err
+			}
+			if a.json {
+				return printJSON(res)
+			}
+			for _, p := range res.Pruned {
+				extra := ""
+				if p.Slices > 0 {
+					extra = fmt.Sprintf(", %d slices", p.Slices)
+				}
+				if p.Worktree != "" {
+					extra += ", worktree " + p.Worktree
+				}
+				fmt.Printf("%-8s %s  %s (%s, finished %s%s)\n", humanBytes(p.Bytes), p.ID, p.Title, p.Status, p.Finished.Local().Format("2 Jan 2006"), extra)
+			}
+			for _, s := range res.Skipped {
+				fmt.Println(a.color("2", "kept "+s))
+			}
+			for _, e := range res.Errors {
+				fmt.Fprintln(os.Stderr, a.color("31", e))
+			}
+			switch {
+			case len(res.Pruned) == 0:
+				fmt.Println("Nothing to prune.")
+			case dry:
+				fmt.Printf("Would delete %d runs and free %s. Run again without --dry-run to do it.\n", len(res.Pruned), humanBytes(res.Bytes))
+			default:
+				fmt.Printf("Deleted %d runs and freed %s.\n", len(res.Pruned), humanBytes(res.Bytes))
+			}
+			if len(res.Errors) > 0 {
+				return fail(exitUser, "some runs couldn't be pruned")
+			}
+			return nil
+		},
+	}
+	cmd.Flags().StringVar(&olderThan, "older-than", "", "only runs finished longer ago than this (e.g. 30d, 12h)")
+	cmd.Flags().BoolVar(&force, "force", false, "also prune runs that still have a worktree, removing it")
+	cmd.Flags().BoolVar(&dry, "dry-run", false, "list what would be deleted and the space it frees")
+	return cmd
+}
+
+func humanBytes(n int64) string {
+	const unit = 1024
+	if n < unit {
+		return fmt.Sprintf("%d B", n)
+	}
+	div, exp := int64(unit), 0
+	for m := n / unit; m >= unit; m /= unit {
+		div *= unit
+		exp++
+	}
+	return fmt.Sprintf("%.1f %cB", float64(n)/float64(div), "KMGTPE"[exp])
 }
 
 // transcriptLine renders one stream-json line for `logs`.
