@@ -76,6 +76,9 @@
         "max_budget_usd": {
           "type": "number",
           "minimum": 0
+        },
+        "max_tokens": {
+          "$ref": "#/$defs/Tokens"
         }
       },
       "additionalProperties": false,
@@ -263,6 +266,13 @@
             "any"
           ]
         },
+        "max_budget_usd": {
+          "type": "number",
+          "minimum": 0
+        },
+        "max_tokens": {
+          "$ref": "#/$defs/Tokens"
+        },
         "run": {
           "type": "string",
           "description": "Run step: a bash script. Exit 0 → pass, otherwise fail."
@@ -373,6 +383,19 @@
       },
       "additionalProperties": false,
       "type": "object"
+    },
+    "Tokens": {
+      "oneOf": [
+        {
+          "type": "integer",
+          "minimum": 1
+        },
+        {
+          "type": "string",
+          "pattern": "^[0-9][0-9_]*(\\.[0-9]+)?[kKmM]?$"
+        }
+      ],
+      "description": "Token count: 200000, 200k or 1.5m. Counts input, cache writes and output; cache reads aren't counted."
     },
     "Variable": {
       "properties": {

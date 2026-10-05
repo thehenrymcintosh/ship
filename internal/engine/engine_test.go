@@ -449,10 +449,12 @@ steps:
     choices: {stop: stop}
 `})
 	s := en.start("p", "", nil, "a: [{outcome: again, summary: s, cost: 0.3}]\n")
+	// The run's budget holds the run for the person; on_error isn't used.
 	s = en.waitStatus(s.ID, store.StatusNeedsAttention)
 	lv := s.LastVisit()
-	if lv.Outcome != "error" || lv.Error == nil || lv.Error.Reason != "budget" || len(s.Visits) != 3 {
-		t.Fatalf("%s %+v", visitTrail(s), lv)
+	if !strings.HasPrefix(s.StatusReason, "budget reached") || visitTrail(s) != "a:again a:error" ||
+		lv.Error == nil || lv.Error.Reason != "run_budget" {
+		t.Fatalf("%q %s %+v", s.StatusReason, visitTrail(s), lv)
 	}
 }
 
