@@ -393,17 +393,35 @@ func (r *runner) sessions(s *store.RunSnapshot, name string, st *pipeline.Step, 
 // parent's (and theirs, for nested slices) first, then its own.
 func (r *runner) runNotes(s *store.RunSnapshot) []agent.RunNote {
 	var out []agent.RunNote
+	for _, n := range r.e.AncestorNotes(s) {
+		out = append(out, agent.RunNote{Step: n.Step, Run: n.Run, Note: n.Note})
+	}
 	for _, n := range s.RunNotes {
 		out = append(out, agent.RunNote{Step: n.Step, Note: n.Note})
 	}
+	return out
+}
+
+// AncestorNote is a note for the rest of the run written on one of a
+// slice's ancestor runs.
+type AncestorNote struct {
+	store.RunNote
+	Run string
+}
+
+// AncestorNotes returns the notes for the rest of the run written on s's
+// ancestors (up to 8 levels up), the furthest ancestor's first. A slice's
+// agents get these as well as its own.
+func (e *Engine) AncestorNotes(s *store.RunSnapshot) []AncestorNote {
+	var out []AncestorNote
 	for p, depth := s.Parent, 0; p != nil && depth < 8; depth++ {
-		ps, err := r.e.o.Store.Load(p.ID)
+		ps, err := e.o.Store.Load(p.ID)
 		if err != nil {
 			break
 		}
-		var theirs []agent.RunNote
+		var theirs []AncestorNote
 		for _, n := range ps.RunNotes {
-			theirs = append(theirs, agent.RunNote{Step: n.Step, Run: ps.ID, Note: n.Note})
+			theirs = append(theirs, AncestorNote{RunNote: n, Run: ps.ID})
 		}
 		out = append(theirs, out...)
 		p = ps.Parent
@@ -1294,6 +1312,16 @@ func (r *runner) recover() bool {
 	}
 	lv := s.LastVisit()
 	running := lv != nil && lv.Running()
+	// An agent can't be re-entered mid-invocation; the only agent-like
+	// visit that resumes is a split waiting for its review. Anything else
+	// (such as an agent waiting out a usage limit) was interrupted.
+	if running {
+		if st := r.pipe.Steps[lv.Step]; st != nil && st.IsAgentLike() && (s.PendingAsk == nil || s.PendingAsk.Seq != lv.Seq) {
+			r.emit(store.EvVisitInterrupted, store.SeqOnly{Seq: lv.Seq})
+			r.park("interrupted: " + brand.Name + " stopped while this step was running")
+			return true
+		}
+	}
 	switch s.Status {
 	case store.StatusAsking, store.StatusWaiting, store.StatusFannedOut, store.StatusPaused:
 		if running {

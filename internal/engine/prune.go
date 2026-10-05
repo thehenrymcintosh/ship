@@ -36,6 +36,7 @@ type PruneResult struct {
 	Bytes   int64       `json:"bytes"`
 	Skipped []string    `json:"skipped,omitempty"` // old enough, but kept, and why
 	Errors  []string    `json:"errors,omitempty"`
+	Note    string      `json:"note,omitempty"` // why nothing was looked at
 }
 
 // Prune deletes the state of finished runs older than OlderThan. A run's

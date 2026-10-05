@@ -49,6 +49,7 @@ type UI struct {
 }
 
 // Retention controls `ship prune`: finished runs older than this are pruned.
+// 0 means prune nothing unless --older-than is given.
 type Retention struct {
 	KeepRunsDays int `yaml:"keep_runs_days" jsonschema:"minimum=0"`
 }

@@ -288,7 +288,8 @@ their run. Active runs are never touched, and runs that still have a
 worktree are kept unless --force, which removes the worktree too. Pipeline
 history and feedback in the repo are kept.
 
-The default age is retention.keep_runs_days in the config (30).`,
+The default age is retention.keep_runs_days in the config (30); when that
+is 0, nothing is pruned without --older-than.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			c, err := daemon.Ensure(a.home)
@@ -319,6 +320,8 @@ The default age is retention.keep_runs_days in the config (30).`,
 				fmt.Fprintln(os.Stderr, a.color("31", e))
 			}
 			switch {
+			case res.Note != "":
+				fmt.Println(res.Note)
 			case len(res.Pruned) == 0:
 				fmt.Println("Nothing to prune.")
 			case dry:

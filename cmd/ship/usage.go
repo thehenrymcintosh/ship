@@ -101,6 +101,7 @@ with ` + "`ship resume <run> --all`" + `.`,
 			}
 			var res struct {
 				Paused []string `json:"paused"`
+				Errors []string `json:"errors,omitempty"`
 			}
 			if err := c.Do("POST", "/api/runs/"+id+"/focus", nil, &res); err != nil {
 				return err
@@ -108,12 +109,18 @@ with ` + "`ship resume <run> --all`" + `.`,
 			if a.json {
 				return printJSON(res)
 			}
-			if len(res.Paused) == 0 {
+			if len(res.Paused) == 0 && len(res.Errors) == 0 {
 				fmt.Println("No other runs are active.")
 				return nil
 			}
 			for _, p := range res.Paused {
 				fmt.Printf("pausing %s after its current step\n", shortRef(p))
+			}
+			for _, e := range res.Errors {
+				fmt.Fprintln(os.Stderr, a.color("31", "couldn't pause "+e))
+			}
+			if len(res.Errors) > 0 {
+				return fail(exitUser, "some runs couldn't be paused")
 			}
 			return nil
 		},

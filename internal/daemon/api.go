@@ -891,7 +891,17 @@ func (d *Daemon) prune(w http.ResponseWriter, r *http.Request) {
 		}
 		o.OlderThan = d
 	} else {
-		cfg, _ := d.eng.Config("")
+		// Deleting can't be undone, so a config that doesn't load must not
+		// fall back to a zero cutoff.
+		cfg, err := d.eng.Config("")
+		if err != nil {
+			writeErr(w, 500, "config", "can't read the config, so the default age for prune is unknown: "+err.Error())
+			return
+		}
+		if cfg.Retention.KeepRunsDays <= 0 {
+			writeJSON(w, 200, engine.PruneResult{Pruned: []engine.PrunedRun{}, Note: "retention.keep_runs_days is 0, so nothing is pruned by default. Pass --older-than to choose an age."})
+			return
+		}
 		o.OlderThan = time.Duration(cfg.Retention.KeepRunsDays) * 24 * time.Hour
 	}
 	res, err := d.eng.Prune(r.Context(), o)

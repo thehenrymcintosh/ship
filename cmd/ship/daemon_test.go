@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/thehenrymcintosh/ship/internal/daemon"
+	"github.com/thehenrymcintosh/ship/internal/engine"
 	"github.com/thehenrymcintosh/ship/internal/store"
 )
 
@@ -226,7 +227,12 @@ func TestDaemonKill9MidAgent(t *testing.T) {
 }
 
 func TestUsageAndFocus(t *testing.T) {
-	h := newHarness(t, map[string]string{"ask": askPipeline})
+	h := newHarness(t, map[string]string{"ask": askPipeline, "pricey": `version: 1
+start: work
+limits: {max_budget_usd: 0.5}
+steps:
+  work: {agent: /work, next: done}
+`})
 	// What Claude last reported: 80% of the 5-hour window used.
 	usage := fmt.Sprintf(`{"windows":[{"name":"five_hour","utilization":0.8,"resets_at":%q},{"name":"seven_day","utilization":0.4,"resets_at":%q}],"updated_at":%q}`,
 		time.Now().Add(2*time.Hour).Format(time.RFC3339), time.Now().Add(72*time.Hour).Format(time.RFC3339), time.Now().Format(time.RFC3339))
@@ -257,16 +263,59 @@ func TestUsageAndFocus(t *testing.T) {
 		t.Fatalf("run side: %v\n%s", err, page)
 	}
 
-	var res struct{ Paused []string }
+	// A run waiting in the inbox can't be paused; Focus leaves it alone.
+	parked := h.startRun("pricey", "work: [{outcome: done, summary: pricey, cost: 1}]\n")
+	h.waitFor(parked, func(s *store.RunSnapshot) bool { return s.Status == store.StatusNeedsAttention })
+
+	var res struct{ Paused, Errors []string }
 	if err := h.c.Do("POST", "/api/runs/"+a+"/focus", nil, &res); err != nil {
 		t.Fatal(err)
 	}
-	if len(res.Paused) != 1 || res.Paused[0] != b {
-		t.Fatalf("focus paused %v", res.Paused)
+	if len(res.Paused) != 1 || res.Paused[0] != b || len(res.Errors) != 0 {
+		t.Fatalf("focus paused %v, errors %v", res.Paused, res.Errors)
 	}
 	h.waitFor(b, func(s *store.RunSnapshot) bool { return s.PauseRequested })
 	if s := h.waitFor(a, func(*store.RunSnapshot) bool { return true }); s.PauseRequested {
 		t.Fatal("focus paused the run it focused on")
+	}
+}
+
+// Prune's default age comes from the config; a config that doesn't load, or
+// keep_runs_days: 0, must never mean "delete every finished run".
+func TestPruneDefaultAgeFromConfig(t *testing.T) {
+	h := newHarness(t, map[string]string{"p": "version: 1\nstart: work\nsteps:\n  work: {agent: /work, next: done}\n"})
+	id := h.startRun("p", "work: [{outcome: done, summary: ok}]\n")
+	h.waitFor(id, func(s *store.RunSnapshot) bool { return s.Status == store.StatusDone })
+	cfgPath := filepath.Join(h.home, "config.yml")
+	good, _ := os.ReadFile(cfgPath)
+	prune := func(olderThan string) (engine.PruneResult, error) {
+		var res engine.PruneResult
+		err := h.c.Do("POST", "/api/prune", map[string]any{"older_than": olderThan, "force": true}, &res)
+		return res, err
+	}
+
+	os.WriteFile(cfgPath, append(good, []byte("retention: [\n")...), 0o644)
+	if res, err := prune(""); err == nil {
+		t.Fatalf("pruned with a broken config: %+v", res)
+	}
+	os.WriteFile(cfgPath, append(good, []byte("retention: {keep_runs_days: 0}\n")...), 0o644)
+	if res, err := prune(""); err != nil || len(res.Pruned) != 0 || res.Note == "" {
+		t.Fatalf("keep_runs_days 0: %v %+v", err, res)
+	}
+	var page []byte
+	if err := h.c.Do("GET", "/?filter=finished", nil, &page); err != nil || strings.Contains(string(page), "data-prune") {
+		t.Fatalf("prune button shown with keep_runs_days 0: %v", err)
+	}
+	os.WriteFile(cfgPath, append(good, []byte("retention: {keep_runs_days: 7}\n")...), 0o644)
+	if err := h.c.Do("GET", "/?filter=finished", nil, &page); err != nil || !strings.Contains(string(page), "older than 7 days") {
+		t.Fatalf("prune button: %v\n%s", err, page)
+	}
+	if res, err := prune(""); err != nil || len(res.Pruned) != 0 {
+		t.Fatalf("pruned a run that finished just now: %v %+v", err, res)
+	}
+	// The run itself can be pruned: an explicit age still works.
+	if res, err := prune("0s"); err != nil || len(res.Pruned) != 1 {
+		t.Fatalf("explicit prune: %v %+v", err, res)
 	}
 }
 

@@ -392,9 +392,9 @@ type RunView struct {
 	Executing  bool
 	Progress   string
 	ParentT    string
-	// ParentNotes are the parent run's notes for the rest of the run,
+	// ParentNotes are the ancestor runs' notes for the rest of the run,
 	// which this slice's agents get too.
-	ParentNotes []store.RunNote
+	ParentNotes []engine.AncestorNote
 	Bypass      bool
 	Version     string
 	Feedback    []history.Item
@@ -497,8 +497,8 @@ func (d *Daemon) runView(id string) (*RunView, error) {
 	if s.Parent != nil {
 		if ps, err := d.eng.Snapshot(s.Parent.ID); err == nil {
 			v.ParentT = ps.Title
-			v.ParentNotes = ps.RunNotes
 		}
+		v.ParentNotes = d.eng.AncestorNotes(s)
 	}
 	if !s.Status.Terminal() {
 		v.Upgrade = d.upgradeView(s)
@@ -857,6 +857,8 @@ type layoutData struct {
 	Filter string
 	Run    string // run id for the SSE filter
 	Data   any
+
+	PruneDays int // runs page: retention.keep_runs_days, 0 hides the prune button
 }
 
 func (d *Daemon) layout(title, page string, data any) layoutData {
@@ -880,6 +882,9 @@ func (d *Daemon) pageRuns(w http.ResponseWriter, r *http.Request) {
 	}
 	ld := d.layout("Runs", "runs", groups)
 	ld.Filter = f
+	if cfg, err := d.eng.Config(""); err == nil {
+		ld.PruneDays = cfg.Retention.KeepRunsDays
+	}
 	d.render(w, "runs", "layout", ld)
 }
 

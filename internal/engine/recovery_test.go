@@ -2,6 +2,8 @@ package engine
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -45,6 +47,43 @@ review: [{outcome: pass, summary: ok}]
 	s = en.waitStatus(s.ID, store.StatusDone)
 	if s.Visits[1].ResumeID != s.Visits[0].SessionID || s.Visits[1].Step != "implement" {
 		t.Fatalf("resume visit %+v", s.Visits[1])
+	}
+}
+
+// An agent waiting out a usage limit is "waiting" with its visit still
+// running. If ship dies without shutting down, recovery must park it like
+// any interrupted agent, not re-run the step in a new conversation.
+func TestRecoverAgentWaitingForLimitAfterCrash(t *testing.T) {
+	en := newEnv(t, map[string]string{"p": `version: 1
+start: work
+steps:
+  work: {prompt: Do it., next: done}
+`})
+	s := en.start("p", "", nil, `work: [{outcome: done, summary: ok, limited: 1, limit_reset: 1h}]`)
+	en.waitStatus(s.ID, store.StatusWaiting)
+	// Keep the run's state as it was before the graceful shutdown marks the
+	// visit interrupted, then put it back: that's what a crash leaves.
+	dir := en.e.o.Store.RunDir(s.ID)
+	saved := filepath.Join(t.TempDir(), "run")
+	if err := os.CopyFS(saved, os.DirFS(dir)); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	if err := en.e.Shutdown(ctx); err != nil {
+		t.Fatal(err)
+	}
+	os.RemoveAll(dir)
+	if err := os.CopyFS(dir, os.DirFS(saved)); err != nil {
+		t.Fatal(err)
+	}
+	en.e = en.newEngine()
+	if _, err := en.e.Recover(); err != nil {
+		t.Fatal(err)
+	}
+	s = en.waitStatus(s.ID, store.StatusNeedsAttention)
+	if lv := s.LastVisit(); len(s.Visits) != 1 || !lv.Interrupted || lv.SessionID == "" {
+		t.Fatalf("%s %+v", visitTrail(s), lv)
 	}
 }
 

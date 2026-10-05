@@ -49,6 +49,9 @@ type Entry struct {
 	// LimitReset (default: no reset time given).
 	Limited    int    `yaml:"limited"`
 	LimitReset string `yaml:"limit_reset"`
+	// LimitNotice reports a usage limit but still finishes, as the CLI does
+	// when extra usage takes over from a spent window.
+	LimitNotice bool `yaml:"limit_notice"`
 	// InvalidAttempts makes the first N attempts return invalid output, to
 	// exercise the correction retry.
 	InvalidAttempts int `yaml:"invalid_attempts"`
@@ -193,7 +196,7 @@ func (a *Adapter) Run(ctx context.Context, req agent.Request, sink agent.Sink) (
 			}
 		}
 	}
-	resp := agent.Response{SessionID: session, CostUSD: e.Cost, Tokens: e.Tokens, TokenUsage: usage, ExitCode: e.Exit}
+	resp := agent.Response{SessionID: session, CostUSD: e.Cost, Tokens: e.Tokens, TokenUsage: usage, ExitCode: e.Exit, Limited: e.LimitNotice}
 	for _, d := range e.Denials {
 		b, _ := json.Marshal(map[string]any{"tool_name": d})
 		resp.PermissionDenials = append(resp.PermissionDenials, b)

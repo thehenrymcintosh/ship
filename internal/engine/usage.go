@@ -2,6 +2,7 @@ package engine
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
@@ -112,11 +113,13 @@ func (e *Engine) Usage() Usage {
 
 // Focus pauses every other active top-level run, slices included, so the
 // usage left goes to finishing this one. Each pauses after its current
-// step. It returns the runs it paused.
-func (e *Engine) Focus(id, source string) ([]string, error) {
+// step. Runs waiting in the inbox aren't spending usage, so they're left
+// alone. It returns the runs it paused, and one message per run it couldn't
+// pause; those don't stop it pausing the rest.
+func (e *Engine) Focus(id, source string) (paused, failed []string, err error) {
 	snap, err := e.Snapshot(id)
 	if err != nil {
-		return nil, &Error{Kind: KindNotFound, Msg: "run " + id + " not found"}
+		return nil, nil, &Error{Kind: KindNotFound, Msg: "run " + id + " not found"}
 	}
 	root := snap
 	for root.Parent != nil {
@@ -133,16 +136,17 @@ func (e *Engine) Focus(id, source string) ([]string, error) {
 	}
 	e.mu.Unlock()
 	sort.Strings(ids)
-	var paused []string
 	for _, rid := range ids {
 		s, err := e.Snapshot(rid)
-		if err != nil || s.Parent != nil || rid == root.ID || s.Status.Terminal() || s.Status == store.StatusPaused || s.PauseRequested {
+		if err != nil || s.Parent != nil || rid == root.ID || s.Status.Terminal() || s.Status == store.StatusPaused ||
+			s.Status == store.StatusNeedsAttention || s.PauseRequested {
 			continue
 		}
 		if err := e.Do(rid, Command{Name: CmdPause, All: true, Source: source}); err != nil {
-			return paused, err
+			failed = append(failed, fmt.Sprintf("%s: %v", rid, err))
+			continue
 		}
 		paused = append(paused, rid)
 	}
-	return paused, nil
+	return paused, failed, nil
 }

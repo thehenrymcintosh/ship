@@ -246,7 +246,7 @@ cancelled keep their worktree for you to inspect, until `ship clean`.
 agent transcripts, handovers) in `~/.ship/state/runs/`, and transcripts add
 up. `ship prune` deletes the records of runs that finished more than 30 days
 ago (`--older-than 7d` to change it, or `retention.keep_runs_days` in the
-config). A run's slices go with it. Runs still going are never touched, and
+config; 0 there means it prunes nothing unless you pass `--older-than`). A run's slices go with it. Runs still going are never touched, and
 runs that still have a worktree are kept, so you don't lose work, unless you
 pass `--force`, which removes the worktree too. `--dry-run` lists what would
 go and how much space it frees. Pipeline history and feedback live in the
@@ -492,6 +492,9 @@ steps:
   Raise it from the run's page, or with `ship budget <run> --usd 5 --retry`
   (`--tokens 1m` for a token budget). The run's page shows what it has
   spent against the budget, raised amounts included.
+- **Stopping at a token budget** means stopping claude before it reports
+  what the invocation cost, so ship estimates it from what the run's agents
+  have cost per token so far, and the visit's error says it's an estimate.
 - **Claude's usage limits.** When an agent hits your account's 5-hour or
   weekly limit, the step waits until the limit resets (the run shows as
   waiting) and then carries on in the same conversation, so nothing is

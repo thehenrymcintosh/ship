@@ -175,9 +175,9 @@
 {{if or $s.RunNotes .ParentNotes}}
 <section class="card run-notes-card">
   <header class="card-head"><h2>Notes for this run</h2></header>
-  <p class="muted small">Every later agent step gets these{{if $s.Parent}}, including the ones from the parent run{{end}}.</p>
+  <p class="muted small">Every later agent step gets these{{if $s.Parent}}, including the ones from the runs this slice belongs to{{end}}.</p>
   <ol class="run-notes">
-    {{range .ParentNotes}}<li><span class="muted small">parent run · {{.Step}} · {{ago .At}}</span><div class="md">{{md .Note}}</div></li>{{end}}
+    {{range .ParentNotes}}<li><span class="muted small"><a href="/runs/{{.Run}}">{{if eq .Run $s.Parent.ID}}parent run{{else}}run above the parent{{end}}</a> · {{.Step}} · {{ago .At}}</span><div class="md">{{md .Note}}</div></li>{{end}}
     {{range $s.RunNotes}}<li><span class="muted small">{{.Step}} · {{ago .At}}</span><div class="md">{{md .Note}}</div></li>{{end}}
   </ol>
 </section>

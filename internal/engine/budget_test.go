@@ -1,6 +1,7 @@
 package engine
 
 import (
+	"math"
 	"strings"
 	"testing"
 	"time"
@@ -37,6 +38,21 @@ steps:
 	}
 	if !waited {
 		t.Fatal("the run never showed it was waiting for the limit")
+	}
+}
+
+// A limit reported by an invocation that still finished isn't waited out:
+// the result is kept.
+func TestUsageLimitNoticeOnSuccessIsIgnored(t *testing.T) {
+	en := newEnv(t, map[string]string{"p": `version: 1
+start: work
+steps:
+  work: {prompt: Do it., next: done}
+`})
+	s := en.start("p", "", nil, `work: [{outcome: done, summary: finished anyway, limit_notice: true}]`)
+	s = en.waitStatus(s.ID, store.StatusDone)
+	if got := visitTrail(s); got != "work:done" || s.Visits[0].Summary != "finished anyway" {
+		t.Fatalf("trail %q summary %q", got, s.Visits[0].Summary)
 	}
 }
 
@@ -83,6 +99,27 @@ steps:
 	}
 	if lv := s.Visits[0]; lv.Error == nil || lv.Error.Reason != "budget" {
 		t.Fatalf("error %+v", lv.Error)
+	}
+}
+
+// claude stopped at a token budget never reports its cost, so it's
+// estimated from what the run's agents have cost per token so far.
+func TestTokenBudgetStopEstimatesCost(t *testing.T) {
+	en := newEnv(t, map[string]string{"p": `version: 1
+start: plan
+steps:
+  plan: {prompt: Plan it., next: work}
+  work: {prompt: Do it., max_tokens: 50, on_error: fallback, next: done}
+  fallback: {run: "true", next: done}
+`})
+	s := en.start("p", "", nil, `plan: [{outcome: done, summary: ok, cost: 1, tokens: 100}]
+work: [{outcome: done, summary: big, tokens: 200}]
+`)
+	s = en.waitStatus(s.ID, store.StatusDone)
+	w := s.Visits[1]
+	// The fake stops at 51 tokens; the run has cost $0.01 a token.
+	if w.Error == nil || w.Error.Reason != "budget" || !strings.Contains(w.Error.Message, "cost estimated at $0.51") || math.Abs(w.CostUSD-0.51) > 1e-9 {
+		t.Fatalf("cost %v error %+v", w.CostUSD, w.Error)
 	}
 }
 

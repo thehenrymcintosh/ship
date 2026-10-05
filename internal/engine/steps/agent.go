@@ -242,7 +242,9 @@ func invoke(ctx context.Context, v *Visit, c *agentCall) (agent.Output, Result) 
 		if ctx.Err() != nil {
 			return agent.Output{}, Result{Outcome: OutcomeCancelled, Summary: "cancelled", Cost: r.Cost, Tokens: r.Tokens, TokenUsage: r.TokenUsage, SessionID: r.SessionID}
 		}
-		if resp.Limited {
+		// A limit only counts when the invocation failed: the CLI can report
+		// a spent window and still finish (on extra usage, say).
+		if resp.Limited && (err != nil || resp.IsError) {
 			// Wait the limit out, then carry on in the same conversation.
 			wait, ok := limitWait(resp.RetryAt, req.LimitRetry)
 			if !ok {
@@ -273,6 +275,12 @@ func invoke(ctx context.Context, v *Visit, c *agentCall) (agent.Output, Result) 
 			msg := "the agent stopped at its budget: " + resp.ErrorText
 			if reason == "run_budget" {
 				msg = "the run reached its budget: " + resp.ErrorText
+			}
+			if resp.OverBudget == "tokens" && resp.CostUSD == 0 && resp.Tokens > 0 {
+				// Stopping claude loses the result line that carries the cost.
+				est := float64(resp.Tokens) * costPerToken(v.Snapshot)
+				r.Cost += est
+				msg += fmt.Sprintf(" (cost estimated at $%.2f from this run's cost per token so far, as claude was stopped before reporting it)", est)
 			}
 			return fail(ErrorResult(reason, msg))
 		}
@@ -430,6 +438,26 @@ func firstNonEmpty(s ...string) string {
 		}
 	}
 	return ""
+}
+
+// costPerToken is what the run's finished agent visits cost per token, or 0
+// before any has reported both.
+func costPerToken(s *store.RunSnapshot) float64 {
+	if s == nil {
+		return 0
+	}
+	var usd float64
+	var tokens int64
+	for _, vs := range s.Visits {
+		if vs.Finished != nil && (vs.Type == pipeline.TypeAgent || vs.Type == pipeline.TypeSplit) && vs.CostUSD > 0 && vs.Tokens > 0 {
+			usd += vs.CostUSD
+			tokens += vs.Tokens
+		}
+	}
+	if tokens == 0 {
+		return 0
+	}
+	return usd / float64(tokens)
 }
 
 // --- split ------------------------------------------------------------------

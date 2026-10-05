@@ -80,8 +80,9 @@ type Response struct {
 	Tokens int64
 	// TokenUsage breaks the tokens down, cache reads included.
 	TokenUsage Usage
-	// Limited is set when Claude refused for a usage or rate limit (or was
+	// Limited is set when Claude reported a usage or rate limit (or was
 	// overloaded); RetryAt is when it says the limit resets, if it said.
+	// It's only a refusal when the invocation also failed.
 	Limited bool
 	RetryAt time.Time
 	// OverBudget is "usd" or "tokens" when the invocation stopped at its

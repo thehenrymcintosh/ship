@@ -185,7 +185,7 @@ func (d *Daemon) focus(w http.ResponseWriter, r *http.Request) {
 	if r.Header.Get("X-Ship-Client") == "cli" {
 		src = "cli"
 	}
-	paused, err := d.eng.Focus(id, src)
+	paused, failed, err := d.eng.Focus(id, src)
 	if err != nil {
 		writeEngineErr(w, err)
 		return
@@ -193,5 +193,5 @@ func (d *Daemon) focus(w http.ResponseWriter, r *http.Request) {
 	if r.Header.Get("HX-Request") == "true" {
 		w.Header().Set("HX-Trigger", "ship-refresh")
 	}
-	writeJSON(w, 200, map[string]any{"paused": paused})
+	writeJSON(w, 200, map[string]any{"paused": paused, "errors": failed})
 }
