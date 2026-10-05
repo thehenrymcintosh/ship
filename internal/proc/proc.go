@@ -205,6 +205,34 @@ func LoginEnv(ctx context.Context) []string {
 			login = append(login, kv)
 		}
 	}
-	// Login values win (PATH), but keep anything only the daemon has.
-	return MergeEnv(os.Environ(), login)
+	// Login values fill in what the daemon lacks, but the daemon's own PATH
+	// comes first: when it was started from a terminal, that PATH has what the
+	// user's shell had (virtualenvs, nvm, project bins); the login shell only
+	// adds directories it's missing (e.g. when started outside a terminal).
+	merged := MergeEnv(login, os.Environ())
+	return MergeEnv(merged, []string{"PATH=" + JoinPaths(os.Getenv("PATH"), envValue(login, "PATH"))})
+}
+
+func envValue(env []string, key string) string {
+	for _, kv := range env {
+		if k, v, ok := strings.Cut(kv, "="); ok && k == key {
+			return v
+		}
+	}
+	return ""
+}
+
+// JoinPaths appends the entries of extra that first doesn't have.
+func JoinPaths(first, extra string) string {
+	seen := map[string]bool{}
+	var out []string
+	for _, list := range []string{first, extra} {
+		for _, p := range strings.Split(list, string(os.PathListSeparator)) {
+			if p != "" && !seen[p] {
+				seen[p] = true
+				out = append(out, p)
+			}
+		}
+	}
+	return strings.Join(out, string(os.PathListSeparator))
 }

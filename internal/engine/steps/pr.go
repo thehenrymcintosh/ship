@@ -274,6 +274,9 @@ func (p PR) decide(ctx context.Context, v *Visit, pr *ghpr.PR, st *prState, stat
 		}
 	}
 	status.PendingComments = len(pending)
+	if len(pending) == 0 {
+		st.Triggers = 0 // a trigger only applies to comments already waiting
+	}
 	if len(pending) > 0 {
 		lastAt := pending[len(pending)-1].CreatedAt
 		status.LastCommentAt = &lastAt

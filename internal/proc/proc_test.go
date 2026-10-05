@@ -56,3 +56,9 @@ type multi struct {
 }
 
 func (m *multi) Write(p []byte) (int, error) { m.a.Write(p); return m.b.Write(p) }
+
+func TestJoinPaths(t *testing.T) {
+	if got := JoinPaths("/venv/bin:/usr/bin", "/opt/homebrew/bin:/usr/bin"); got != "/venv/bin:/usr/bin:/opt/homebrew/bin" {
+		t.Fatal(got)
+	}
+}

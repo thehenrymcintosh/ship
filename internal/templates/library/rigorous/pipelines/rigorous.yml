@@ -1,0 +1,128 @@
+# yaml-language-server: $schema=../schema/pipeline.json
+version: 1
+description: "Thorough: implement, adversarial review with fixes, live verification with evidence, a PR written for its reviewer, then watch it to merge"
+start: implement
+
+variables:
+  test: { value: make test, description: "the repo's test command" }
+  pr_title: { set_by: write-pr }
+  pr_url: { set_by: open-pr }
+
+agent:
+  effort: high
+
+defaults:
+  max_visits: 4            # each gate's fix budget
+  when_exhausted: check-in
+  on_error: check-in
+
+steps:
+  implement:
+    description: Implement the plan in the brief
+    agent: /ship-implement
+    session: builder
+    next: { done: review, stuck: check-in }
+
+  review:
+    description: Adversarial review of the whole change, fresh every round
+    agent: /ship-review
+    model: opus
+    next: { clean: verify, fix: fix-review, ask: review-decision }
+
+  fix-review:
+    description: Fix the review's auto-fix findings
+    agent: /ship-fix
+    session: fixer
+    next: { done: review, stuck: check-in }
+
+  review-decision:
+    ask: "The review of \"{{brief.title}}\" raised findings that need your call. Your note is passed to every later step."
+    show: [prev.handover]
+    input: optional
+    choices:
+      fix them: fix-review
+      accept and continue: verify
+      abandon: stop
+
+  verify:
+    description: Drive the change live and gather evidence
+    agent: /ship-verify
+    next: { go: checks, no-surface: checks, no-go: fix-verify, inconclusive: verify-decision }
+
+  fix-verify:
+    description: Fix what verification found
+    agent: /ship-fix
+    session: fixer
+    next: { done: verify, stuck: check-in }
+
+  verify-decision:
+    ask: "Verification of \"{{brief.title}}\" couldn't drive enough of the change live. Continue without that evidence?"
+    show: [prev.handover]
+    input: optional
+    choices:
+      continue: checks
+      fix it: fix-verify
+      abandon: stop
+
+  checks:
+    description: Clean tree and the test suite
+    run: |
+      test -z "$(git status --porcelain)" || { git status --short; echo "uncommitted changes left behind"; exit 1; }
+      {{raw vars.test}}
+    next: { pass: write-pr, fail: fix-checks }
+
+  fix-checks:
+    description: Fix failing checks
+    agent: /ship-fix
+    session: fixer
+    next: { done: checks, stuck: check-in }
+
+  write-pr:
+    description: Write the PR for a reviewer who wasn't there
+    agent: /ship-pr
+    save: [pr_title]
+    next: { done: open-pr }
+
+  open-pr:
+    run: |
+      git push -u origin {{run.branch}}
+      gh pr view {{run.branch}} --json url -q .url 2>/dev/null \
+        || gh pr create --base {{run.base}} --head {{run.branch}} --title {{vars.pr_title}} --body-file "$SHIP_RUN_DIR/pr-body.md"
+    save: { pr_url: last_line }
+    next: { pass: in-review, fail: check-in }
+
+  in-review:
+    description: Watching the PR
+    pr: ""
+    every: 2m
+    settle: 15m
+    trigger: manual        # press Address on the run's page; auto sends after `settle` of quiet
+    max_visits: 0
+    next: { feedback: address-review, ci_failed: fix-ci, merged: done, closed: stop }
+
+  address-review:
+    description: Address the PR review comments
+    agent: /ship-fix
+    prompt: The findings to address are the PR review comments in your handover.
+    session: fixer
+    next: { done: push, stuck: check-in }
+
+  fix-ci:
+    description: Fix the CI failure
+    agent: /ship-fix
+    prompt: The finding to address is the CI failure in your handover. If it isn't caused by this change, say so and choose stuck rather than changing code.
+    session: fixer
+    next: { done: push, stuck: check-in }
+
+  push:
+    run: git push origin {{run.branch}}
+    max_visits: 0
+    next: { pass: in-review, fail: check-in }
+
+  check-in:
+    ask: "\"{{brief.title}}\" stopped at {{came_from}}. What next?"
+    show: [prev.handover]
+    input: optional
+    choices:
+      retry: $came_from
+      abandon: stop

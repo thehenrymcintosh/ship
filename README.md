@@ -572,9 +572,18 @@ ship start <pipeline> --brief brief.md --fake-agents fake.yml
 into `.ship/`, along with any helper scripts, rules and agent skills it
 uses. Files you've already edited are kept unless you pass `--force`.
 
-Templates are built into `ship` (none yet; they'll be added as pipelines
-prove themselves) or your own, in `~/.ship/templates/<name>/`. Yours win if
-the names clash. A template is a folder:
+Templates are built into `ship` or your own, in `~/.ship/templates/<name>/`.
+Yours win if the names clash. Built in so far:
+
+- **`rigorous`**: implement, then an adversarial review that's fresh every
+  round (findings need a concrete failing sequence, name every affected site,
+  and include a simplification pass), fixes in a separate session, live
+  verification with evidence, checks, a PR written for a reviewer who wasn't
+  there, then a native PR watch that sends review comments and CI failures to
+  a fixer until it merges. Thorough and token-hungry; adapted from
+  [no-mistakes](https://github.com/kunchenguid/no-mistakes).
+
+A template is a folder:
 
 ```
 <name>/
