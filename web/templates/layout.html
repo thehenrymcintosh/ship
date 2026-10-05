@@ -20,6 +20,7 @@
     <a href="/inbox" {{if eq .Page "inbox"}}aria-current="page"{{end}}>Inbox <span id="inbox-count" class="count{{if not .Inbox}} zero{{end}}">{{.Inbox}}</span></a>
     <a href="/pipelines" {{if eq .Page "pipelines"}}aria-current="page"{{end}}>Pipelines</a>
   </nav>
+  <div id="usage-meter" hx-get="/fragments/usage?compact=1" hx-trigger="load, sse:run throttle:5s, every 60s" hx-swap="innerHTML"></div>
   <button class="icon-btn theme-toggle" type="button" title="Toggle light/dark" aria-label="Toggle theme">◐</button>
 </header>
 <main class="page page-{{.Page}}">

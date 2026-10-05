@@ -714,6 +714,8 @@ func (r *runner) duringVisit(c Command, v *steps.Visit) *abortReq {
 		}
 		r.emitUser(c)
 		return &abortReq{to: c.Step, cmd: c}
+	case CmdRaiseBudget:
+		reply(c, r.raiseBudget(c))
 	case CmdUpgrade:
 		// The visit keeps its own step; it ends as a goto would.
 		if err := r.upgrade(c); err != nil {
@@ -743,6 +745,22 @@ func (r *runner) duringVisit(c Command, v *steps.Visit) *abortReq {
 		reply(c, conflict("%s isn't possible while a step is running", c.Name))
 	}
 	return nil
+}
+
+// raiseBudget adds to the run's budget. A run without a limit of that kind
+// has nothing to raise.
+func (r *runner) raiseBudget(c Command) error {
+	if c.USD < 0 || c.Tokens < 0 || (c.USD == 0 && c.Tokens == 0) {
+		return invalid("say how much to add: dollars, tokens or both")
+	}
+	if c.USD > 0 && r.pipe.MaxBudget() == 0 {
+		return invalid("the run has no dollar budget (limits.max_budget_usd) to raise")
+	}
+	if c.Tokens > 0 && r.pipe.MaxTokens() == 0 {
+		return invalid("the run has no token budget (limits.max_tokens) to raise")
+	}
+	r.emitUser(c)
+	return r.emit(store.EvBudgetRaised, store.BudgetRaised{USD: c.USD, Tokens: c.Tokens})
 }
 
 // upgrade swaps in the pipeline Engine.Upgrade staged next to the run's
@@ -809,7 +827,7 @@ func (r *runner) finishVisit(v *steps.Visit, typ string, vr visitResult, abort *
 		abort = nil
 	}
 	if abort != nil {
-		res = steps.Result{Outcome: steps.OutcomeCancelled, Summary: "Ended by " + abort.cmd.Source + " (" + abort.cmd.Name + ")", Cost: res.Cost, SessionID: res.SessionID}
+		res = steps.Result{Outcome: steps.OutcomeCancelled, Summary: "Ended by " + abort.cmd.Source + " (" + abort.cmd.Name + ")", Cost: res.Cost, Tokens: res.Tokens, SessionID: res.SessionID}
 	} else if res.Outcome == steps.OutcomeCancelled {
 		// Cancelled without an abort (shouldn't happen): treat as an error.
 		res = steps.ErrorResult("cancelled", "the visit was cancelled")
@@ -829,13 +847,13 @@ func (r *runner) finishVisit(v *steps.Visit, typ string, vr visitResult, abort *
 	dur := finished.Sub(started).Milliseconds()
 	_ = writeResult(v.File("result.json"), resultJSON{
 		Seq: v.Seq, Step: v.StepName, Type: typ, Outcome: res.Outcome, Summary: res.Summary, Vars: res.Vars,
-		Error: res.Error, ExitCode: res.ExitCode, CostUSD: res.Cost, Usage: res.Usage, SessionID: res.SessionID,
+		Error: res.Error, ExitCode: res.ExitCode, CostUSD: res.Cost, Tokens: res.Tokens, Usage: res.Usage, SessionID: res.SessionID,
 		DurationMS: dur, PermissionDenials: res.PermissionDenials, Polls: res.Polls, Extra: res.Extra,
 	})
 	_ = writeHandover(v.File("handover.md"), r.id, v.StepName, v.Number, res, finished, r.pipe.OutputTail())
 	if err := r.emit(store.EvVisitFinished, store.VisitFinished{
 		Seq: v.Seq, Outcome: res.Outcome, Summary: res.Summary, Vars: res.Vars, Error: res.Error,
-		CostUSD: res.Cost, DurationMS: dur, SessionID: res.SessionID, PermissionDenials: len(res.PermissionDenials),
+		CostUSD: res.Cost, Tokens: res.Tokens, DurationMS: dur, SessionID: res.SessionID, PermissionDenials: len(res.PermissionDenials),
 	}); err != nil {
 		return false
 	}
@@ -871,6 +889,12 @@ func (r *runner) route(v *steps.Visit, res steps.Result) {
 	case "resplit":
 		r.next = nextVisit{resumeKind: "resplit", resumeID: res.SessionID, note: res.Summary}
 		r.transition(v.StepName, v.StepName, res.Outcome, store.ReasonHuman, true)
+		return
+	}
+	if res.Outcome == steps.OutcomeError && res.Error != nil && res.Error.Reason == "run_budget" {
+		// Retrying can't help until someone raises the budget, so hold the
+		// run for them rather than routing to an error handler.
+		r.park(fmt.Sprintf("budget reached at %s — %s", v.StepName, res.Error.Message))
 		return
 	}
 	if res.Outcome == steps.OutcomeError {
@@ -966,6 +990,24 @@ func (r *runner) parked() bool {
 		case c := <-r.cmds:
 			s := r.snap()
 			switch c.Name {
+			case CmdRaiseBudget:
+				if err := r.raiseBudget(c); err != nil {
+					reply(c, err)
+					continue
+				}
+				if c.Action != "retry" {
+					reply(c, nil)
+					continue
+				}
+				r.halted = false
+				target := s.CurrentStep
+				if lv := s.LastVisit(); lv != nil && lv.Interrupted {
+					target = lv.Step
+				}
+				r.transition(s.CameFrom, target, "", store.ReasonManual, true)
+				r.setStatus(store.StatusRunning, "")
+				reply(c, nil)
+				return true
 			case CmdRetry:
 				r.emitUser(c)
 				r.halted = false
@@ -1293,6 +1335,10 @@ func (v *visitRT) Output(stream string, chunk []byte) {
 	}
 }
 func (v *visitRT) AgentEvent(ev agent.UIEvent) {
+	if rep, ok := ev.Data.(agent.UsageReport); ok && ev.Kind == "usage" {
+		v.r.e.observeUsage(rep)
+		return
+	}
 	if p := v.r.e.o.Publisher; p != nil {
 		p.Agent(v.r.id, v.seq, ev)
 	}
@@ -1403,6 +1449,8 @@ func (r *runner) holdPaused() bool {
 				return true
 			case CmdSetVar:
 				reply(c, r.setVar(c))
+			case CmdRaiseBudget:
+				reply(c, r.raiseBudget(c))
 			case CmdCancel:
 				r.emitUser(c)
 				r.cancelRun()

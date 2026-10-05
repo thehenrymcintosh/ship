@@ -74,6 +74,7 @@ type Result struct {
 	Vars              map[string]string
 	Error             *store.StepError
 	Cost              float64
+	Tokens            int64
 	ExitCode          *int
 	SessionID         string
 	PermissionDenials []json.RawMessage

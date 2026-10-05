@@ -8,6 +8,7 @@
     <a href="/?filter=all" {{if eq $.Filter "all"}}aria-current="true"{{end}}>All</a>
   </nav>
 </div>
+<div id="usage-card" hx-get="/fragments/usage" hx-trigger="load, sse:run throttle:3s, ship-refresh from:body, every 60s" hx-swap="innerHTML"></div>
 <div id="runs-list" hx-get="/fragments/runs?filter={{.Filter}}" hx-trigger="sse:run throttle:500ms, ship-refresh from:body, every 30s" hx-swap="innerHTML">
 {{template "runs-list" (dict "Groups" .Data "Filter" .Filter)}}
 </div>

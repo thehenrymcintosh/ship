@@ -58,6 +58,16 @@ func (Duration) JSONSchema() *jsonschema.Schema {
 	}
 }
 
+func (Tokens) JSONSchema() *jsonschema.Schema {
+	return &jsonschema.Schema{
+		OneOf: []*jsonschema.Schema{
+			{Type: "integer", Minimum: "1"},
+			{Type: "string", Pattern: `^[0-9][0-9_]*(\.[0-9]+)?[kKmM]?$`},
+		},
+		Description: "Token count: 200000, 200k or 1.5m. Counts input, cache writes and output; cache reads aren't counted.",
+	}
+}
+
 // JSONSchemaExtend adds name patterns to steps and variables.
 func (Pipeline) JSONSchemaExtend(s *jsonschema.Schema) {
 	if p, ok := s.Properties.Get("steps"); ok {

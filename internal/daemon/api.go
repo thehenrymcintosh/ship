@@ -50,6 +50,9 @@ func (d *Daemon) routes() http.Handler {
 	api("POST /api/runs/{id}/pr/trigger", d.command(engine.CmdPRTrigger))
 	api("POST /api/runs/{id}/reacquire", d.command(engine.CmdReacquire))
 	api("POST /api/runs/{id}/upgrade", d.upgrade)
+	api("POST /api/runs/{id}/budget", d.command(engine.CmdRaiseBudget))
+	api("POST /api/runs/{id}/focus", d.focus)
+	api("GET /api/usage", d.getUsage)
 	api("POST /api/runs/{id}/open", d.openThing)
 	api("GET /api/runs/{id}/feedback", d.runFeedback)
 	api("POST /api/runs/{id}/feedback", d.addFeedback)
@@ -520,6 +523,9 @@ type CommandBody struct {
 	Value  string `json:"value"`
 	All    bool   `json:"all"`
 	Source string `json:"source"`
+	// raise-budget: amounts to add ("5", "2.50"; "100k", "1m")
+	USD    string `json:"usd"`
+	Tokens string `json:"tokens"`
 }
 
 func (d *Daemon) command(name string) http.HandlerFunc {
@@ -541,6 +547,22 @@ func (d *Daemon) command(name string) http.HandlerFunc {
 			}
 		}
 		c := engine.Command{Name: name, Choice: b.Choice, Note: b.Note, Action: b.Action, Step: b.Step, Var: b.Name, Value: b.Value, All: b.All, Source: src}
+		if usd := strings.TrimPrefix(strings.TrimSpace(b.USD), "$"); usd != "" {
+			v, err := strconv.ParseFloat(usd, 64)
+			if err != nil || v <= 0 {
+				writeErr(w, 400, "bad_request", fmt.Sprintf("invalid amount %q", b.USD))
+				return
+			}
+			c.USD = v
+		}
+		if t := strings.TrimSpace(b.Tokens); t != "" {
+			n, err := pipeline.ParseTokens(t)
+			if err != nil {
+				writeErr(w, 400, "bad_request", err.Error())
+				return
+			}
+			c.Tokens = n
+		}
 		if err := d.eng.Do(id, c); err != nil {
 			writeEngineErr(w, err)
 			return

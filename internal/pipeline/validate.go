@@ -96,11 +96,11 @@ func (v *validator) warnf(code, ptr, format string, args ...any) {
 
 // fieldsByType lists the step fields valid for each type, beyond the common ones.
 var fieldsByType = map[string][]string{
-	TypeAgent:  {"agent", "prompt", "cli", "model", "effort", "permission_mode", "allowed_tools", "disallowed_tools", "extra_args", "session", "context", "save"},
+	TypeAgent:  {"agent", "prompt", "cli", "model", "effort", "permission_mode", "allowed_tools", "disallowed_tools", "extra_args", "session", "context", "save", "max_budget_usd", "max_tokens"},
 	TypeRun:    {"run", "shell", "save", "save_on", "outcomes"},
 	TypeAsk:    {"ask", "show", "input", "choices"},
 	TypeWait:   {"wait", "every"},
-	TypeSplit:  {"split", "prompt", "cli", "model", "effort", "permission_mode", "allowed_tools", "disallowed_tools", "extra_args", "session", "context", "rules", "max_slices", "review"},
+	TypeSplit:  {"split", "prompt", "cli", "model", "effort", "permission_mode", "allowed_tools", "disallowed_tools", "extra_args", "session", "context", "rules", "max_slices", "review", "max_budget_usd", "max_tokens"},
 	TypeFanout: {"fanout", "mode", "stack", "advance_on", "max_parallel", "on_child_stop"},
 	TypePR:     {"pr", "every", "settle", "trigger"},
 }

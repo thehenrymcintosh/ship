@@ -94,6 +94,14 @@ func (p *Pipeline) MaxTransitions() int {
 	return DefaultMaxTransitions
 }
 
+// MaxTokens returns the run's token budget (0 = none).
+func (p *Pipeline) MaxTokens() int64 {
+	if p.Limits == nil {
+		return 0
+	}
+	return p.Limits.MaxTokens.N()
+}
+
 // MaxBudget returns the run's budget in USD (0 = none).
 func (p *Pipeline) MaxBudget() float64 {
 	if p.Limits != nil && p.Limits.MaxBudgetUSD != nil {

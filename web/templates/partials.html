@@ -97,3 +97,49 @@
 </section>
 {{end}}
 {{end}}
+
+{{/* usage-meter: the account's usage limits, compact, for the top bar. Data: UsageView */}}
+{{define "usage-meter"}}{{if .Known}}
+<a class="usage-meter{{if .Rejected}} rejected{{end}}" href="/#usage" title="Claude usage limits, as of {{ago .UpdatedAt}}. Counts all use of your account, not only ship.">
+  {{range .Windows}}<span class="um um-{{.Level}}" title="{{.Label}}: {{.Pct}}% used{{with resets .ResetsAt}} · {{.}}{{end}}"><span class="um-label">{{.Label}}</span><span class="um-bar"><span style="width: {{.Pct}}%"></span></span><span class="um-pct">{{.Pct}}%</span></span>{{end}}
+</a>
+{{end}}{{end}}
+
+{{/* usage-card: usage limits plus each run's share, on the runs page. Data: UsageView */}}
+{{define "usage-card"}}{{if .Known}}
+<section class="card usage-card" id="usage">
+  <header class="card-head"><h2>Claude usage</h2><span class="muted small">as of {{ago .UpdatedAt}} · counts all use of your account</span></header>
+  <div class="usage-windows">
+    {{range .Windows}}
+    <div class="uw uw-{{.Level}}">
+      <div class="uw-top"><strong>{{.Label}}</strong><span>{{.Pct}}%</span></div>
+      <div class="uw-bar"><span style="width: {{.Pct}}%"></span></div>
+      <div class="muted small">{{with resets .ResetsAt}}{{.}}{{else}}reset time unknown until an agent runs{{end}}</div>
+    </div>
+    {{end}}
+  </div>
+  {{if .Rejected}}<p class="error-line">The limit has been reached: agent steps wait for it to reset, then carry on.</p>{{end}}
+  {{with .Advice}}<p class="advice">{{.}}</p>{{end}}
+  {{if .Runs}}
+  <table class="usage-runs">
+    <thead><tr><th>Run</th><th title="Spent in the current 5-hour window">This window</th><th title="Estimated share of the 5-hour limit, from what each run spent">≈ of limit</th><th></th></tr></thead>
+    <tbody>
+    {{range .Runs}}
+      <tr{{if terminal .Status}} class="finished"{{end}}>
+        <td><a href="/runs/{{.ID}}">{{template "pill" .}} {{.Title}}</a>{{if .Working}} <span class="spin small" aria-hidden="true" title="an agent is working"></span>{{end}}</td>
+        <td>{{money .USD}}</td>
+        <td>{{if .Pct}}{{.Pct}}%{{end}}</td>
+        <td class="actions">
+          {{if not (terminal .Status)}}
+            {{if .Paused}}<button class="btn small" hx-post="/api/runs/{{.ID}}/resume" hx-vals='{"all":true}' hx-swap="none">Resume</button>
+            {{else}}<button class="btn small" hx-post="/api/runs/{{.ID}}/focus" hx-swap="none" hx-confirm="Pause every other active run after its current step, so this one can finish?" title="Pause the other runs so this one can finish">Focus</button>
+            <button class="btn small ghost" hx-post="/api/runs/{{.ID}}/pause" hx-vals='{"all":true}' hx-swap="none">Pause</button>{{end}}
+          {{end}}
+        </td>
+      </tr>
+    {{end}}
+    </tbody>
+  </table>
+  {{end}}
+</section>
+{{end}}{{end}}

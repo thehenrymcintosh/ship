@@ -108,3 +108,28 @@ func TestLive(t *testing.T) {
 	}
 	t.Logf("cost $%.4f", r.CostUSD)
 }
+
+func TestParserLimitsAndTokens(t *testing.T) {
+	p := NewParser(nil)
+	var seen int64
+	p.onTokens = func(n int64) { seen = n }
+	for _, l := range []string{
+		`{"type":"rate_limit_event","rate_limit_info":{"status":"allowed","resetsAt":1791233400}}`,
+		`{"type":"assistant","message":{"id":"m1","content":[{"type":"text","text":"hi"}],"usage":{"input_tokens":10,"cache_creation_input_tokens":100,"cache_read_input_tokens":5000,"output_tokens":20}}}`,
+		`{"type":"assistant","message":{"id":"m1","content":[{"type":"tool_use","name":"Bash"}],"usage":{"input_tokens":10,"cache_creation_input_tokens":100,"cache_read_input_tokens":5000,"output_tokens":20}}}`,
+		`{"type":"assistant","message":{"id":"m2","content":[],"usage":{"input_tokens":5,"output_tokens":5}}}`,
+	} {
+		p.Line([]byte(l))
+	}
+	if r := p.Response(); r.Limited || seen != 140 {
+		t.Fatalf("limited %v tokens %d", r.Limited, seen)
+	}
+	// The session limit as claude reports it.
+	p.Line([]byte(`{"type":"rate_limit_event","rate_limit_info":{"status":"rejected","resetsAt":1791215400,"rateLimitType":"five_hour"}}`))
+	p.Line([]byte(`{"type":"assistant","message":{"id":"m3","model":"<synthetic>","content":[{"type":"text","text":"You've hit your session limit · resets 4:50pm (Europe/London)"}]},"error":"rate_limit"}`))
+	p.Line([]byte(`{"type":"result","subtype":"success","is_error":true,"result":"You've hit your session limit · resets 4:50pm (Europe/London)","usage":{"input_tokens":34,"cache_creation_input_tokens":54791,"cache_read_input_tokens":773291,"output_tokens":13426}}`))
+	r := p.Response()
+	if !r.Limited || r.RetryAt.Unix() != 1791215400 || r.Tokens != 34+54791+13426 {
+		t.Fatalf("%+v", r)
+	}
+}

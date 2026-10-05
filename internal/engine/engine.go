@@ -75,6 +75,10 @@ type Engine struct {
 	lmu       sync.Mutex
 	listeners map[int]func(runID string, e store.Event)
 	nextL     int
+
+	umu        sync.Mutex
+	usage      *Usage
+	usageSaved time.Time
 }
 
 // New returns an engine.
@@ -305,6 +309,7 @@ const (
 	CmdResume        = "resume"
 	CmdPRTrigger     = "pr_trigger"
 	CmdUpgrade       = "upgrade" // sent by Upgrade, which stages the pipeline
+	CmdRaiseBudget   = "raise_budget"
 )
 
 // Command is a manual control.
@@ -319,8 +324,11 @@ type Command struct {
 	All    bool // pause/resume: child runs too
 	// upgrade: notes on files the run's worktree has an older copy of
 	Warnings []string
-	Source   string // cli | ui | engine
-	reply    chan error
+	// raise_budget: amounts to add (Action "retry" also retries a held run)
+	USD    float64
+	Tokens int64
+	Source string // cli | ui | engine
+	reply  chan error
 }
 
 // Do sends a command to a run and waits for it to take effect.

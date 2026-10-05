@@ -46,6 +46,7 @@ const (
 	EvVersioned         = "pipeline_versioned"
 	EvPRPolled          = "pr_polled"
 	EvUpgraded          = "pipeline_upgraded"
+	EvBudgetRaised      = "budget_raised"
 )
 
 // Actors.
@@ -138,9 +139,16 @@ type VisitFinished struct {
 	Vars              map[string]string `json:"vars,omitempty"`
 	Error             *StepError        `json:"error,omitempty"`
 	CostUSD           float64           `json:"cost_usd"`
+	Tokens            int64             `json:"tokens,omitempty"`
 	DurationMS        int64             `json:"duration_ms"`
 	SessionID         string            `json:"session_id,omitempty"`
 	PermissionDenials int               `json:"permission_denials,omitempty"`
+}
+
+// BudgetRaised adds to a run's budget beyond its pipeline's limits.
+type BudgetRaised struct {
+	USD    float64 `json:"usd,omitempty"`
+	Tokens int64   `json:"tokens,omitempty"`
 }
 
 // Transition moves the run to another step.

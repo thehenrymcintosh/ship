@@ -260,3 +260,6 @@ func SharedPrompt(step string, visit int, since, task string) string {
 
 // ResumePrompt is the prompt for resume-session after an interruption.
 const ResumePrompt = "You were interrupted. Check the current state of the worktree, continue, then report your result."
+
+// LimitResumePrompt continues a conversation that a usage limit cut off.
+const LimitResumePrompt = "You were stopped by a Claude usage limit, which has now reset. Check the current state of the worktree, carry on from where you left off, then report your result."

@@ -174,6 +174,7 @@ type resultJSON struct {
 	Error             *store.StepError  `json:"error,omitempty"`
 	ExitCode          *int              `json:"exit_code,omitempty"`
 	CostUSD           float64           `json:"cost_usd,omitempty"`
+	Tokens            int64             `json:"tokens,omitempty"`
 	Usage             json.RawMessage   `json:"usage,omitempty"`
 	SessionID         string            `json:"session_id,omitempty"`
 	DurationMS        int64             `json:"duration_ms"`

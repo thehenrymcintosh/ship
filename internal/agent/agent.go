@@ -47,7 +47,8 @@ type Request struct {
 	OutputSchema json.RawMessage // structured-output schema
 	SessionID    string          // new session id to assign (fresh)
 	ResumeID     string          // session to resume
-	BudgetUSD    float64         // remaining run budget, 0 = none
+	BudgetUSD    float64         // spending limit for this invocation, 0 = none
+	MaxTokens    int64           // token limit for this invocation (see Tokens), 0 = none
 	Timeout      time.Duration
 	Env          []string
 	ExtraArgs    []string
@@ -59,6 +60,7 @@ type Request struct {
 	Step        string
 	VisitNumber int
 	Attempt     int // 0 = first try, 1 = correction retry
+	LimitRetry  int // retries after a usage or rate limit
 }
 
 // Response is what an invocation produced.
@@ -72,7 +74,44 @@ type Response struct {
 	ErrorText         string
 	PermissionDenials []json.RawMessage
 	ExitCode          int
+	// Tokens counts what the model processed fresh: input, cache writes and
+	// output. Cache reads (re-reading the conversation, billed at a tenth)
+	// aren't counted, or every long session would look enormous.
+	Tokens int64
+	// Limited is set when Claude refused for a usage or rate limit (or was
+	// overloaded); RetryAt is when it says the limit resets, if it said.
+	Limited bool
+	RetryAt time.Time
+	// OverBudget is "usd" or "tokens" when the invocation stopped at its
+	// BudgetUSD or MaxTokens.
+	OverBudget string
 }
+
+// LimitWindow is one of Claude's usage-limit windows (five_hour,
+// seven_day…) as the CLI last reported it.
+type LimitWindow struct {
+	Name        string    `json:"name"`
+	Utilization float64   `json:"utilization"` // 0–1
+	ResetsAt    time.Time `json:"resets_at"`
+}
+
+// UsageReport is sent to the sink (as a "usage" event) whenever the CLI
+// reports where the account stands against its usage limits.
+type UsageReport struct {
+	Rejected bool          `json:"rejected"`
+	Windows  []LimitWindow `json:"windows"`
+}
+
+// Usage is the token counts claude reports.
+type Usage struct {
+	Input         int64 `json:"input_tokens"`
+	CacheCreation int64 `json:"cache_creation_input_tokens"`
+	CacheRead     int64 `json:"cache_read_input_tokens"`
+	Output        int64 `json:"output_tokens"`
+}
+
+// Tokens is the count budgets use: everything but cache reads.
+func (u Usage) Tokens() int64 { return u.Input + u.CacheCreation + u.Output }
 
 // UIEvent is one live event for the UI: assistant text, a tool call or a
 // tool result.

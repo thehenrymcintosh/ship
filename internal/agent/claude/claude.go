@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/thehenrymcintosh/ship/internal/agent"
 	"github.com/thehenrymcintosh/ship/internal/proc"
@@ -122,6 +123,19 @@ func (a *Adapter) Run(ctx context.Context, req agent.Request, sink agent.Sink) (
 	}
 	args, useStdin := Args(req)
 	p := NewParser(sink)
+	// Stop the agent once it has used its token budget (claude enforces the
+	// dollar one itself).
+	ctx, stop := context.WithCancel(ctx)
+	defer stop()
+	overTokens := false
+	if req.MaxTokens > 0 {
+		p.onTokens = func(n int64) {
+			if n > req.MaxTokens && !overTokens {
+				overTokens = true
+				stop()
+			}
+		}
+	}
 	lw := &lineWriter{fn: func(line []byte) {
 		if req.TranscriptW != nil {
 			req.TranscriptW.Write(append(append([]byte(nil), line...), '\n'))
@@ -137,6 +151,15 @@ func (a *Adapter) Run(ctx context.Context, req agent.Request, sink agent.Sink) (
 	}
 	res, err := proc.Run(ctx, spec)
 	lw.Flush()
+	if overTokens {
+		resp := p.Response()
+		resp.IsError, resp.OverBudget, resp.ExitCode = true, "tokens", res.ExitCode
+		resp.ErrorText = fmt.Sprintf("stopped at its token budget: %d of %d tokens", resp.Tokens, req.MaxTokens)
+		if resp.SessionID == "" {
+			resp.SessionID = firstNonEmpty(req.ResumeID, req.SessionID)
+		}
+		return resp, nil
+	}
 	if err != nil {
 		return agent.Response{IsError: true, ErrorText: err.Error(), ExitCode: -1}, err
 	}
@@ -150,7 +173,7 @@ func (a *Adapter) Run(ctx context.Context, req agent.Request, sink agent.Sink) (
 		if resp.ErrorText == "" {
 			resp.ErrorText = fmt.Sprintf("claude exited with code %d", res.ExitCode)
 		}
-		if ctx.Err() == context.DeadlineExceeded {
+		if ctx.Err() == context.DeadlineExceeded && req.Timeout > 0 {
 			resp.ErrorText = "timed out after " + req.Timeout.String()
 		} else if ctx.Err() != nil {
 			resp.ErrorText = "cancelled"
@@ -165,6 +188,10 @@ type Parser struct {
 	resp      agent.Response
 	gotResult bool
 	lastText  string
+	// Tokens per API message so far (a message's usage repeats on each of
+	// its content lines).
+	msgTokens map[string]int64
+	onTokens  func(total int64)
 }
 
 // NewParser returns a parser emitting to sink (may be nil).
@@ -190,8 +217,22 @@ type streamLine struct {
 	PermissionMode string `json:"permissionMode"`
 	// assistant / user
 	Message *struct {
-		Content []block `json:"content"`
+		ID      string       `json:"id"`
+		Content []block      `json:"content"`
+		Usage   *agent.Usage `json:"usage"`
 	} `json:"message"`
+	Error string `json:"error"` // assistant: an API error such as rate_limit
+	// rate_limit_event
+	RateLimit *struct {
+		Status         string  `json:"status"`
+		ResetsAt       int64   `json:"resetsAt"`
+		Type           string  `json:"rateLimitType"`
+		Utilization    float64 `json:"utilization"`
+		UnifiedWindows map[string]struct {
+			Utilization float64 `json:"utilization"`
+			ResetsAt    int64   `json:"resetsAt"`
+		} `json:"unifiedWindows"`
+	} `json:"rate_limit_info"`
 	// result
 	StructuredOutput  json.RawMessage   `json:"structured_output"`
 	Result            json.RawMessage   `json:"result"`
@@ -229,9 +270,47 @@ func (p *Parser) Line(line []byte) {
 			p.resp.SessionID = l.SessionID
 			p.emit("system", map[string]any{"session_id": l.SessionID, "model": l.Model, "permission_mode": l.PermissionMode})
 		}
+	case "rate_limit_event":
+		rl := l.RateLimit
+		if rl == nil {
+			return
+		}
+		if rl.Status == "rejected" {
+			p.resp.Limited = true
+			if rl.ResetsAt > 0 {
+				p.resp.RetryAt = time.Unix(rl.ResetsAt, 0)
+			}
+		}
+		rep := agent.UsageReport{Rejected: rl.Status == "rejected"}
+		for name, w := range rl.UnifiedWindows {
+			rep.Windows = append(rep.Windows, agent.LimitWindow{Name: name, Utilization: w.Utilization, ResetsAt: time.Unix(w.ResetsAt, 0)})
+		}
+		if len(rep.Windows) == 0 && rl.Type != "" && rl.ResetsAt > 0 {
+			rep.Windows = append(rep.Windows, agent.LimitWindow{Name: rl.Type, Utilization: rl.Utilization, ResetsAt: time.Unix(rl.ResetsAt, 0)})
+		}
+		if len(rep.Windows) > 0 && p.sink != nil {
+			p.sink.Event(agent.UIEvent{Kind: "usage", Data: rep})
+		}
 	case "assistant":
+		if limitError(l.Error) {
+			p.resp.Limited = true
+		}
 		if l.Message == nil {
 			return
+		}
+		if u := l.Message.Usage; u != nil && l.Message.ID != "" {
+			if p.msgTokens == nil {
+				p.msgTokens = map[string]int64{}
+			}
+			p.msgTokens[l.Message.ID] = u.Tokens()
+			var total int64
+			for _, n := range p.msgTokens {
+				total += n
+			}
+			p.resp.Tokens = total
+			if p.onTokens != nil {
+				p.onTokens(total)
+			}
 		}
 		for _, b := range l.Message.Content {
 			switch b.Type {
@@ -276,6 +355,13 @@ func (p *Parser) Line(line []byte) {
 		}
 		p.resp.CostUSD = l.TotalCostUSD
 		p.resp.Usage = l.Usage
+		var u agent.Usage
+		if json.Unmarshal(l.Usage, &u) == nil && u.Tokens() > 0 {
+			p.resp.Tokens = u.Tokens()
+		}
+		if strings.Contains(l.Subtype, "budget") {
+			p.resp.OverBudget = "usd"
+		}
 		p.resp.PermissionDenials = l.PermissionDenials
 		if l.IsError || (l.Subtype != "" && l.Subtype != "success") {
 			p.resp.IsError = true
@@ -287,8 +373,32 @@ func (p *Parser) Line(line []byte) {
 				msg = "claude reported " + firstNonEmpty(l.Subtype, "an error")
 			}
 			p.resp.ErrorText = msg
+			if limitText(msg) {
+				p.resp.Limited = true
+			}
 		}
 	}
+}
+
+// limitError reports whether an assistant message's API error is one to
+// wait out rather than fail on.
+func limitError(e string) bool {
+	switch e {
+	case "rate_limit", "overloaded", "overloaded_error", "rate_limit_error":
+		return true
+	}
+	return false
+}
+
+// limitText catches limits reported only as text.
+func limitText(msg string) bool {
+	m := strings.ToLower(msg)
+	for _, s := range []string{"usage limit", "session limit", "rate limit", "api error: 429", "api error: 529", "overloaded"} {
+		if strings.Contains(m, s) {
+			return true
+		}
+	}
+	return false
 }
 
 // Response returns the accumulated response.

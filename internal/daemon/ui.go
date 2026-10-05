@@ -58,6 +58,19 @@ var funcs = template.FuncMap{
 		return *t
 	},
 	"terminal": func(s store.Status) bool { return s.Terminal() },
+	"resets": func(t time.Time) string {
+		if t.IsZero() {
+			return ""
+		}
+		d := time.Until(t)
+		if d <= 0 {
+			return "resetting now"
+		}
+		if d < 24*time.Hour {
+			return "resets in " + fmtDur(d.Round(time.Minute)) + " (" + t.Local().Format("15:04") + ")"
+		}
+		return "resets " + t.Local().Format("Mon 15:04")
+	},
 	"inInbox":  func(s store.Status) bool { return s.InInbox() },
 	"basename": filepath.Base,
 	"dict": func(kv ...any) map[string]any {
@@ -740,6 +753,7 @@ func (d *Daemon) uiRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /pipelines", d.pagePipelines)
 	mux.HandleFunc("GET /fragments/runs", d.fragRuns)
 	mux.HandleFunc("GET /fragments/inbox", d.fragInbox)
+	mux.HandleFunc("GET /fragments/usage", d.fragUsage)
 	mux.HandleFunc("GET /fragments/runs/{id}/{part}", d.fragRun)
 	mux.HandleFunc("GET /fragments/runs/{id}/visits/{seq}/{tab}", d.fragTab)
 }

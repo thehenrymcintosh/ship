@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/thehenrymcintosh/ship/internal/agent"
 	"github.com/thehenrymcintosh/ship/internal/brief"
@@ -182,9 +183,9 @@ func describeTarget(v *Visit, t string) string {
 // and session bookkeeping.
 func invoke(ctx context.Context, v *Visit, c *agentCall) (agent.Output, Result) {
 	var r Result
-	budget := v.Pipeline.MaxBudget()
-	if budget > 0 && v.Snapshot.CostUSD >= budget {
-		return agent.Output{}, ErrorResult("budget", fmt.Sprintf("the run has spent $%.2f of its $%.2f budget", v.Snapshot.CostUSD, budget))
+	b, over := visitBudget(v)
+	if over != nil {
+		return agent.Output{}, *over
 	}
 	preamble := c.preamble.Render()
 	_ = writeFile(v.File("input.md"), "## Prompt\n\n"+c.prompt+"\n\n## Preamble\n\n"+preamble+"\n## Output schema\n\n```json\n"+string(c.schema)+"\n```\n")
@@ -210,15 +211,25 @@ func invoke(ctx context.Context, v *Visit, c *agentCall) (agent.Output, Result) 
 		TranscriptW: tw, StderrW: io.MultiWriter(ew, outputWriter{v, "stderr"}),
 		RunID: v.RunID, Step: v.StepName, VisitNumber: v.Number,
 	}
-	if budget > 0 {
-		req.BudgetUSD = budget - v.Snapshot.CostUSD
-	}
 	sink := agent.SinkFunc(func(e agent.UIEvent) { v.RT.AgentEvent(e) })
+	fail := func(e Result) (agent.Output, Result) {
+		e.Cost, e.Tokens, e.SessionID, e.PermissionDenials, e.Usage = r.Cost, r.Tokens, r.SessionID, r.PermissionDenials, r.Usage
+		return agent.Output{}, e
+	}
 
-	for attempt := 0; attempt < 2; attempt++ {
+	for attempt := 0; attempt < 2; {
 		req.Attempt = attempt
+		// What's left of the budgets after earlier tries in this visit.
+		req.BudgetUSD, req.MaxTokens = 0, 0
+		if b.usd > 0 {
+			req.BudgetUSD = max(b.usd-r.Cost, 0.0001)
+		}
+		if b.tokens > 0 {
+			req.MaxTokens = max(b.tokens-r.Tokens, 1)
+		}
 		resp, err := c.adapter.Run(ctx, req, sink)
 		r.Cost += resp.CostUSD
+		r.Tokens += resp.Tokens
 		r.PermissionDenials = append(r.PermissionDenials, resp.PermissionDenials...)
 		if resp.SessionID != "" {
 			r.SessionID = resp.SessionID
@@ -227,7 +238,41 @@ func invoke(ctx context.Context, v *Visit, c *agentCall) (agent.Output, Result) 
 			r.Usage = resp.Usage
 		}
 		if ctx.Err() != nil {
-			return agent.Output{}, Result{Outcome: OutcomeCancelled, Summary: "cancelled", Cost: r.Cost, SessionID: r.SessionID}
+			return agent.Output{}, Result{Outcome: OutcomeCancelled, Summary: "cancelled", Cost: r.Cost, Tokens: r.Tokens, SessionID: r.SessionID}
+		}
+		if resp.Limited {
+			// Wait the limit out, then carry on in the same conversation.
+			wait, ok := limitWait(resp.RetryAt, req.LimitRetry)
+			if !ok {
+				return fail(ErrorResult("rate_limited", "Claude kept refusing for a usage or rate limit: "+resp.ErrorText))
+			}
+			until := time.Now().Add(wait)
+			note := fmt.Sprintf("Claude's usage limit was hit; carrying on at %s", until.Format("15:04"))
+			v.RT.AgentEvent(agent.UIEvent{Kind: "system", Data: map[string]any{"text": note}})
+			_ = v.RT.SetStatus(store.StatusWaiting, note)
+			select {
+			case <-time.After(wait):
+			case <-ctx.Done():
+				return agent.Output{}, Result{Outcome: OutcomeCancelled, Summary: "cancelled", Cost: r.Cost, Tokens: r.Tokens, SessionID: r.SessionID}
+			}
+			_ = v.RT.SetStatus(store.StatusRunning, "")
+			req.LimitRetry++
+			if sid := firstNonEmpty(resp.SessionID, req.ResumeID, req.SessionID); sid != "" {
+				req.ResumeID, req.SessionID = sid, ""
+				req.Prompt = agent.LimitResumePrompt
+			}
+			continue
+		}
+		if resp.OverBudget != "" {
+			reason := "budget"
+			if (resp.OverBudget == "usd" && b.runUSD) || (resp.OverBudget == "tokens" && b.runTokens) {
+				reason = "run_budget"
+			}
+			msg := "the agent stopped at its budget: " + resp.ErrorText
+			if reason == "run_budget" {
+				msg = "the run reached its budget: " + resp.ErrorText
+			}
+			return fail(ErrorResult(reason, msg))
 		}
 		if err != nil || resp.IsError {
 			msg := resp.ErrorText
@@ -241,9 +286,7 @@ func invoke(ctx context.Context, v *Visit, c *agentCall) (agent.Output, Result) 
 			if len(resp.PermissionDenials) > 0 {
 				msg += fmt.Sprintf(" (%d permission denials)", len(resp.PermissionDenials))
 			}
-			e := ErrorResult(reason, msg)
-			e.Cost, e.SessionID, e.PermissionDenials, e.Usage = r.Cost, r.SessionID, r.PermissionDenials, r.Usage
-			return agent.Output{}, e
+			return fail(ErrorResult(reason, msg))
 		}
 		verr := agent.ValidateOutput(c.schema, resp.Structured)
 		var out agent.Output
@@ -262,13 +305,79 @@ func invoke(ctx context.Context, v *Visit, c *agentCall) (agent.Output, Result) 
 			req.ResumeID = firstNonEmpty(resp.SessionID, req.ResumeID, req.SessionID)
 			req.SessionID = ""
 			req.Prompt = agent.CorrectionPrompt(verr.Error())
+			attempt++
 			continue
 		}
-		e := ErrorResult("invalid_output", "the agent's structured result was invalid after a correction: "+verr.Error())
-		e.Cost, e.SessionID, e.PermissionDenials, e.Usage = r.Cost, r.SessionID, r.PermissionDenials, r.Usage
-		return agent.Output{}, e
+		return fail(ErrorResult("invalid_output", "the agent's structured result was invalid after a correction: "+verr.Error()))
 	}
 	panic("unreachable")
+}
+
+// Limit waits: until the reset Claude gives plus a margin, or, when it gives
+// none (rate limits, overload), backing off from LimitBackoff up to 30m.
+var (
+	LimitMargin  = 30 * time.Second
+	LimitBackoff = time.Minute
+)
+
+// limitRetries caps retries when Claude gives no reset time.
+const limitRetries = 8
+
+func limitWait(retryAt time.Time, retry int) (time.Duration, bool) {
+	if !retryAt.IsZero() {
+		return max(time.Until(retryAt), 0) + LimitMargin, true
+	}
+	if retry >= limitRetries {
+		return 0, false
+	}
+	return min(LimitBackoff<<retry, 30*time.Minute), true
+}
+
+// budget is what one visit may spend: the tighter of the step's own limit
+// and what's left of the run's (0 = no limit).
+type budget struct {
+	usd               float64
+	tokens            int64
+	runUSD, runTokens bool // the run's limit is the binding one
+}
+
+func visitBudget(v *Visit) (budget, *Result) {
+	var b budget
+	s := v.Snapshot
+	if limit := v.Pipeline.MaxBudget(); limit > 0 {
+		limit += s.ExtraBudgetUSD
+		if s.CostUSD >= limit {
+			e := ErrorResult("run_budget", fmt.Sprintf("the run has spent $%.2f of its $%.2f budget", s.CostUSD, limit))
+			return b, &e
+		}
+		b.usd, b.runUSD = limit-s.CostUSD, true
+	}
+	if limit := v.Pipeline.MaxTokens(); limit > 0 {
+		limit += s.ExtraTokens
+		if s.Tokens >= limit {
+			e := ErrorResult("run_budget", fmt.Sprintf("the run has used %s of its %s tokens", FormatTokens(s.Tokens), FormatTokens(limit)))
+			return b, &e
+		}
+		b.tokens, b.runTokens = limit-s.Tokens, true
+	}
+	if st := v.Step.MaxBudgetUSD; st != nil && *st > 0 && (b.usd == 0 || *st < b.usd) {
+		b.usd, b.runUSD = *st, false
+	}
+	if st := v.Step.MaxTokens.N(); st > 0 && (b.tokens == 0 || st < b.tokens) {
+		b.tokens, b.runTokens = st, false
+	}
+	return b, nil
+}
+
+// FormatTokens writes a token count briefly: 950, 12.3k, 1.2m.
+func FormatTokens(n int64) string {
+	switch {
+	case n >= 1_000_000:
+		return strings.TrimSuffix(fmt.Sprintf("%.1f", float64(n)/1e6), ".0") + "m"
+	case n >= 1000:
+		return strings.TrimSuffix(fmt.Sprintf("%.1f", float64(n)/1e3), ".0") + "k"
+	}
+	return fmt.Sprint(n)
 }
 
 type outputWriter struct {

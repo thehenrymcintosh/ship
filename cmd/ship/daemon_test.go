@@ -224,3 +224,43 @@ func TestDaemonKill9MidAgent(t *testing.T) {
 		t.Fatal("no events")
 	}
 }
+
+func TestUsageAndFocus(t *testing.T) {
+	h := newHarness(t, map[string]string{"ask": askPipeline})
+	// What Claude last reported: 80% of the 5-hour window used.
+	usage := fmt.Sprintf(`{"windows":[{"name":"five_hour","utilization":0.8,"resets_at":%q},{"name":"seven_day","utilization":0.4,"resets_at":%q}],"updated_at":%q}`,
+		time.Now().Add(2*time.Hour).Format(time.RFC3339), time.Now().Add(72*time.Hour).Format(time.RFC3339), time.Now().Format(time.RFC3339))
+	os.WriteFile(filepath.Join(h.home, "state", "usage.json"), []byte(usage), 0o600)
+	script := "work: [{outcome: done, summary: ok, cost: 1}]\n"
+	a, b := h.startRun("ask", script), h.startRun("ask", script)
+	for _, id := range []string{a, b} {
+		h.waitFor(id, func(s *store.RunSnapshot) bool { return s.Status == store.StatusAsking })
+	}
+
+	var u daemon.UsageView
+	if err := h.c.Do("GET", "/api/usage", nil, &u); err != nil {
+		t.Fatal(err)
+	}
+	if len(u.Windows) != 2 || u.Windows[0].Pct != 80 || u.Windows[0].Level != "warn" || len(u.Runs) != 2 || u.Runs[0].Pct != 40 || u.Advice == "" {
+		t.Fatalf("%+v", u)
+	}
+	var page []byte
+	if err := h.c.Do("GET", "/fragments/usage", nil, &page); err != nil || !strings.Contains(string(page), "Focus") || !strings.Contains(string(page), "5-hour") {
+		t.Fatalf("usage card: %v\n%s", err, page)
+	}
+	if err := h.c.Do("GET", "/fragments/usage?compact=1", nil, &page); err != nil || !strings.Contains(string(page), "um-warn") {
+		t.Fatalf("usage meter: %v\n%s", err, page)
+	}
+
+	var res struct{ Paused []string }
+	if err := h.c.Do("POST", "/api/runs/"+a+"/focus", nil, &res); err != nil {
+		t.Fatal(err)
+	}
+	if len(res.Paused) != 1 || res.Paused[0] != b {
+		t.Fatalf("focus paused %v", res.Paused)
+	}
+	h.waitFor(b, func(s *store.RunSnapshot) bool { return s.PauseRequested })
+	if s := h.waitFor(a, func(*store.RunSnapshot) bool { return true }); s.PauseRequested {
+		t.Fatal("focus paused the run it focused on")
+	}
+}

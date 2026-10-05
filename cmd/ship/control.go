@@ -12,6 +12,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/thehenrymcintosh/ship/internal/daemon"
+	"github.com/thehenrymcintosh/ship/internal/engine/steps"
 	"github.com/thehenrymcintosh/ship/internal/store"
 )
 
@@ -166,6 +167,46 @@ you're warned about any the worktree has an older copy of.`,
 	}
 	cmd.Flags().StringVar(&step, "step", "", "step to continue at (default: the current step)")
 	return cmd
+}
+
+func (a *app) budgetCmd() *cobra.Command {
+	var usd, tokens string
+	var retry bool
+	cmd := &cobra.Command{
+		Use:   "budget <run> [--usd N] [--tokens N]",
+		Short: "Raise a run's budget (and --retry a run that stopped at it)",
+		Long: `Add to a run's budget beyond its pipeline's limits (limits.max_budget_usd and
+limits.max_tokens). A run that reaches its budget waits in your inbox; raise
+it with --retry to carry on from the step it stopped at.`,
+		Example: `  ship budget 3fa --usd 5 --retry
+  ship budget 3fa --tokens 500k`,
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			body := map[string]any{"usd": usd, "tokens": tokens}
+			if retry {
+				body["action"] = "retry"
+			}
+			s, err := a.postSnap(args[0], "budget", body)
+			if err != nil || a.json {
+				return err
+			}
+			fmt.Println(budgetLine(s))
+			return nil
+		},
+	}
+	cmd.Flags().StringVar(&usd, "usd", "", "dollars to add")
+	cmd.Flags().StringVar(&tokens, "tokens", "", "tokens to add (e.g. 200k, 1m)")
+	cmd.Flags().BoolVar(&retry, "retry", false, "retry the step the run stopped at")
+	return cmd
+}
+
+// budgetLine says what a run has spent against its budget.
+func budgetLine(s *store.RunSnapshot) string {
+	line := fmt.Sprintf("spent $%.2f", s.CostUSD)
+	if s.Tokens > 0 {
+		line += ", " + steps.FormatTokens(s.Tokens) + " tokens"
+	}
+	return line
 }
 
 func (a *app) setCmd() *cobra.Command {

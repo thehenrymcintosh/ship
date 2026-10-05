@@ -135,6 +135,7 @@ type Defaults struct {
 type Limits struct {
 	MaxTransitions *int     `yaml:"max_transitions,omitempty" jsonschema:"minimum=1"`
 	MaxBudgetUSD   *float64 `yaml:"max_budget_usd,omitempty" jsonschema:"minimum=0"`
+	MaxTokens      *Tokens  `yaml:"max_tokens,omitempty"`
 }
 
 // Step is one named node. Exactly one type key is set.
@@ -155,6 +156,9 @@ type Step struct {
 	Context     []string `yaml:"context,omitempty"`
 	Save        *Save    `yaml:"save,omitempty"`
 	SaveOn      string   `yaml:"save_on,omitempty" jsonschema:"enum=pass,enum=any"`
+	// Per-visit limits for agent and split steps.
+	MaxBudgetUSD *float64 `yaml:"max_budget_usd,omitempty" jsonschema:"minimum=0"`
+	MaxTokens    *Tokens  `yaml:"max_tokens,omitempty"`
 
 	// run
 	Run      *string    `yaml:"run,omitempty"`
@@ -387,6 +391,50 @@ func (m OrderedMap) Keys() []string {
 		out[i] = kv.Key
 	}
 	return out
+}
+
+// --- Tokens ---------------------------------------------------------------
+
+// Tokens is a token count: 200000, "200k" or "1.5m".
+type Tokens int64
+
+// ParseTokens parses a token count with an optional k or m suffix.
+func ParseTokens(s string) (int64, error) {
+	t := strings.ToLower(strings.TrimSpace(strings.ReplaceAll(s, "_", "")))
+	mult := 1.0
+	switch {
+	case strings.HasSuffix(t, "k"):
+		mult, t = 1e3, strings.TrimSuffix(t, "k")
+	case strings.HasSuffix(t, "m"):
+		mult, t = 1e6, strings.TrimSuffix(t, "m")
+	}
+	f, err := strconv.ParseFloat(t, 64)
+	if err != nil || f <= 0 {
+		return 0, fmt.Errorf("invalid token count %q (e.g. 200000, 200k, 1.5m)", s)
+	}
+	return int64(f * mult), nil
+}
+
+// UnmarshalYAML accepts a number or a string with a k/m suffix.
+func (t *Tokens) UnmarshalYAML(unmarshal func(any) error) error {
+	var s string
+	if err := unmarshal(&s); err != nil {
+		return err
+	}
+	n, err := ParseTokens(s)
+	if err != nil {
+		return err
+	}
+	*t = Tokens(n)
+	return nil
+}
+
+// N returns the count (0 when unset).
+func (t *Tokens) N() int64 {
+	if t == nil {
+		return 0
+	}
+	return int64(*t)
 }
 
 // --- Duration -------------------------------------------------------------

@@ -87,6 +87,7 @@ type VisitSummary struct {
 	Finished          *time.Time `json:"finished,omitempty"`
 	DurationMS        int64      `json:"duration_ms,omitempty"`
 	CostUSD           float64    `json:"cost_usd,omitempty"`
+	Tokens            int64      `json:"tokens,omitempty"`
 	SessionID         string     `json:"session_id,omitempty"`
 	ResumeID          string     `json:"resume_id,omitempty"`
 	Thread            string     `json:"thread,omitempty"`
@@ -118,6 +119,9 @@ type RunSnapshot struct {
 	VisitTotals       map[string]int    `json:"visit_totals"`
 	Transitions       int               `json:"transitions"`
 	CostUSD           float64           `json:"cost_usd"`
+	Tokens            int64             `json:"tokens,omitempty"`
+	ExtraBudgetUSD    float64           `json:"extra_budget_usd,omitempty"` // raised beyond the pipeline's limit
+	ExtraTokens       int64             `json:"extra_tokens,omitempty"`
 	Visits            []VisitSummary    `json:"visits,omitempty"`
 	PendingAsk        *Ask              `json:"pending_ask,omitempty"`
 	Slices            []Slice           `json:"slices,omitempty"`
@@ -275,7 +279,7 @@ func Apply(s *RunSnapshot, e Event) error {
 			t := ts
 			v.Finished = &t
 			v.Outcome, v.Summary, v.Error = d.Outcome, truncate(d.Summary, summaryLimit), d.Error
-			v.CostUSD, v.DurationMS = d.CostUSD, d.DurationMS
+			v.CostUSD, v.Tokens, v.DurationMS = d.CostUSD, d.Tokens, d.DurationMS
 			v.Queued = false
 			v.PermissionDenials = d.PermissionDenials
 			if d.SessionID != "" {
@@ -283,6 +287,7 @@ func Apply(s *RunSnapshot, e Event) error {
 			}
 		}
 		s.CostUSD += d.CostUSD
+		s.Tokens += d.Tokens
 		s.PermissionDenials += d.PermissionDenials
 		if s.PendingAsk != nil && s.PendingAsk.Seq == d.Seq {
 			s.PendingAsk = nil
@@ -377,6 +382,13 @@ func Apply(s *RunSnapshot, e Event) error {
 			return err
 		}
 		s.PipelineVersion, s.PipelineHash = d.Version, d.Hash
+	case EvBudgetRaised:
+		var d BudgetRaised
+		if err := dec(&d); err != nil {
+			return err
+		}
+		s.ExtraBudgetUSD += d.USD
+		s.ExtraTokens += d.Tokens
 	case EvUpgraded:
 		var d Upgraded
 		if err := dec(&d); err != nil {

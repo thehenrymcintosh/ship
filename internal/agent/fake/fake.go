@@ -41,6 +41,11 @@ type Entry struct {
 	Run     string            `yaml:"run"` // shell snippet run in the workdir (e.g. git commit)
 	Exit    int               `yaml:"exit"`
 	Cost    float64           `yaml:"cost"`
+	Tokens  int64             `yaml:"tokens"`
+	// Limited makes the first N tries hit a usage limit that resets after
+	// LimitReset (default: no reset time given).
+	Limited    int    `yaml:"limited"`
+	LimitReset string `yaml:"limit_reset"`
 	// InvalidAttempts makes the first N attempts return invalid output, to
 	// exercise the correction retry.
 	InvalidAttempts int `yaml:"invalid_attempts"`
@@ -138,6 +143,19 @@ func (a *Adapter) Run(ctx context.Context, req agent.Request, sink agent.Sink) (
 			}
 		}
 	}
+	if req.LimitRetry < e.Limited {
+		resp := agent.Response{SessionID: session, IsError: true, Limited: true, ExitCode: 1, ErrorText: "You've hit your session limit"}
+		if d, err := pipeline.ParseDuration(e.LimitReset); err == nil && e.LimitReset != "" {
+			resp.RetryAt = time.Now().Add(d)
+		}
+		return resp, nil
+	}
+	if e.Tokens > 0 && req.MaxTokens > 0 && e.Tokens > req.MaxTokens {
+		return agent.Response{SessionID: session, IsError: true, OverBudget: "tokens", Tokens: req.MaxTokens + 1, CostUSD: e.Cost, ExitCode: 1, ErrorText: "stopped at its token budget"}, nil
+	}
+	if e.Cost > 0 && req.BudgetUSD > 0 && e.Cost > req.BudgetUSD {
+		return agent.Response{SessionID: session, IsError: true, OverBudget: "usd", CostUSD: req.BudgetUSD, ExitCode: 1, ErrorText: "reached its spending limit"}, nil
+	}
 	if req.Attempt == 0 {
 		for p, content := range e.Write {
 			full := filepath.Join(req.Workdir, p)
@@ -157,7 +175,7 @@ func (a *Adapter) Run(ctx context.Context, req agent.Request, sink agent.Sink) (
 			}
 		}
 	}
-	resp := agent.Response{SessionID: session, CostUSD: e.Cost, ExitCode: e.Exit}
+	resp := agent.Response{SessionID: session, CostUSD: e.Cost, Tokens: e.Tokens, ExitCode: e.Exit}
 	for _, d := range e.Denials {
 		b, _ := json.Marshal(map[string]any{"tool_name": d})
 		resp.PermissionDenials = append(resp.PermissionDenials, b)
