@@ -484,6 +484,7 @@ step does that without an agent, using the `gh` CLI:
     every: 2m          # how often to look
     settle: 10m        # see below
     trigger: auto      # or manual
+    max_visits: 0      # it's re-entered after every fix, so don't cap it
     next:
       feedback: address-review   # new review comments
       ci_failed: fix-ci          # a check failed on the latest commit
@@ -504,8 +505,10 @@ step does that without an agent, using the `gh` CLI:
   reviewer's, still count.
 - **CI is judged when it's finished.** `ci_failed` fires once every check on
   the PR's latest commit has finished and one failed, once per commit. A check
-  that was cancelled is re-run once first. No checks reported yet doesn't
-  count as passing.
+  that was cancelled is re-run once first (when its Actions run has finished),
+  unless another job in the same run failed: then that failure is the
+  verdict and is reported straight away. No checks reported yet doesn't count
+  as passing.
 - **The details go in the handover.** The fixing step receives each new
   comment (author, file and line, link) or each failing check with the end of
   its failed log.

@@ -158,6 +158,8 @@ type Comment struct {
 type PR struct {
 	Number         int
 	URL            string
+	Host           string // github.com, or a GitHub Enterprise host
+	Repo           string // OWNER/REPO the PR belongs to
 	State          string // OPEN, CLOSED, MERGED
 	HeadSHA        string
 	ReviewDecision string
@@ -242,8 +244,8 @@ func (u restUser) bot() bool {
 
 // apiList reads every page of a REST list endpoint; gh prints one JSON array
 // per page.
-func apiList[T any](ctx context.Context, dir string, env []string, path string) ([]T, error) {
-	out, err := run(ctx, dir, env, "api", "--paginate", path)
+func apiList[T any](ctx context.Context, dir string, env []string, host, path string) ([]T, error) {
+	out, err := run(ctx, dir, env, "api", "--hostname", host, "--paginate", path)
 	if err != nil {
 		return nil, err
 	}
@@ -259,6 +261,9 @@ func apiList[T any](ctx context.Context, dir string, env []string, path string) 
 		all = append(all, page...)
 	}
 }
+
+// prURLRE splits a PR's URL into its host and OWNER/REPO.
+var prURLRE = regexp.MustCompile(`^https?://([^/]+)/([^/]+/[^/]+)/pull/\d+`)
 
 // View reads a PR (by number, URL or branch) with its checks and comments.
 func View(ctx context.Context, dir string, env []string, ref string) (*PR, error) {
@@ -278,21 +283,31 @@ func View(ctx context.Context, dir string, env []string, ref string) (*PR, error
 		}
 		pr.Comments = append(pr.Comments, Comment{ID: "rv:" + r.ID, Kind: "review", Author: r.Author.Login, Body: r.Body, URL: v.URL, State: r.State, CreatedAt: r.SubmittedAt})
 	}
-	// Comments come from the REST API, which flags bot authors. A failure
-	// here only means they're picked up on a later poll.
-	if conv, err := apiList[commentJSON](ctx, dir, env, fmt.Sprintf("repos/{owner}/{repo}/issues/%d/comments?per_page=100", v.Number)); err == nil {
-		for _, c := range conv {
-			pr.Comments = append(pr.Comments, Comment{ID: fmt.Sprintf("ic:%d", c.ID), Kind: "comment", Author: c.User.Login, Bot: c.User.bot(), Body: c.Body, URL: c.HTMLURL, CreatedAt: c.CreatedAt})
-		}
+	m := prURLRE.FindStringSubmatch(v.URL)
+	if m == nil {
+		return nil, fmt.Errorf("gh pr view: unexpected PR URL %q", v.URL)
 	}
-	if inline, err := apiList[commentJSON](ctx, dir, env, fmt.Sprintf("repos/{owner}/{repo}/pulls/%d/comments?per_page=100", v.Number)); err == nil {
-		for _, c := range inline {
-			line := c.Line
-			if line == 0 {
-				line = c.OrigLine
-			}
-			pr.Comments = append(pr.Comments, Comment{ID: fmt.Sprintf("rc:%d", c.ID), Kind: "inline", Author: c.User.Login, Bot: c.User.bot(), Body: c.Body, URL: c.HTMLURL, Path: c.Path, Line: line, CreatedAt: c.CreatedAt})
+	pr.Host, pr.Repo = m[1], m[2]
+	// Comments come from the REST API, which flags bot authors. If either
+	// call fails the whole read fails, so a batch is never decided on part of
+	// the comments.
+	conv, err := apiList[commentJSON](ctx, dir, env, pr.Host, fmt.Sprintf("repos/%s/issues/%d/comments?per_page=100", pr.Repo, v.Number))
+	if err != nil {
+		return nil, err
+	}
+	for _, c := range conv {
+		pr.Comments = append(pr.Comments, Comment{ID: fmt.Sprintf("ic:%d", c.ID), Kind: "comment", Author: c.User.Login, Bot: c.User.bot(), Body: c.Body, URL: c.HTMLURL, CreatedAt: c.CreatedAt})
+	}
+	inline, err := apiList[commentJSON](ctx, dir, env, pr.Host, fmt.Sprintf("repos/%s/pulls/%d/comments?per_page=100", pr.Repo, v.Number))
+	if err != nil {
+		return nil, err
+	}
+	for _, c := range inline {
+		line := c.Line
+		if line == 0 {
+			line = c.OrigLine
 		}
+		pr.Comments = append(pr.Comments, Comment{ID: fmt.Sprintf("rc:%d", c.ID), Kind: "inline", Author: c.User.Login, Bot: c.User.bot(), Body: c.Body, URL: c.HTMLURL, Path: c.Path, Line: line, CreatedAt: c.CreatedAt})
 	}
 	sort.SliceStable(pr.Comments, func(i, j int) bool { return pr.Comments[i].CreatedAt.Before(pr.Comments[j].CreatedAt) })
 	sort.SliceStable(pr.Reviews, func(i, j int) bool { return pr.Reviews[i].SubmittedAt.Before(pr.Reviews[j].SubmittedAt) })
@@ -323,9 +338,15 @@ func Latest(checks []Check) []Check {
 	return out
 }
 
-// FailedLog returns the tail of a GitHub Actions run's failed-step logs.
-func FailedLog(ctx context.Context, dir string, env []string, runID string, lines int) string {
-	out, err := run(ctx, dir, env, "run", "view", runID, "--log-failed")
+// repoFlag points a gh command at the PR's repo rather than the worktree's.
+func (pr *PR) repoFlag() string {
+	return pr.Host + "/" + pr.Repo
+}
+
+// FailedLog returns the tail of the failed-step logs of one of the PR's
+// GitHub Actions runs.
+func (pr *PR) FailedLog(ctx context.Context, dir string, env []string, runID string, lines int) string {
+	out, err := run(ctx, dir, env, "run", "view", runID, "--log-failed", "-R", pr.repoFlag())
 	if err != nil {
 		return ""
 	}
@@ -336,8 +357,9 @@ func FailedLog(ctx context.Context, dir string, env []string, runID string, line
 	return strings.Join(all, "\n")
 }
 
-// Rerun re-runs a GitHub Actions run's failed or cancelled jobs.
-func Rerun(ctx context.Context, dir string, env []string, runID string) error {
-	_, err := run(ctx, dir, env, "run", "rerun", runID, "--failed")
+// Rerun re-runs the failed or cancelled jobs of one of the PR's GitHub
+// Actions runs.
+func (pr *PR) Rerun(ctx context.Context, dir string, env []string, runID string) error {
+	_, err := run(ctx, dir, env, "run", "rerun", runID, "--failed", "-R", pr.repoFlag())
 	return err
 }

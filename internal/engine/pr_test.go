@@ -14,14 +14,14 @@ import (
 
 const fakeGHScript = `#!/bin/sh
 D="$FAKE_GH_DIR"
-case "$1 $2" in
-  "pr view") [ -f "$D/slow" ] && sleep 1; cat "$D/view.json" ;;
-  "api --paginate") case "$3" in
-      */issues/*) cat "$D/comments.json" 2>/dev/null || echo '[]' ;;
-      *) cat "$D/inline.json" 2>/dev/null || echo '[]' ;;
-    esac ;;
-  "run view") cat "$D/log.txt" ;;
-  "run rerun") echo "$3" >> "$D/reruns.log" ;;
+case "$*" in
+  "pr view "*) [ -f "$D/slow" ] && sleep 1; cat "$D/view.json" ;;
+  "api --hostname github.com --paginate repos/o/r/issues/7/comments"*)
+    [ -f "$D/apifail" ] && { echo x >> "$D/apifails.log"; echo "HTTP 502" >&2; exit 1; }
+    cat "$D/comments.json" ;;
+  "api --hostname github.com --paginate repos/o/r/pulls/7/comments"*) cat "$D/inline.json" ;;
+  "run view "*" -R github.com/o/r") cat "$D/log.txt" ;;
+  "run rerun "*" -R github.com/o/r") echo "$3" >> "$D/reruns.log" ;;
   *) echo "unexpected: $*" >&2; exit 1 ;;
 esac
 `
@@ -145,11 +145,26 @@ func TestPRWatchAuto(t *testing.T) {
 		t.Fatalf("feedback report:\n%s", h)
 	}
 	// Nothing new: the comments aren't sent twice. A cancelled check on a new
-	// head is re-run (once for its Actions run, though two jobs were
-	// cancelled), not reported.
+	// head waits while its Actions run still has a job running (GitHub
+	// can't re-run it yet)…
 	gh.set("OPEN", "bbb", []map[string]any{
 		check("test", "COMPLETED", "CANCELLED", "https://github.com/o/r/actions/runs/77/job/2"),
 		check("lint", "COMPLETED", "CANCELLED", "https://github.com/o/r/actions/runs/77/job/3"),
+		check("build", "IN_PROGRESS", "", "https://github.com/o/r/actions/runs/77/job/4"),
+	}, nil, nil)
+	en.waitFor(s.ID, "new head", func(s *store.RunSnapshot) bool {
+		return s.PR != nil && s.PR.HeadSHA == "bbb" && s.PR.ChecksPending == 3
+	})
+	time.Sleep(200 * time.Millisecond)
+	if _, err := os.Stat(filepath.Join(gh.dir, "reruns.log")); err == nil {
+		t.Fatal("a run with a job still in progress shouldn't be re-run")
+	}
+	// …then is re-run once its run has finished (once for the Actions run,
+	// though two jobs were cancelled), not reported.
+	gh.set("OPEN", "bbb", []map[string]any{
+		check("test", "COMPLETED", "CANCELLED", "https://github.com/o/r/actions/runs/77/job/2"),
+		check("lint", "COMPLETED", "CANCELLED", "https://github.com/o/r/actions/runs/77/job/3"),
+		check("build", "COMPLETED", "SUCCESS", "https://github.com/o/r/actions/runs/77/job/4"),
 	}, nil, nil)
 	en.waitFor(s.ID, "rerun", func(*store.RunSnapshot) bool {
 		b, _ := os.ReadFile(filepath.Join(gh.dir, "reruns.log"))
@@ -166,6 +181,53 @@ func TestPRWatchAuto(t *testing.T) {
 	s = en.waitStatus(s.ID, store.StatusDone)
 	if got := visitTrail(s); !strings.HasSuffix(got, "watch:merged") {
 		t.Fatal(got)
+	}
+}
+
+func TestPRFailFastSiblingsAreNotRerun(t *testing.T) {
+	gh := newFakeGH(t)
+	en := newEnv(t, map[string]string{"p": strings.Replace(prPipeline, "%s", "auto", 1)})
+	// One matrix job failed and GitHub cancelled its sibling: that's the
+	// verdict, reported at once without a re-run.
+	gh.set("OPEN", "aaa", []map[string]any{
+		check("test (linux)", "COMPLETED", "FAILURE", "https://github.com/o/r/actions/runs/88/job/1"),
+		check("test (mac)", "COMPLETED", "CANCELLED", "https://github.com/o/r/actions/runs/88/job/2"),
+	}, nil, nil)
+	s := en.start("p", "", nil, "")
+	s = en.waitFor(s.ID, "ci_failed", func(s *store.RunSnapshot) bool { return len(s.Visits) >= 2 })
+	if got := visitTrail(s); !strings.HasPrefix(got, "watch:ci_failed") {
+		t.Fatal(got)
+	}
+	if sum := s.Visits[0].Summary; !strings.Contains(sum, "test (linux)") || !strings.Contains(sum, "test (mac)") {
+		t.Fatalf("both checks should be reported:\n%s", sum)
+	}
+	if _, err := os.Stat(filepath.Join(gh.dir, "reruns.log")); err == nil {
+		t.Fatal("a run with a real failure shouldn't be re-run")
+	}
+}
+
+func TestPRCommentReadFailureHoldsTheBatch(t *testing.T) {
+	gh := newFakeGH(t)
+	en := newEnv(t, map[string]string{"p": strings.Replace(prPipeline, "%s", "auto", 1)})
+	// The conversation comments can't be read, so nothing is sent on the
+	// inline comment alone, even though it's quiet.
+	os.WriteFile(filepath.Join(gh.dir, "apifail"), nil, 0o644)
+	gh.set("OPEN", "aaa", nil, []map[string]any{comment(1, "alice", "Rename this.", time.Hour)},
+		[]map[string]any{{"id": 99, "body": "Off by one here?", "html_url": "https://github.com/o/r/pull/7#d99", "path": "limiter.go", "line": 42,
+			"user": map[string]string{"login": "bob", "type": "User"}, "created_at": time.Now().Add(-time.Hour).UTC().Format(time.RFC3339Nano)}})
+	s := en.start("p", "", nil, "")
+	// Two failed polls (fewer than the MaxPollFailures that end the step).
+	en.waitFor(s.ID, "failed reads", func(*store.RunSnapshot) bool {
+		b, _ := os.ReadFile(filepath.Join(gh.dir, "apifails.log"))
+		return strings.Count(string(b), "x") >= 2
+	})
+	if s2, _ := en.e.Snapshot(s.ID); len(s2.Visits) != 1 {
+		t.Fatalf("nothing should be sent on part of the comments: %s", visitTrail(s2))
+	}
+	os.Remove(filepath.Join(gh.dir, "apifail"))
+	s = en.waitFor(s.ID, "feedback", func(s *store.RunSnapshot) bool { return len(s.Visits) >= 2 })
+	if !strings.Contains(s.Visits[0].Summary, "2 new piece(s) of review feedback") {
+		t.Fatalf("one batch with both comments:\n%s", s.Visits[0].Summary)
 	}
 }
 

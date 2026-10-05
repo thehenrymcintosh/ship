@@ -128,6 +128,7 @@ steps:                        # names: lowercase letters, digits, - and _
     every: 2m
     settle: 10m               # review comments go as one batch once nobody's commented for 10m
     trigger: auto             # or manual: wait for "Address N now" in the UI
+    max_visits: 0             # re-entered after every fix; never exhaust it
     next: { feedback: address-review, ci_failed: fix-ci, merged: done, closed: stop }
 
   address-review:
@@ -184,7 +185,8 @@ such as `SHIP_RUN_ID`, `SHIP_RUN_DIR`, `SHIP_BRANCH`, `SHIP_VAR_<NAME>` and
 - **Pipelines that open a PR should watch it, not end.** After opening the PR,
   go to a `pr:` step and route `feedback` and `ci_failed` to steps that fix,
   push, and come back to the `pr:` step; only `merged` (or `closed`) ends the
-  run. Don't write scripts to poll GitHub. Ask the user whether review
+  run. Give the `pr:` step `max_visits: 0`, since it's re-entered after every
+  fix. Don't write scripts to poll GitHub. Ask the user whether review
   comments should be addressed automatically after a quiet period
   (`trigger: auto`, `settle:`) or when they say so (`trigger: manual`).
 

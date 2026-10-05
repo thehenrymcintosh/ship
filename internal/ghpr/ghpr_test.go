@@ -13,7 +13,7 @@ func TestAPIListReadsEveryPage(t *testing.T) {
 	// gh api --paginate prints one array per page.
 	os.WriteFile(gh, []byte("#!/bin/sh\necho '[{\"id\":1,\"user\":{\"login\":\"a\",\"type\":\"User\"}}]'\necho '[{\"id\":2,\"user\":{\"login\":\"vercel[bot]\"}}]'\n"), 0o755)
 	t.Setenv("SHIP_GH", gh)
-	got, err := apiList[commentJSON](context.Background(), t.TempDir(), nil, "repos/{owner}/{repo}/issues/1/comments")
+	got, err := apiList[commentJSON](context.Background(), t.TempDir(), nil, "github.com", "repos/o/r/issues/1/comments")
 	if err != nil {
 		t.Fatal(err)
 	}

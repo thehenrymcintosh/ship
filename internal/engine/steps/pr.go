@@ -240,6 +240,17 @@ func (p PR) decide(ctx context.Context, v *Visit, pr *ghpr.PR, st *prState, stat
 	// CI on the PR's current head.
 	var failing []ghpr.Check
 	rerunOK := map[string]bool{} // Actions run → whether this poll's re-run of it worked
+	runPending, runFailed := map[string]bool{}, map[string]bool{}
+	for _, c := range pr.Checks {
+		if id := c.RunID(); id != "" {
+			switch c.Bucket() {
+			case ghpr.Pending:
+				runPending[id] = true
+			case ghpr.Fail:
+				runFailed[id] = true
+			}
+		}
+	}
 	for _, c := range pr.Checks {
 		switch c.Bucket() {
 		case ghpr.Pass, ghpr.Skipped:
@@ -255,11 +266,19 @@ func (p PR) decide(ctx context.Context, v *Visit, pr *ghpr.PR, st *prState, stat
 				status.ChecksPending++
 				continue
 			}
-			if id := c.RunID(); id != "" && !requested {
+			id := c.RunID()
+			if id != "" && !runFailed[id] && runPending[id] {
+				// GitHub can't re-run a run until all its jobs finish.
+				status.ChecksPending++
+				continue
+			}
+			// A real failure in the same run (often what cancelled this one,
+			// fail-fast) is the verdict: report it rather than re-running.
+			if id != "" && !runFailed[id] && !requested {
 				// Several jobs of one Actions run re-run together.
 				ok, tried := rerunOK[id]
 				if !tried {
-					err := ghpr.Rerun(ctx, v.Worktree, v.Env, id)
+					err := pr.Rerun(ctx, v.Worktree, v.Env, id)
 					if err != nil {
 						logf("check %q was cancelled and couldn't be re-run: %v", c.Label(), err)
 					}
@@ -331,7 +350,7 @@ func (p PR) ciReport(ctx context.Context, v *Visit, pr *ghpr.PR, failing []ghpr.
 		if id := c.RunID(); id != "" && !logged[id] && budget > 0 {
 			logged[id] = true
 			n := min(150, budget)
-			if tail := ghpr.FailedLog(ctx, v.Worktree, v.Env, id, n); tail != "" {
+			if tail := pr.FailedLog(ctx, v.Worktree, v.Env, id, n); tail != "" {
 				budget -= strings.Count(tail, "\n") + 1
 				fmt.Fprintf(&b, "\nEnd of the failed log:\n```\n%s\n```\n", tail)
 			}
