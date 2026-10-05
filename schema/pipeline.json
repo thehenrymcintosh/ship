@@ -326,6 +326,22 @@
         "review": {
           "type": "boolean"
         },
+        "pr": {
+          "type": "string",
+          "description": "PR step: watches the run's pull request (\"\" = the run's branch, or a PR number/URL) and routes on feedback, ci_failed, ready, merged, closed or timeout."
+        },
+        "settle": {
+          "$ref": "#/$defs/Duration",
+          "description": "PR step: how long after the newest review comment to send the batch of feedback (default 10m)."
+        },
+        "trigger": {
+          "type": "string",
+          "enum": [
+            "auto",
+            "manual"
+          ],
+          "description": "PR step: auto sends feedback after settle; manual waits for you to trigger it from the UI or `ship pr \u003crun\u003e --address`."
+        },
         "fanout": {
           "type": "string",
           "description": "Fanout step: runs the named pipeline once per slice."
