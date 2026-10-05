@@ -294,6 +294,11 @@ func (a *app) refineContext(cmd *cobra.Command, name, model, fake string) (refin
 	if model == "" {
 		model = cfg.Agent.Model
 	}
+	// Refine reads and edits the files in your checkout, so use freshly
+	// computed parts (a version first recorded by a run points at its worktree).
+	if closure, err := e.Loader(repo).Closure(name); err == nil {
+		v.Parts = e.Fingerprint(repo, closure).Parts
+	}
 	c := refine.Context{
 		Pipeline: name, Repo: repo, Home: a.home, ClaudeDir: config.ClaudeDir(),
 		Store: hs, Current: v, Agents: e.Agents(), Model: model, Env: os.Environ(),

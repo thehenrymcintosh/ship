@@ -22,7 +22,6 @@ import (
 	"github.com/thehenrymcintosh/ship/internal/brand"
 	"github.com/thehenrymcintosh/ship/internal/brief"
 	"github.com/thehenrymcintosh/ship/internal/config"
-	"github.com/thehenrymcintosh/ship/internal/history"
 	"github.com/thehenrymcintosh/ship/internal/notify"
 	"github.com/thehenrymcintosh/ship/internal/pipeline"
 	"github.com/thehenrymcintosh/ship/internal/store"
@@ -301,6 +300,8 @@ const (
 	CmdResumeSession = "resume_session"
 	CmdReacquire     = "reacquire"
 	CmdParentHalted  = "parent_halted"
+	CmdPause         = "pause"
+	CmdResume        = "resume"
 )
 
 // Command is a manual control.
@@ -312,6 +313,7 @@ type Command struct {
 	Step   string
 	Var    string
 	Value  string
+	All    bool   // pause/resume: child runs too
 	Source string // cli | ui | engine
 	reply  chan error
 }
@@ -455,7 +457,8 @@ func (e *Engine) Start(ctx context.Context, req StartRequest) (*store.RunSnapsho
 	if err != nil {
 		return nil, invalid("brief: %v", err)
 	}
-	// Load and validate the pipeline (children: from the parent's snapshot).
+	// Load and validate the pipeline (children start from the parent's
+	// snapshot, then prefer the current file below).
 	var loader *pipeline.Loader
 	if req.child != nil {
 		loader = pipeline.NewLoader(filepath.Join(req.child.parentDir, store.PipelineDir))
@@ -475,6 +478,17 @@ func (e *Engine) Start(ctx context.Context, req StartRequest) (*store.RunSnapsho
 	if req.FakeAgents != "" || (req.child != nil && req.child.parent.FakeAgents != "") {
 		// Every agent step runs on the fake adapter, whatever cli it names.
 		opts.AgentCheck = nil
+	}
+	if req.child != nil {
+		// A slice uses the child pipeline as it is now, so edits made while
+		// the parent runs reach slices that haven't started yet. If the
+		// current file doesn't validate, fall back to the parent's copy.
+		live := e.Loader(req.Repo)
+		if lf, lfs := live.Validate(name, opts); lf != nil && !pipeline.HasErrors(lfs) {
+			loader = live
+		} else {
+			e.o.Log.Warn("slice pipeline doesn't validate as it is now; using the parent's copy", "pipeline", name, "parent", req.child.parent.ID)
+		}
 	}
 	f, findings := loader.Validate(name, opts)
 	if f == nil || pipeline.HasErrors(findings) {
@@ -584,15 +598,9 @@ func (e *Engine) Start(ctx context.Context, req StartRequest) (*store.RunSnapsho
 	if err != nil {
 		return fail(invalid("%v", err))
 	}
-	if req.child != nil {
-		if err := copyDir(filepath.Join(req.child.parentDir, store.PipelineDir), filepath.Join(dir, store.PipelineDir)); err != nil {
+	for _, cf := range closure {
+		if err := os.WriteFile(filepath.Join(dir, store.PipelineDir, cf.Name+".yml"), cf.Source, 0o600); err != nil {
 			return fail(err)
-		}
-	} else {
-		for _, cf := range closure {
-			if err := os.WriteFile(filepath.Join(dir, store.PipelineDir, cf.Name+".yml"), cf.Source, 0o600); err != nil {
-				return fail(err)
-			}
 		}
 	}
 	var lock *store.Lock
@@ -607,14 +615,9 @@ func (e *Engine) Start(ctx context.Context, req StartRequest) (*store.RunSnapsho
 		BriefTitle: b.Title, Start: p.Start, Vars: vars, ShipVersion: brand.Version,
 		Provider: provider, Branch: branch, Base: base, FakeAgents: req.FakeAgents,
 	}
-	// Version the pipeline (and the skills, rules and scripts it uses), so
-	// feedback on this run is tied to exactly what produced it.
+	// Where the pipeline's history lives. The version itself is recorded
+	// once the worktree exists, from what the run's agents will actually use.
 	created.HistoryDir = HistoryDir(e.Loader(req.Repo), req.Repo, e.Home(), name)
-	if v, err := e.RegisterVersion(req.Repo, closure, created.HistoryDir, history.SourceEdit, "", nil); err != nil {
-		e.o.Log.Warn("versioning pipeline", "pipeline", name, "err", err)
-	} else {
-		created.PipelineVersion, created.PipelineHash = v.Version, v.Hash
-	}
 	if req.child != nil {
 		created.Parent = &store.ParentRef{ID: req.child.parent.ID, Step: req.child.step}
 		created.Slice = snapForScope.Slice
@@ -743,29 +746,6 @@ func (e *Engine) activeNoneRun(repo string) string {
 		}
 	}
 	return ""
-}
-
-func copyDir(src, dst string) error {
-	entries, err := os.ReadDir(src)
-	if err != nil {
-		return err
-	}
-	if err := os.MkdirAll(dst, 0o700); err != nil {
-		return err
-	}
-	for _, en := range entries {
-		if en.IsDir() {
-			continue
-		}
-		b, err := os.ReadFile(filepath.Join(src, en.Name()))
-		if err != nil {
-			return err
-		}
-		if err := os.WriteFile(filepath.Join(dst, en.Name()), b, 0o600); err != nil {
-			return err
-		}
-	}
-	return nil
 }
 
 // --- lifecycle -------------------------------------------------------------

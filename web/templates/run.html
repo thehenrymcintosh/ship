@@ -36,6 +36,7 @@
       {{if $s.PermissionDenials}}<span class="badge warn" title="Tool calls the agent wasn't allowed to make; consider allowed_tools">{{plural $s.PermissionDenials "permission denial"}}</span>{{end}}
       {{if .Bypass}}<span class="badge danger" title="permission_mode: bypassPermissions">bypassPermissions</span>{{end}}
       {{if $s.FakeAgents}}<span class="badge">fake agents</span>{{end}}
+      {{if and $s.PauseRequested (ne $s.Status "paused")}}<span class="badge warn" title="The step that's running finishes first">{{if eq $s.Status "asking"}}pausing once you've answered{{else}}pausing after this step{{end}}</span>{{end}}
     </div>
     {{with $s.Workspace}}
     <div class="worktree">
@@ -47,6 +48,14 @@
     {{end}}
   </div>
   {{if not (terminal $s.Status)}}
+  <div class="head-actions">
+  {{if or (eq $s.Status "paused") $s.PauseRequested}}
+    <button class="btn primary" hx-post="/api/runs/{{$s.ID}}/resume" hx-swap="none">Resume</button>
+    {{if .Children}}<button class="btn" hx-post="/api/runs/{{$s.ID}}/resume" hx-vals='{"all":true}' hx-swap="none" title="Also resume its paused slices">Resume all</button>{{end}}
+  {{else if ne $s.Status "needs_attention"}}
+    <button class="btn" hx-post="/api/runs/{{$s.ID}}/pause" hx-swap="none" title="{{if eq $s.Status "fanned_out"}}Start no new slices; running slices carry on{{else}}Let the current step finish, then hold{{end}}">Pause</button>
+    {{if .Children}}<button class="btn" hx-post="/api/runs/{{$s.ID}}/pause" hx-vals='{"all":true}' hx-swap="none" title="Also pause its running slices">Pause all</button>{{end}}
+  {{end}}
   <details class="controls">
     <summary class="btn">Controls ▾</summary>
     <div class="menu">
@@ -59,6 +68,7 @@
       <button class="btn danger" hx-post="/api/runs/{{$s.ID}}/cancel" hx-confirm="Cancel this run{{if $s.Children}} and its children{{end}}?" hx-swap="none">Cancel run</button>
     </div>
   </details>
+  </div>
   {{end}}
 </div>
 {{end}}

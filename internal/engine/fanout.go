@@ -30,7 +30,15 @@ type childState struct {
 func (f *fanoutExec) Execute(ctx context.Context, v *steps.Visit) (steps.Result, error) {
 	r := f.r
 	st := v.Step
-	if err := v.RT.SetStatus(store.StatusFannedOut, "fanout: "+v.StepName); err != nil {
+	// The supervisor owns the run's status while it runs: fanned out, or
+	// paused (no new slices). syncStatus is called whenever it wakes.
+	syncStatus := func() error {
+		if r.paused.Load() {
+			return v.RT.SetStatus(store.StatusPaused, "paused: no new slices start; running slices carry on")
+		}
+		return v.RT.SetStatus(store.StatusFannedOut, "fanout: "+v.StepName)
+	}
+	if err := syncStatus(); err != nil {
 		return steps.Result{}, err
 	}
 	s := r.snap()
@@ -70,6 +78,9 @@ func (f *fanoutExec) Execute(ctx context.Context, v *steps.Visit) (steps.Result,
 	var startErr error
 
 	for {
+		if err := syncStatus(); err != nil {
+			return steps.Result{}, err
+		}
 		// Observe children.
 		states := map[int]*childState{}
 		running := 0
@@ -112,8 +123,8 @@ func (f *fanoutExec) Execute(ctx context.Context, v *steps.Visit) (steps.Result,
 			}
 		}
 
-		// Start what can start.
-		if !halted && ctx.Err() == nil {
+		// Start what can start (unless paused: running slices carry on).
+		if !halted && !r.paused.Load() && ctx.Err() == nil {
 			if series {
 				i := nextUnstarted(started, len(slices))
 				if i > 0 {
@@ -171,6 +182,7 @@ func (f *fanoutExec) Execute(ctx context.Context, v *steps.Visit) (steps.Result,
 		}
 		select {
 		case <-poke:
+		case <-r.wake:
 		case <-ctx.Done():
 			return steps.Result{Outcome: steps.OutcomeCancelled, Summary: "cancelled"}, nil
 		}

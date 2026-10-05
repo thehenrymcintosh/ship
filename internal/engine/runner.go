@@ -20,6 +20,7 @@ import (
 	"github.com/thehenrymcintosh/ship/internal/brief"
 	"github.com/thehenrymcintosh/ship/internal/config"
 	"github.com/thehenrymcintosh/ship/internal/engine/steps"
+	"github.com/thehenrymcintosh/ship/internal/history"
 	"github.com/thehenrymcintosh/ship/internal/pipeline"
 	"github.com/thehenrymcintosh/ship/internal/proc"
 	"github.com/thehenrymcintosh/ship/internal/store"
@@ -52,7 +53,12 @@ type runner struct {
 
 	halted     bool
 	recovering bool
-	next       nextVisit
+	// paused is set by a pause request; the run holds at the next step
+	// boundary (a fanout parent stops starting slices straight away).
+	paused atomic.Bool
+	// wake nudges a waiting fanout supervisor (after resume).
+	wake chan struct{}
+	next nextVisit
 }
 
 // nextVisit carries session handling into the next visit.
@@ -66,7 +72,7 @@ func (e *Engine) newRunner(id string, rl *store.RunLog, lock *store.Lock) *runne
 	ctx, cancel := context.WithCancel(e.ctx)
 	r := &runner{
 		e: e, id: id, dir: rl.Dir(), log: rl, lock: lock, ctx: ctx, cancel: cancel,
-		cmds: make(chan Command, 16), visitCmds: make(chan steps.Command, 1), done: make(chan struct{}),
+		cmds: make(chan Command, 16), visitCmds: make(chan steps.Command, 1), done: make(chan struct{}), wake: make(chan struct{}, 1),
 	}
 	rl.OnEvent = func(ev store.Event, snap *store.RunSnapshot) { e.dispatch(id, ev, snap) }
 	return r
@@ -75,6 +81,7 @@ func (e *Engine) newRunner(id string, rl *store.RunLog, lock *store.Lock) *runne
 // load reads the run's pipeline snapshot, brief, config and provider.
 func (r *runner) load() error {
 	snap := r.log.Snapshot()
+	r.paused.Store(snap.PauseRequested)
 	f, findings := pipeline.NewLoader(filepath.Join(r.dir, store.PipelineDir)).Load(snap.Pipeline)
 	if f == nil {
 		msg := "pipeline snapshot missing"
@@ -167,6 +174,12 @@ func (r *runner) loop() {
 			}
 			continue
 		}
+		if r.paused.Load() {
+			if !r.holdPaused() {
+				return
+			}
+			continue
+		}
 		if !r.step() {
 			return
 		}
@@ -219,7 +232,36 @@ func (r *runner) acquire() {
 		lease.Base = s.Base
 	}
 	r.emit(store.EvWorkspaceAcquired, store.WorkspaceAcquired{Lease: lease})
+	r.versionPipeline()
 	r.setStatus(store.StatusRunning, "")
+}
+
+// versionPipeline records the run's pipeline version: the run's own copy of
+// the pipeline, plus the skills, rules and scripts as its worktree has them
+// (and the user's skills). That's exactly what its agents will use, so
+// feedback on the run lands on the right version.
+func (r *runner) versionPipeline() {
+	s := r.snap()
+	if s.HistoryDir == "" || s.PipelineVersion > 0 {
+		return
+	}
+	closure, err := pipeline.NewLoader(filepath.Join(r.dir, store.PipelineDir)).Closure(s.Pipeline)
+	if err != nil {
+		r.e.o.Log.Warn("versioning pipeline", "run", r.id, "err", err)
+		return
+	}
+	root := s.Repo
+	if s.Workspace != nil {
+		root = s.Workspace.Path
+	}
+	v, _, err := r.e.HistoryStore(s.HistoryDir).Register(history.Compute(history.Inputs{
+		Pipelines: closure, Repo: root, Home: r.e.Home(), ClaudeDir: r.e.o.ClaudeDir,
+	}), history.SourceEdit, "", nil)
+	if err != nil {
+		r.e.o.Log.Warn("versioning pipeline", "run", r.id, "err", err)
+		return
+	}
+	r.emit(store.EvVersioned, store.Versioned{Version: v.Version, Hash: v.Hash})
 }
 
 func (r *runner) release(force bool) {
@@ -639,6 +681,13 @@ func (r *runner) duringVisit(c Command, v *steps.Visit) *abortReq {
 	case CmdParentHalted:
 		r.halted = true
 		reply(c, nil)
+	case CmdPause:
+		// A fanout supervisor reflects this in its status when woken.
+		r.requestPause(c)
+		reply(c, nil)
+	case CmdResume:
+		r.requestResume(c)
+		reply(c, nil)
 	default:
 		reply(c, conflict("%s isn't possible while a step is running", c.Name))
 	}
@@ -890,6 +939,12 @@ func (r *runner) parked() bool {
 			case CmdParentHalted:
 				r.halted = true
 				reply(c, nil)
+			case CmdPause:
+				reply(c, conflict("the run is already stopped and waiting for you"))
+			case CmdResume:
+				// Clears a pause requested earlier; the run stays parked.
+				r.requestResume(c)
+				reply(c, nil)
 			default:
 				reply(c, conflict("%s isn't possible while the run needs attention", c.Name))
 			}
@@ -992,6 +1047,12 @@ func (r *runner) askVars(st *pipeline.Step) (ok, alive bool) {
 				case CmdParentHalted:
 					r.halted = true
 					reply(c, nil)
+				case CmdPause:
+					r.requestPause(c)
+					reply(c, nil)
+				case CmdResume:
+					r.requestResume(c)
+					reply(c, nil)
 				default:
 					reply(c, conflict("the run is waiting for variable %s", name))
 				}
@@ -1069,7 +1130,7 @@ func (r *runner) recover() bool {
 	lv := s.LastVisit()
 	running := lv != nil && lv.Running()
 	switch s.Status {
-	case store.StatusAsking, store.StatusWaiting, store.StatusFannedOut:
+	case store.StatusAsking, store.StatusWaiting, store.StatusFannedOut, store.StatusPaused:
 		if running {
 			if st := r.pipe.Steps[lv.Step]; st != nil {
 				return r.visit(lv.Step, st, lv)
@@ -1158,3 +1219,95 @@ func (v *visitRT) Notify(title, message string) {
 	v.r.e.o.Notifier.Notify(brand.Name+" — "+title, message)
 }
 func (v *visitRT) Snapshot() *store.RunSnapshot { return v.r.snap() }
+
+// --- pause and resume ----------------------------------------------------------
+
+// requestPause records a pause. It takes effect at the next step boundary;
+// with All, it's passed on to running child runs.
+func (r *runner) requestPause(c Command) {
+	r.emitUser(c)
+	if !r.paused.Load() {
+		r.paused.Store(true)
+		r.emit(store.EvPauseRequested, store.PauseChange{All: c.All, Source: c.Source})
+	}
+	if c.All {
+		r.forChildren(Command{Name: CmdPause, All: true, Source: "engine"})
+	}
+	r.poke()
+}
+
+// requestResume clears a pause; with All, child runs resume too.
+func (r *runner) requestResume(c Command) {
+	r.emitUser(c)
+	if r.paused.Load() || r.snap().PauseRequested {
+		r.paused.Store(false)
+		r.emit(store.EvResumed, store.PauseChange{All: c.All, Source: c.Source})
+	}
+	if c.All {
+		r.forChildren(Command{Name: CmdResume, All: true, Source: "engine"})
+	}
+	r.poke()
+}
+
+func (r *runner) forChildren(c Command) {
+	for _, ch := range r.snap().Children {
+		if !ch.Status.Terminal() {
+			id := ch.ID
+			go r.e.Do(id, c)
+		}
+	}
+}
+
+func (r *runner) poke() {
+	select {
+	case r.wake <- struct{}{}:
+	default:
+	}
+}
+
+// holdPaused waits at a step boundary until the run is resumed. It returns
+// false when the goroutine should exit.
+func (r *runner) holdPaused() bool {
+	r.setStatus(store.StatusPaused, "paused")
+	for {
+		select {
+		case <-r.ctx.Done():
+			return false
+		case c := <-r.cmds:
+			switch c.Name {
+			case CmdResume:
+				r.requestResume(c)
+				r.setStatus(store.StatusRunning, "")
+				reply(c, nil)
+				return true
+			case CmdPause:
+				reply(c, nil)
+			case CmdGoto:
+				if err := r.checkTarget(c.Step); err != nil {
+					reply(c, err)
+					continue
+				}
+				// Going to a step resumes the run there.
+				r.requestResume(Command{Name: CmdResume, Source: c.Source})
+				r.emitUser(c)
+				s := r.snap()
+				r.transition(s.CurrentStep, c.Step, "", store.ReasonManual, true)
+				r.setStatus(store.StatusRunning, "")
+				reply(c, nil)
+				return true
+			case CmdSetVar:
+				reply(c, r.setVar(c))
+			case CmdCancel:
+				r.emitUser(c)
+				r.cancelRun()
+				reply(c, nil)
+				return false
+			case CmdParentHalted:
+				r.halted = true
+				reply(c, nil)
+			default:
+				reply(c, conflict("the run is paused; resume it first"))
+			}
+		}
+	}
+}

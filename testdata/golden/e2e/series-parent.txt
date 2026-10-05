@@ -1,5 +1,6 @@
 run_created
 workspace_acquired
+pipeline_versioned
 status_changed running
 visit_started split #1
 slices_proposed

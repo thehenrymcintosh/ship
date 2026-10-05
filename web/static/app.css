@@ -23,6 +23,7 @@
   --st-stopped: #6b7280;
   --st-failed: #b91c1c;
   --st-cancelled: #6b7280;
+  --st-paused: #a16207;
 
   --ok: #15803d;
   --warn: #b45309;
@@ -41,7 +42,7 @@
     --shadow: 0 1px 2px rgb(0 0 0 / 0.3);
     --st-starting: #9aa1ab; --st-running: #60a5fa; --st-waiting: #fbbf24; --st-asking: #a78bfa;
     --st-fanned_out: #818cf8; --st-needs_attention: #fb923c; --st-done: #4ade80;
-    --st-stopped: #9ca3af; --st-failed: #f87171; --st-cancelled: #9ca3af;
+    --st-stopped: #9ca3af; --st-failed: #f87171; --st-cancelled: #9ca3af; --st-paused: #facc15;
     --ok: #4ade80; --warn: #fbbf24; --danger: #f87171;
     color-scheme: dark;
   }
@@ -53,7 +54,7 @@
   --shadow: 0 1px 2px rgb(0 0 0 / 0.3);
   --st-starting: #9aa1ab; --st-running: #60a5fa; --st-waiting: #fbbf24; --st-asking: #a78bfa;
   --st-fanned_out: #818cf8; --st-needs_attention: #fb923c; --st-done: #4ade80;
-  --st-stopped: #9ca3af; --st-failed: #f87171; --st-cancelled: #9ca3af;
+  --st-stopped: #9ca3af; --st-failed: #f87171; --st-cancelled: #9ca3af; --st-paused: #facc15;
   --ok: #4ade80; --warn: #fbbf24; --danger: #f87171;
   color-scheme: dark;
 }
@@ -123,6 +124,7 @@ form.inline { display: inline-flex; gap: 0.4rem; align-items: center; flex-wrap:
 .mini { display: inline-block; width: 0.7rem; height: 0.7rem; border-radius: 3px; background: var(--pc); margin-right: 2px; }
 .st-starting { --pc: var(--st-starting); } .st-running { --pc: var(--st-running); } .st-waiting { --pc: var(--st-waiting); }
 .st-asking { --pc: var(--st-asking); } .st-fanned_out { --pc: var(--st-fanned_out); } .st-needs_attention { --pc: var(--st-needs_attention); }
+.st-paused { --pc: var(--st-paused); }
 .st-done { --pc: var(--st-done); } .st-stopped { --pc: var(--st-stopped); } .st-failed { --pc: var(--st-failed); } .st-cancelled { --pc: var(--st-cancelled); }
 .badge { display: inline-block; padding: 0.05rem 0.5rem; border-radius: 6px; font-size: 0.76rem; font-weight: 600; background: var(--surface-2); color: var(--muted); border: 1px solid var(--border); }
 .badge.warn { color: var(--warn); border-color: color-mix(in srgb, var(--warn) 35%, transparent); background: color-mix(in srgb, var(--warn) 10%, transparent); }
@@ -164,6 +166,7 @@ form.inline { display: inline-flex; gap: 0.4rem; align-items: center; flex-wrap:
 .facts .id { font-family: var(--mono); font-size: 0.78rem; }
 .phase { font-style: italic; color: var(--muted); }
 .worktree .path { font-size: 0.8rem; }
+.head-actions { display: flex; gap: 0.5rem; align-items: flex-start; flex-wrap: wrap; }
 .controls { position: relative; }
 .controls .menu { position: absolute; right: 0; top: calc(100% + 6px); z-index: 5; display: grid; gap: 0.45rem; padding: 0.7rem; min-width: 15rem;
   background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: 0 8px 24px rgb(0 0 0 / 0.15); }

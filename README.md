@@ -111,6 +111,7 @@ takes a run, any unique part of its id works (`3fa`, `rate-limit`).
 | `ship status <run>` | Where a run is: current step, visits, pending question, worktree |
 | `ship logs <run> -f` | Follow the current step's output |
 | `ship answer <run> [choice] --note "…"` | Answer a question (prompts for the choice if you leave it out) |
+| `ship pause <run>` / `ship resume <run>` | Hold a run after its current step, and carry on later (`--all` includes its slices) |
 | `ship retry <run>`, `ship goto <run> <step>`, `ship cancel <run>` | Step in manually |
 | `ship cd <run>` | Print the worktree path: `cd "$(ship cd 3fa)"` |
 | `ship open [run]` | Open the web UI |
@@ -181,6 +182,14 @@ the current step and continues from the one you name, for example after you've
 fixed something by hand, `ship goto 3fa test`. Avoid editing while an agent
 is actively working there: you'll both be changing the same files.
 
+**Pause it.** `ship pause <run>` (or **Pause** on the run's page) lets the
+step that's running finish, then holds the run before the next one. Its
+worktree and agent conversations stay exactly as they are, so you can look
+around or make changes, then `ship resume <run>`. A paused run isn't in your
+inbox and stays paused across restarts. For a run that's splitting work into
+slices, pausing stops it starting new slices while the running ones carry
+on. `--all` (**Pause all**) pauses those too.
+
 **Stop it and take over.** `ship cancel <run>` (or **Cancel run** in the UI)
 stops the run and leaves its worktree and branch exactly as they are. Carry
 on from there yourself: finish the change, commit, push, open the PR. When
@@ -217,6 +226,22 @@ To choose explicitly, set `workspace.provider` in `.ship/config.yml`, in
 installed, otherwise git), `git`, `treehouse` (fails if treehouse is
 missing), or `none` (work directly in your checkout, one run at a time).
 
+### Editing pipelines while runs are in progress
+
+You can edit pipelines at any time:
+
+- **A run uses the pipeline as it was when the run started.** It keeps its own
+  copy, so editing the file never changes a run that's already going.
+- **Slices use the child pipeline as it is when each slice starts.** Edits
+  made while a big feature is being built reach its later slices. If the file
+  doesn't validate at that moment, the slice uses the copy taken when the
+  parent started instead.
+- **Repo skills, rules and scripts come from the run's branch.** Agents and
+  scripts run in the worktree, so edits in your checkout reach runs started
+  from a base that includes them.
+- **Your user-level skills (`~/.claude/skills`) are read at every step.**
+  Editing one changes the next agent step of every run in progress.
+
 ## Improving pipelines with feedback
 
 You judge the work; `ship` keeps track of what you said and which version of
@@ -226,7 +251,9 @@ the pipeline it was about, and Claude helps you act on it.
 pipeline file, any pipelines it fans out to, every skill or slash command its
 steps call (found in the repo's `.claude/skills/` or your `~/.claude/skills/`,
 including all the skill's files), and the rules files and helper scripts it
-uses. Each run records the version it used. When anything in that set
+uses. Each run records the version it used, computed from exactly what its
+agents see: its own copy of the pipeline and its worktree's skills, rules and
+scripts. When anything in that set
 changes, whether you edited it or `refine` did, the next run is the next
 version (v1, v2, …). `ship pipeline versions <pipeline>` lists them, with
 what changed in each.

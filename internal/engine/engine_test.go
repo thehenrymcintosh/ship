@@ -118,7 +118,13 @@ func (en *env) waitFor(id string, what string, cond func(*store.RunSnapshot) boo
 			}
 		}
 	}
-	en.t.Fatalf("timed out waiting for %s; status=%s reason=%q step=%s visits=%s%s", what, s.Status, s.StatusReason, s.CurrentStep, visitTrail(s), strings.Join(kids, ""))
+	var evs []string
+	if all, _, err := store.ReadEvents(en.st.RunDir(id)); err == nil {
+		for _, e := range all[max(0, len(all)-15):] {
+			evs = append(evs, e.Type+" "+string(e.Data))
+		}
+	}
+	en.t.Fatalf("timed out waiting for %s; status=%s reason=%q step=%s visits=%s%s\nlast events:\n  %s", what, s.Status, s.StatusReason, s.CurrentStep, visitTrail(s), strings.Join(kids, ""), strings.Join(evs, "\n  "))
 	return nil
 }
 

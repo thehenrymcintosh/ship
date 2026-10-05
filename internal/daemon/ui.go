@@ -210,6 +210,8 @@ func phase(s *store.RunSnapshot, p *pipeline.Pipeline) string {
 		return "running slices"
 	case store.StatusDone:
 		return "done"
+	case store.StatusPaused:
+		return "paused"
 	}
 	return string(s.Status)
 }
@@ -242,7 +244,7 @@ func elapsed(s *store.RunSnapshot) string {
 
 func sliceProgress(slices int, kids []*store.RunSnapshot) string {
 	counts := map[string]int{}
-	order := []string{"needs you", "working", "waiting", "queued", "done", "stopped", "failed", "cancelled", "setting up"}
+	order := []string{"needs you", "working", "waiting", "paused", "queued", "done", "stopped", "failed", "cancelled", "setting up"}
 	for _, k := range kids {
 		counts[phase(k, nil)]++
 	}

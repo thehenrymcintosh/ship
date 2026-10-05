@@ -41,6 +41,9 @@ const (
 	EvStatusChanged     = "status_changed"
 	EvCommand           = "command"
 	EvRunFinished       = "run_finished"
+	EvPauseRequested    = "pause_requested"
+	EvResumed           = "resumed"
+	EvVersioned         = "pipeline_versioned"
 )
 
 // Actors.
@@ -231,6 +234,19 @@ type Command struct {
 	Args   map[string]string `json:"args,omitempty"`
 	Actor  string            `json:"actor"`
 	Source string            `json:"source"`
+}
+
+// PauseChange records a pause request or a resume.
+type PauseChange struct {
+	All    bool   `json:"all,omitempty"` // also children
+	Source string `json:"source,omitempty"`
+}
+
+// Versioned records the pipeline version a run uses, computed once its
+// worktree exists (so it reflects what the run's agents actually see).
+type Versioned struct {
+	Version int    `json:"version"`
+	Hash    string `json:"hash"`
 }
 
 // RunFinished ends the run.

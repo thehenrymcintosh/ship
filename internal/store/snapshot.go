@@ -19,6 +19,7 @@ const (
 	StatusAsking         Status = "asking"
 	StatusFannedOut      Status = "fanned_out"
 	StatusNeedsAttention Status = "needs_attention"
+	StatusPaused         Status = "paused"
 	StatusDone           Status = "done"
 	StatusStopped        Status = "stopped"
 	StatusFailed         Status = "failed"
@@ -134,6 +135,7 @@ type RunSnapshot struct {
 	PermissionDenials int               `json:"permission_denials,omitempty"`
 	FakeAgents        string            `json:"fake_agents,omitempty"`
 	ShipVersion       string            `json:"ship_version,omitempty"`
+	PauseRequested    bool              `json:"pause_requested,omitempty"`
 	PipelineVersion   int               `json:"pipeline_version,omitempty"`
 	PipelineHash      string            `json:"pipeline_hash,omitempty"`
 	HistoryDir        string            `json:"history_dir,omitempty"`
@@ -355,6 +357,16 @@ func Apply(s *RunSnapshot, e Event) error {
 				s.Children[i].Status = d.Status
 			}
 		}
+	case EvPauseRequested:
+		s.PauseRequested = true
+	case EvResumed:
+		s.PauseRequested = false
+	case EvVersioned:
+		var d Versioned
+		if err := dec(&d); err != nil {
+			return err
+		}
+		s.PipelineVersion, s.PipelineHash = d.Version, d.Hash
 	case EvBaseMoved:
 		s.BaseMoved = true
 	case EvStatusChanged:

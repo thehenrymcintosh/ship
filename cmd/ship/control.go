@@ -15,7 +15,7 @@ import (
 )
 
 // post sends a control command to the daemon and prints the new status.
-func (a *app) post(run, endpoint string, body map[string]string) error {
+func (a *app) post(run, endpoint string, body map[string]any) error {
 	id, err := a.resolveRun(run)
 	if err != nil {
 		return err
@@ -84,10 +84,10 @@ func (a *app) answerCmd() *cobra.Command {
 					}
 				}
 				if pa.Kind == store.AskKindSplitReview {
-					return a.post(args[0], "split-review", map[string]string{"action": choice, "note": note})
+					return a.post(args[0], "split-review", map[string]any{"action": choice, "note": note})
 				}
 			}
-			return a.post(args[0], "answer", map[string]string{"choice": choice, "note": note})
+			return a.post(args[0], "answer", map[string]any{"choice": choice, "note": note})
 		},
 	}
 	cmd.Flags().StringVar(&note, "note", "", "free-text note (becomes the visit's summary)")
@@ -102,7 +102,7 @@ func (a *app) reviewCmd() *cobra.Command {
 		Args:      cobra.ExactArgs(2),
 		ValidArgs: []string{"approve", "resplit", "reload", "stop"},
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return a.post(args[0], "split-review", map[string]string{"action": args[1], "note": note})
+			return a.post(args[0], "split-review", map[string]any{"action": args[1], "note": note})
 		},
 	}
 	cmd.Flags().StringVar(&note, "note", "", "note (required for resplit)")
@@ -126,7 +126,7 @@ func (a *app) gotoCmd() *cobra.Command {
 		Short: "Send a run to a step (stops the running step; resets its counter)",
 		Args:  cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return a.post(args[0], "goto", map[string]string{"step": args[1]})
+			return a.post(args[0], "goto", map[string]any{"step": args[1]})
 		},
 	}
 }
@@ -141,7 +141,7 @@ func (a *app) setCmd() *cobra.Command {
 			if !ok || k == "" {
 				return fail(exitUser, "want <var>=<value>")
 			}
-			return a.post(args[0], "vars", map[string]string{"name": k, "value": v})
+			return a.post(args[0], "vars", map[string]any{"name": k, "value": v})
 		},
 	}
 }
@@ -241,4 +241,38 @@ func transcriptLine(line string) string {
 		out = append(out, s)
 	}
 	return strings.Join(out, "\n")
+}
+
+func (a *app) pauseCmd() *cobra.Command {
+	var all bool
+	cmd := &cobra.Command{
+		Use:   "pause <run>",
+		Short: "Pause a run after its current step (a splitting parent stops starting slices)",
+		Long: `Pause a run. The step that's running finishes, then the run holds before the
+next one; its worktree and agent conversations stay as they are. A run that's
+waiting for you pauses once you've answered.
+
+For a parent running slices, no new slices start while it's paused; slices
+already running carry on. --all pauses them too. Resume with ` + "`" + `ship resume` + "`" + `.`,
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return a.post(args[0], "pause", map[string]any{"all": all})
+		},
+	}
+	cmd.Flags().BoolVar(&all, "all", false, "also pause the run's running slices")
+	return cmd
+}
+
+func (a *app) resumeCmd() *cobra.Command {
+	var all bool
+	cmd := &cobra.Command{
+		Use:   "resume <run>",
+		Short: "Resume a paused run",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return a.post(args[0], "resume", map[string]any{"all": all})
+		},
+	}
+	cmd.Flags().BoolVar(&all, "all", false, "also resume the run's paused slices")
+	return cmd
 }

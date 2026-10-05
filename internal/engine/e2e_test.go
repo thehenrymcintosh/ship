@@ -279,3 +279,55 @@ func newEnvSameEngine(en *env, pipelines map[string]string) string {
 	}
 	return name
 }
+
+func TestSlicesUseCurrentChildPipeline(t *testing.T) {
+	child := func(q string) string {
+		return "version: 1\nstart: hold\nsteps:\n  hold:\n    ask: \"" + q + "\"\n    choices: {go: done}\n"
+	}
+	en := newEnv(t, map[string]string{
+		"parent": `version: 1
+start: split
+steps:
+  split:
+    split: ""
+    next: {ok: build}
+  build:
+    fanout: child
+    next: {done: done, failed: stop}
+`,
+		"child": child("first question"),
+	})
+	childFile := filepath.Join(en.repo, ".ship", "pipelines", "child.yml")
+	s := en.start("parent", "", nil, `s: []
+split:
+  - outcome: ok
+    summary: three
+    slices:
+      - {key: a, title: A, brief: a, acceptance: [x]}
+      - {key: b, title: B, brief: b, acceptance: [x]}
+      - {key: c, title: C, brief: c, acceptance: [x]}
+`)
+	waitAsk := func(n int) *store.RunSnapshot {
+		p := en.waitFor(s.ID, "child running", func(p *store.RunSnapshot) bool { return len(p.Children) == n })
+		return en.waitStatus(p.Children[n-1].ID, store.StatusAsking)
+	}
+	c1 := waitAsk(1)
+	writeFile(t, childFile, child("second question"))
+	if c1.PendingAsk.Question != "first question" {
+		t.Fatalf("running slice should keep its copy: %q", c1.PendingAsk.Question)
+	}
+	en.e.Do(c1.ID, Command{Name: CmdAnswer, Choice: "go"})
+	c2 := waitAsk(2)
+	if c2.PendingAsk.Question != "second question" {
+		t.Fatalf("slice started after the edit should use it: %q", c2.PendingAsk.Question)
+	}
+	// A broken edit falls back to the parent's copy instead of failing.
+	writeFile(t, childFile, "version: 1\nstart: nowhere\nsteps: {}\n")
+	en.e.Do(c2.ID, Command{Name: CmdAnswer, Choice: "go"})
+	c3 := waitAsk(3)
+	if c3.PendingAsk.Question != "first question" {
+		t.Fatalf("invalid edit should fall back to the parent's copy: %q", c3.PendingAsk.Question)
+	}
+	en.e.Do(c3.ID, Command{Name: CmdAnswer, Choice: "go"})
+	en.waitStatus(s.ID, store.StatusDone)
+}

@@ -45,6 +45,8 @@ func (d *Daemon) routes() http.Handler {
 	api("POST /api/runs/{id}/resume-session", d.command(engine.CmdResumeSession))
 	api("POST /api/runs/{id}/vars", d.command(engine.CmdSetVar))
 	api("POST /api/runs/{id}/cancel", d.command(engine.CmdCancel))
+	api("POST /api/runs/{id}/pause", d.command(engine.CmdPause))
+	api("POST /api/runs/{id}/resume", d.command(engine.CmdResume))
 	api("POST /api/runs/{id}/reacquire", d.command(engine.CmdReacquire))
 	api("POST /api/runs/{id}/open", d.openThing)
 	api("GET /api/runs/{id}/feedback", d.runFeedback)
@@ -514,6 +516,7 @@ type CommandBody struct {
 	Step   string `json:"step"`
 	Name   string `json:"name"`
 	Value  string `json:"value"`
+	All    bool   `json:"all"`
 	Source string `json:"source"`
 }
 
@@ -535,7 +538,7 @@ func (d *Daemon) command(name string) http.HandlerFunc {
 				src = "cli"
 			}
 		}
-		c := engine.Command{Name: name, Choice: b.Choice, Note: b.Note, Action: b.Action, Step: b.Step, Var: b.Name, Value: b.Value, Source: src}
+		c := engine.Command{Name: name, Choice: b.Choice, Note: b.Note, Action: b.Action, Step: b.Step, Var: b.Name, Value: b.Value, All: b.All, Source: src}
 		if err := d.eng.Do(id, c); err != nil {
 			writeEngineErr(w, err)
 			return
