@@ -310,6 +310,18 @@ func (Split) Execute(ctx context.Context, v *Visit) (Result, error) {
 	extra := fmt.Sprintf(`Your job in this step is to split the brief into slices: at most %d, each self-contained and independently reviewable, listed in the order they should land.
 Each slice needs a key (lowercase letters, digits and dashes, e.g. "schema"), a title, a self-contained markdown brief, and acceptance criteria.
 If the work fits in one change, return a single slice covering everything. If you can't split it, choose an outcome other than "ok".`, max)
+	vars := sliceVars(v)
+	if len(vars) > 0 {
+		var lines []string
+		for _, n := range sortedNames(vars) {
+			line := "- " + n
+			if vars[n] != "" {
+				line += ": " + vars[n]
+			}
+			lines = append(lines, line)
+		}
+		extra += "\n\nEach slice runs with its own copy of these variables, which default to this run's values. When a slice needs a different value, set it in the slice's vars: for example, when the brief covers several tickets, give each slice the ticket it delivers.\n" + strings.Join(lines, "\n")
+	}
 	if v.ResumeKind == "resplit" || v.ResumeKind == "resplit-fresh" {
 		extra += "\n\nA human reviewed your previous split and asked for changes:\n" + v.Note
 	}
@@ -317,7 +329,7 @@ If the work fits in one change, return a single slice covering everything. If yo
 	if fail != nil {
 		return *fail, nil
 	}
-	call.schema = agent.SplitSchema(outcomes, max)
+	call.schema = agent.SplitSchema(outcomes, max, sortedNames(vars))
 	call.preamble.Slices = true
 	call.check = func(out agent.Output) error {
 		if out.Outcome != "ok" {
@@ -356,6 +368,43 @@ If the work fits in one change, return a single slice covering everything. If yo
 	return reviewSplit(ctx, v, out.Summary, slices, r.Cost, &r)
 }
 
+// sliceVars returns the variables a slice can set (name → description):
+// those the pipelines this run fans out to take from their brief or parent.
+func sliceVars(v *Visit) map[string]string {
+	out := map[string]string{}
+	if v.Pipeline == nil {
+		return out
+	}
+	l := pipeline.NewLoader(filepath.Join(v.RunDir, store.PipelineDir))
+	for _, st := range v.Pipeline.Steps {
+		if st == nil || st.Fanout == nil {
+			continue
+		}
+		f, _ := l.Load(*st.Fanout)
+		if f == nil {
+			continue
+		}
+		for name, vr := range f.Pipeline.Variables {
+			if vr == nil {
+				continue
+			}
+			if src := vr.Source(); src == pipeline.SourceFromBrief || src == pipeline.SourceFromParent {
+				out[name] = vr.Description
+			}
+		}
+	}
+	return out
+}
+
+func sortedNames(m map[string]string) []string {
+	out := make([]string, 0, len(m))
+	for k := range m {
+		out = append(out, k)
+	}
+	sort.Strings(out)
+	return out
+}
+
 func writeSlices(v *Visit, specs []agent.SliceOut) ([]store.Slice, error) {
 	dir := v.File("slices")
 	if err := os.MkdirAll(dir, 0o700); err != nil {
@@ -364,7 +413,7 @@ func writeSlices(v *Visit, specs []agent.SliceOut) ([]store.Slice, error) {
 	var out []store.Slice
 	for i, s := range specs {
 		name := brief.SliceFileName(i+1, s.Key)
-		data := brief.RenderSlice(brief.SliceSpec{Key: s.Key, Title: s.Title, Brief: s.Brief, Acceptance: s.Acceptance}, i+1, len(specs), v.RunID, v.BriefPath)
+		data := brief.RenderSlice(brief.SliceSpec{Key: s.Key, Title: s.Title, Brief: s.Brief, Acceptance: s.Acceptance, Vars: s.Vars}, i+1, len(specs), v.RunID, v.BriefPath)
 		path := filepath.Join(dir, name)
 		if err := os.WriteFile(path, data, 0o600); err != nil {
 			return nil, err

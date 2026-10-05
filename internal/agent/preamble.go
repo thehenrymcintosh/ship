@@ -108,7 +108,24 @@ func OutcomeSchema(outcomes, save []string) json.RawMessage {
 const SlicePattern = `^[a-z0-9][a-z0-9-]{0,24}$`
 
 // SplitSchema builds the split step's output schema.
-func SplitSchema(outcomes []string, maxSlices int) json.RawMessage {
+// sliceVars are the variables a slice may set for its child run.
+func SplitSchema(outcomes []string, maxSlices int, sliceVars []string) json.RawMessage {
+	slice := map[string]any{
+		"key":        map[string]any{"type": "string", "pattern": SlicePattern},
+		"title":      map[string]any{"type": "string"},
+		"brief":      map[string]any{"type": "string", "description": "Self-contained markdown brief for this slice"},
+		"acceptance": map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "minItems": 1},
+	}
+	if len(sliceVars) > 0 {
+		props := map[string]any{}
+		for _, n := range sliceVars {
+			props[n] = map[string]any{"type": "string"}
+		}
+		slice["vars"] = map[string]any{
+			"type": "object", "additionalProperties": false, "properties": props,
+			"description": "Values for this slice's run; leave one out to use the parent run's",
+		}
+	}
 	b, _ := json.Marshal(map[string]any{
 		"type":                 "object",
 		"additionalProperties": false,
@@ -122,12 +139,7 @@ func SplitSchema(outcomes []string, maxSlices int) json.RawMessage {
 					"type":                 "object",
 					"additionalProperties": false,
 					"required":             []string{"key", "title", "brief", "acceptance"},
-					"properties": map[string]any{
-						"key":        map[string]any{"type": "string", "pattern": SlicePattern},
-						"title":      map[string]any{"type": "string"},
-						"brief":      map[string]any{"type": "string", "description": "Self-contained markdown brief for this slice"},
-						"acceptance": map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "minItems": 1},
-					},
+					"properties":           slice,
 				},
 			},
 		},
@@ -208,10 +220,11 @@ type Output struct {
 
 // SliceOut is one slice in a split result.
 type SliceOut struct {
-	Key        string   `json:"key"`
-	Title      string   `json:"title"`
-	Brief      string   `json:"brief"`
-	Acceptance []string `json:"acceptance"`
+	Key        string            `json:"key"`
+	Title      string            `json:"title"`
+	Brief      string            `json:"brief"`
+	Acceptance []string          `json:"acceptance"`
+	Vars       map[string]string `json:"vars,omitempty"`
 }
 
 // CorrectionPrompt asks the agent to report again after invalid output.

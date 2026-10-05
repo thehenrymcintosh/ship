@@ -149,10 +149,11 @@ func Slug(s string, max int) string {
 
 // SliceSpec is one slice proposed by a split agent.
 type SliceSpec struct {
-	Key        string   `json:"key" yaml:"key"`
-	Title      string   `json:"title" yaml:"title"`
-	Brief      string   `json:"brief" yaml:"brief"`
-	Acceptance []string `json:"acceptance" yaml:"acceptance"`
+	Key        string            `json:"key" yaml:"key"`
+	Title      string            `json:"title" yaml:"title"`
+	Brief      string            `json:"brief" yaml:"brief"`
+	Acceptance []string          `json:"acceptance" yaml:"acceptance"`
+	Vars       map[string]string `json:"vars,omitempty" yaml:"vars,omitempty"`
 }
 
 // RenderSlice writes a slice brief.
@@ -164,11 +165,14 @@ func RenderSlice(s SliceSpec, number, count int, parentRun, parentBrief string) 
 		Vars   map[string]string `yaml:"vars"`
 		Accept []string          `yaml:"acceptance"`
 	}
+	if s.Vars == nil {
+		s.Vars = map[string]string{}
+	}
 	fm, _ := yaml.MarshalWithOptions(sliceFM{
 		Title:  s.Title,
 		Slice:  SliceMeta{Key: s.Key, Number: number, Count: count},
 		Parent: ParentMeta{Run: parentRun, Brief: parentBrief},
-		Vars:   map[string]string{},
+		Vars:   s.Vars,
 		Accept: s.Acceptance,
 	}, yaml.IndentSequence(true))
 	var b bytes.Buffer

@@ -47,7 +47,7 @@
     <div class="slices">
       {{range .Slices}}
       <article class="slice">
-        <header><span class="slice-n">{{.Number}}</span><strong>{{.Title}}</strong> <code>{{.Key}}</code></header>
+        <header><span class="slice-n">{{.Number}}</span><strong>{{.Title}}</strong> <code>{{.Key}}</code>{{range $k, $val := .Vars}} <span class="badge" title="this slice's {{$k}}">{{$k}}: {{$val}}</span>{{end}}</header>
         {{if .Acceptance}}<ul class="accept">{{range .Acceptance}}<li>{{.}}</li>{{end}}</ul>{{end}}
         <details><summary>Brief</summary><div class="md">{{.Body}}</div></details>
       </article>

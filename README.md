@@ -525,7 +525,20 @@ variables:
   test:   { value: make test }                             # fixed
   pr_url: { set_by: open-pr }                              # saved by a step
   owner:  { ask: "Who should review this?" }               # asked the first time it's used
+  epic:   { from_parent: ticket }                          # in a slice pipeline: the parent run's value
 ```
+
+**Slices and tickets.** A slice pipeline's `from_brief` and `from_parent`
+variables default to the parent run's values, but each slice can set its
+own. When a brief covers several tickets, the split agent gives each slice
+the ticket it delivers (it's told which variables the slice pipeline takes),
+so `branch: "feat/{{vars.ticket}}"` gives every slice its own branch. The
+split review shows each slice's values, and you can change them under
+`vars:` in the slice files before approving.
+
+A slice pipeline also runs on its own: `ship start child --var ticket=API-9`.
+Its `from_parent` variables then come from `--var` or the brief, and
+`{{slice.*}}` and `{{parent.*}}` are empty.
 
 A `run:` step saves output with `save: { pr_url: last_line }` (or `stdout`,
 `file:<path>`, `json:<dotted.path>`). An agent step lists the variables it

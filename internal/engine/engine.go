@@ -734,16 +734,30 @@ func (e *Engine) Start(ctx context.Context, req StartRequest) (*store.RunSnapsho
 }
 
 // ResolveVars resolves start-time variables. parentVars is set for
-// child runs.
+// child runs, whose brief (the slice's) may set vars of its own; those win
+// over the parent's. A pipeline written for fanout can also run on its own:
+// its from_parent variables then come from --var or the brief, like
+// from_brief ones.
 func ResolveVars(p *pipeline.Pipeline, b *brief.Brief, given map[string]string, parentVars map[string]string) (map[string]string, error) {
 	out := map[string]string{}
+	startable := func(v *pipeline.Variable) bool {
+		src := v.Source()
+		return src == pipeline.SourceFromBrief || src == pipeline.SourceFromParent
+	}
 	for k := range given {
 		v, ok := p.Variables[k]
 		if !ok {
 			return nil, invalid("unknown variable %q (the pipeline declares: %s)", k, strings.Join(p.SortedVars(), ", "))
 		}
-		if v.Source() != pipeline.SourceFromBrief {
-			return nil, invalid("variable %q isn't from_brief, so it can't be set at start", k)
+		if !startable(v) {
+			return nil, invalid("variable %q isn't from_brief or from_parent, so it can't be set at start", k)
+		}
+	}
+	if parentVars != nil {
+		for k := range b.Vars {
+			if v, ok := p.Variables[k]; !ok || !startable(v) {
+				return nil, invalid("the slice sets variable %q, which this pipeline doesn't take from its brief or parent", k)
+			}
 		}
 	}
 	var pendingValues []string
@@ -768,9 +782,18 @@ func ResolveVars(p *pipeline.Pipeline, b *brief.Brief, given map[string]string, 
 			}
 			out[name] = val
 		case pipeline.SourceFromParent:
-			val, ok := parentVars[*v.FromParent]
+			val, ok := given[name]
 			if !ok {
-				return nil, invalid("variable %q copies parent variable %q, which isn't set", name, *v.FromParent)
+				val, ok = b.Vars[name]
+			}
+			if !ok && parentVars != nil {
+				val, ok = parentVars[*v.FromParent]
+				if !ok {
+					return nil, invalid("variable %q copies parent variable %q, which isn't set", name, *v.FromParent)
+				}
+			}
+			if !ok {
+				return nil, invalid("missing variable %q: pass --var %s=… or add it under vars: in the brief (it comes from the parent run when this pipeline is used by a fanout)", name, name)
 			}
 			out[name] = val
 		case pipeline.SourceValue:

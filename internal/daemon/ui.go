@@ -321,6 +321,7 @@ type SliceView struct {
 	Key        string
 	Title      string
 	Acceptance []string
+	Vars       map[string]string // the slice's own values
 	Body       template.HTML
 }
 
@@ -470,7 +471,7 @@ func (d *Daemon) runView(id string) (*RunView, error) {
 				sv := SliceView{Number: sl.Number, Key: sl.Key, Title: sl.Title}
 				if b, err := os.ReadFile(sl.File); err == nil {
 					if br, err := brief.Parse(b); err == nil {
-						sv.Acceptance = br.Acceptance
+						sv.Acceptance, sv.Vars = br.Acceptance, br.Vars
 						sv.Body = Markdown(br.Body)
 					}
 				}
