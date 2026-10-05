@@ -254,8 +254,8 @@ func (r *runner) versionPipeline() {
 	if s.Workspace != nil {
 		root = s.Workspace.Path
 	}
-	v, _, err := r.e.HistoryStore(s.HistoryDir).Register(history.Compute(history.Inputs{
-		Pipelines: closure, Repo: root, Home: r.e.Home(), ClaudeDir: r.e.o.ClaudeDir,
+	v, _, err := r.e.HistoryStore(RunHistoryDir(s, r.e.Home())).Register(history.Compute(history.Inputs{
+		Pipelines: closure, Repo: root, Home: r.e.Home(), ClaudeDir: r.e.o.ClaudeDir, Folders: runFolders(s, root),
 	}), history.SourceEdit, "", nil)
 	if err != nil {
 		r.e.o.Log.Warn("versioning pipeline", "run", r.id, "err", err)
@@ -574,6 +574,13 @@ func (r *runner) visit(name string, st *pipeline.Step, resume *store.VisitSummar
 		Thread: plan.thread, Since: r.sinceLastTurn(s, plan.last, worktree),
 		ForceCLI: forceCLI, Resumed: resume != nil, StartedAt: started,
 	}
+	root := worktree
+	if root == "" {
+		root = s.Repo
+	}
+	if folder := runFolders(s, root)[s.Pipeline]; folder != "" {
+		v.PluginDirs = []string{folder}
+	}
 	if err != nil {
 		// Env rendering failed: report it as the visit's error.
 		if gotSlot {
@@ -838,7 +845,7 @@ func (r *runner) upgrade(c Command) error {
 	_ = os.RemoveAll(old)
 	r.pipe = f.Pipeline
 	r.emitUser(c)
-	r.emit(store.EvUpgraded, store.Upgraded{FromVersion: s.PipelineVersion, FromHash: s.PipelineHash, Step: c.Step, Warnings: c.Warnings})
+	r.emit(store.EvUpgraded, store.Upgraded{FromVersion: s.PipelineVersion, FromHash: s.PipelineHash, Step: c.Step, Warnings: c.Warnings, PipelineFolders: c.Folders})
 	r.versionPipeline()
 	return nil
 }

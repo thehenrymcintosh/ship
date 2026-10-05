@@ -85,6 +85,10 @@ type RunCreated struct {
 	PipelineVersion int    `json:"pipeline_version,omitempty"`
 	PipelineHash    string `json:"pipeline_hash,omitempty"`
 	HistoryDir      string `json:"history_dir,omitempty"`
+	// PipelineFolders maps each folder pipeline of the run's closure to its
+	// folder: repo-relative when it's in the repo (the run uses the copy in
+	// its worktree), else absolute.
+	PipelineFolders map[string]string `json:"pipeline_folders,omitempty"`
 	// Warnings about the run's setup, e.g. files its pipeline uses that its
 	// worktree won't have.
 	Warnings []string `json:"warnings,omitempty"`
@@ -308,6 +312,8 @@ type Upgraded struct {
 	FromHash    string   `json:"from_hash,omitempty"`
 	Step        string   `json:"step"`
 	Warnings    []string `json:"warnings,omitempty"` // replace the run's setup warnings
+	// The new closure's pipeline folders (see RunCreated).
+	PipelineFolders map[string]string `json:"pipeline_folders,omitempty"`
 }
 
 // PRStatus is the latest observation of the PR a pr step watches.

@@ -246,7 +246,7 @@ func mergeVSCode(repo string) error {
 	if schemas == nil {
 		schemas = map[string]any{}
 	}
-	schemas["./"+brand.Dir+"/schema/pipeline.json"] = []string{brand.Dir + "/pipelines/*.yml", brand.Dir + "/pipelines/*.yaml"}
+	schemas["./"+brand.Dir+"/schema/pipeline.json"] = []string{brand.Dir + "/pipelines/*.yml", brand.Dir + "/pipelines/*.yaml", brand.Dir + "/pipelines/*/pipeline.yml"}
 	schemas["./"+brand.Dir+"/schema/config.json"] = []string{brand.Dir + "/config.yml"}
 	settings["yaml.schemas"] = schemas
 	b, err := json.MarshalIndent(settings, "", "  ")

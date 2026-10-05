@@ -57,6 +57,9 @@ type Visit struct {
 	Since      string // for a resumed conversation: what happened since its last turn
 	// ForceCLI overrides every agent step's cli (fake-agent dry runs).
 	ForceCLI string
+	// PluginDirs are Claude Code plugins to load: the pipeline's folder,
+	// for a folder pipeline (its skills).
+	PluginDirs []string
 
 	// Resumed is set when recovery re-enters an unfinished visit (asks,
 	// split reviews, waits): the executor must not repeat what the log

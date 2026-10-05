@@ -24,10 +24,14 @@ func (e *Engine) Home() string {
 	return filepath.Dir(e.o.GlobalPipelines)
 }
 
-// HistoryDir is where a pipeline's history lives: beside the pipeline, in
-// <repo>/.ship/history/<name> for repo pipelines (committed with them) or
-// ~/.ship/history/<name> for global ones.
+// HistoryDir is where a pipeline's history lives: a folder pipeline's own
+// folder; otherwise beside the pipeline, in <repo>/.ship/history/<name> for
+// repo pipelines (committed with them) or ~/.ship/history/<name> for
+// global ones.
 func HistoryDir(l *pipeline.Loader, repo, home, name string) string {
+	if folder := l.Folder(name); folder != "" {
+		return folder
+	}
 	if repo != "" && (l.Dir(name) == PipelinesDir(repo) || home == "") {
 		return filepath.Join(repo, brand.Dir, "history", name)
 	}
@@ -69,15 +73,36 @@ func GitAuthor(repo string) string {
 	return strings.TrimSpace(string(out))
 }
 
-// RecordFeedback stores feedback about a run (optionally one of its steps)
-// against the pipeline version that run used. added is false when the
-// feedback was already recorded (same SourceID).
-func RecordFeedback(snap *store.RunSnapshot, home string, f history.Feedback) (fb history.Feedback, added bool, err error) {
+// RunHistoryDir is where a run's pipeline history lives now: the dir the
+// run recorded, unless the pipeline has since become a folder (`ship
+// pipeline migrate` moves the history into it).
+func RunHistoryDir(snap *store.RunSnapshot, home string) string {
 	dir := snap.HistoryDir
 	if dir == "" {
 		// Runs from before versioning: fall back to the repo's history dir.
 		dir = filepath.Join(snap.Repo, brand.Dir, "history", snap.Pipeline)
 	}
+	if _, err := os.Stat(dir); err == nil {
+		return dir
+	}
+	var dirs []string
+	if snap.Repo != "" {
+		dirs = append(dirs, PipelinesDir(snap.Repo))
+	}
+	if home != "" {
+		dirs = append(dirs, GlobalPipelinesDir(home))
+	}
+	if folder := pipeline.NewLoader(dirs...).Folder(snap.Pipeline); folder != "" {
+		return folder
+	}
+	return dir
+}
+
+// RecordFeedback stores feedback about a run (optionally one of its steps)
+// against the pipeline version that run used. added is false when the
+// feedback was already recorded (same SourceID).
+func RecordFeedback(snap *store.RunSnapshot, home string, f history.Feedback) (fb history.Feedback, added bool, err error) {
+	dir := RunHistoryDir(snap, home)
 	f.Run, f.Version, f.Hash = snap.ID, snap.PipelineVersion, snap.PipelineHash
 	if f.Author == "" {
 		f.Author = GitAuthor(snap.Repo)
@@ -87,11 +112,7 @@ func RecordFeedback(snap *store.RunSnapshot, home string, f history.Feedback) (f
 
 // FeedbackForRun returns the feedback recorded about one run.
 func FeedbackForRun(snap *store.RunSnapshot, home string) ([]history.Item, error) {
-	dir := snap.HistoryDir
-	if dir == "" {
-		dir = filepath.Join(snap.Repo, brand.Dir, "history", snap.Pipeline)
-	}
-	items, err := history.Open(dir, LockDir(home)).Items()
+	items, err := history.Open(RunHistoryDir(snap, home), LockDir(home)).Items()
 	if err != nil {
 		return nil, err
 	}

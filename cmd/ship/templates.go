@@ -106,6 +106,19 @@ func (a *app) addCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			// Pipeline folders are Claude Code plugins (their own skills).
+			for _, folder := range tpl.Folders() {
+				dir := filepath.Join(shipDir, filepath.FromSlash(folder))
+				if wrote, err := pipeline.EnsurePlugin(dir, filepath.Base(dir), ""); err != nil {
+					return err
+				} else if wrote {
+					label := tildify(filepath.Join(dir, pipeline.PluginManifest))
+					if !global {
+						label = rel(root, filepath.Join(dir, pipeline.PluginManifest))
+					}
+					fmt.Printf("  wrote    %s\n", label)
+				}
+			}
 			// Check what was added, resolving fanout targets like a run would.
 			l := pipeline.NewLoader(engine.PipelinesDir(repo), engine.GlobalPipelinesDir(a.home))
 			if global {

@@ -177,9 +177,31 @@ func (t *Template) Pipelines() []string {
 	files, _ := t.Files()
 	var out []string
 	for _, f := range files {
-		if f.Kind == KindPipeline {
+		if f.Kind != KindPipeline {
+			continue
+		}
+		// pipelines/<name>.yml, or a folder: pipelines/<name>/pipeline.yml.
+		parts := strings.Split(f.Rel, "/")
+		switch {
+		case len(parts) == 2 && (strings.HasSuffix(parts[1], ".yml") || strings.HasSuffix(parts[1], ".yaml")):
 			base := path.Base(f.Rel)
 			out = append(out, strings.TrimSuffix(strings.TrimSuffix(base, ".yml"), ".yaml"))
+		case len(parts) == 3 && (parts[2] == "pipeline.yml" || parts[2] == "pipeline.yaml"):
+			out = append(out, parts[1])
+		}
+	}
+	return out
+}
+
+// Folders returns the pipeline folders the template installs, relative to
+// the ship dir (e.g. "pipelines/rigorous").
+func (t *Template) Folders() []string {
+	files, _ := t.Files()
+	var out []string
+	for _, f := range files {
+		parts := strings.Split(f.Rel, "/")
+		if f.Kind == KindPipeline && len(parts) == 3 && (parts[2] == "pipeline.yml" || parts[2] == "pipeline.yaml") {
+			out = append(out, parts[0]+"/"+parts[1])
 		}
 	}
 	return out

@@ -36,21 +36,56 @@ func NewLoader(dirs ...string) *Loader {
 
 // Path returns the file path for a pipeline name, or "" if missing.
 func (l *Loader) Path(name string) string {
+	p, _ := l.find(name)
+	return p
+}
+
+// Dir returns the search directory a pipeline resolves from (e.g. the
+// repo's .ship/pipelines), or "".
+func (l *Loader) Dir(name string) string {
+	_, d := l.find(name)
+	return d
+}
+
+// Folder returns the pipeline's folder when it's a folder pipeline, or "".
+func (l *Loader) Folder(name string) string {
+	return FolderOf(l.Path(name))
+}
+
+func (l *Loader) find(name string) (path, dir string) {
+	if name == "" || strings.ContainsAny(name, `/\`) {
+		return "", ""
+	}
 	for _, dir := range l.Dirs {
-		for _, ext := range []string{".yml", ".yaml"} {
-			p := filepath.Join(dir, name+ext)
-			if _, err := os.Stat(p); err == nil {
-				return p
-			}
+		if p := FindIn(dir, name); p != "" {
+			return p, dir
+		}
+	}
+	return "", ""
+}
+
+// FindIn returns the file of pipeline name directly in dir (a folder's
+// pipeline.yml first, then <name>.yml), or "".
+func FindIn(dir, name string) string {
+	for _, p := range []string{
+		filepath.Join(dir, name, FolderFile), filepath.Join(dir, name, "pipeline.yaml"),
+		filepath.Join(dir, name+".yml"), filepath.Join(dir, name+".yaml"),
+	} {
+		if st, err := os.Stat(p); err == nil && !st.IsDir() {
+			return p
 		}
 	}
 	return ""
 }
 
-// Dir returns the directory a pipeline resolves from, or "".
-func (l *Loader) Dir(name string) string {
-	if p := l.Path(name); p != "" {
-		return filepath.Dir(p)
+// FolderFile is a pipeline folder's pipeline file.
+const FolderFile = "pipeline.yml"
+
+// FolderOf returns the folder of a folder pipeline's file
+// (<dir>/<name>/pipeline.yml), or "" for a single-file pipeline.
+func FolderOf(path string) string {
+	if b := filepath.Base(path); path != "" && (b == FolderFile || b == "pipeline.yaml") {
+		return filepath.Dir(path)
 	}
 	return ""
 }
@@ -63,10 +98,19 @@ func (l *Loader) Names() []string {
 		entries, _ := os.ReadDir(dir)
 		for _, e := range entries {
 			n := e.Name()
-			if e.IsDir() || !(strings.HasSuffix(n, ".yml") || strings.HasSuffix(n, ".yaml")) {
+			name := ""
+			switch {
+			case strings.HasPrefix(n, "."):
+			case e.IsDir():
+				if FindIn(dir, n) != "" {
+					name = n
+				}
+			case strings.HasSuffix(n, ".yml") || strings.HasSuffix(n, ".yaml"):
+				name = NameFromPath(n)
+			}
+			if name == "" {
 				continue
 			}
-			name := NameFromPath(n)
 			if !seen[name] {
 				seen[name] = true
 				out = append(out, name)
@@ -162,9 +206,14 @@ func (l *Loader) Closure(name string) ([]*File, error) {
 }
 
 // ValidateFile validates a pipeline at an arbitrary path, resolving fanout
-// targets from the same directory, then from extra (e.g. the global dir).
+// targets from the same directory (the one holding the folder, for a
+// folder pipeline), then from extra (e.g. the global dir).
 func ValidateFile(path string, opts Options, extra ...string) (*File, []Finding) {
-	l := NewLoader(append([]string{filepath.Dir(path)}, extra...)...)
+	dir := filepath.Dir(path)
+	if folder := FolderOf(path); folder != "" {
+		dir = filepath.Dir(folder)
+	}
+	l := NewLoader(append([]string{dir}, extra...)...)
 	name := NameFromPath(path)
 	if l.Path(name) != path && l.Path(name) != "" && filepath.Clean(l.Path(name)) != filepath.Clean(path) {
 		// Unusual extension or a different file of the same name: parse directly.

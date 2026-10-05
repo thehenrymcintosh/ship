@@ -44,6 +44,7 @@ type Request struct {
 	Effort       string
 	Permission   Permission
 	ReadDirs     []string        // run dir, so brief/handovers outside the worktree are readable
+	PluginDirs   []string        // Claude Code plugins to load (a folder pipeline's own skills)
 	OutputSchema json.RawMessage // structured-output schema
 	SessionID    string          // new session id to assign (fresh)
 	ResumeID     string          // session to resume

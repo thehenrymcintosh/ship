@@ -37,6 +37,9 @@ func ideaPatterns(projectRoot, root string, global bool) []ideaMapping {
 	return []ideaMapping{
 		{name: brand.Name + " pipeline", schema: relTo(filepath.Join(shipDir, "schema", "pipeline.json")),
 			patterns: []string{pipes + "/*.yml", pipes + "/*.yaml"}},
+		// Its own entry, so projects mapped before pipeline folders get it too.
+		{name: brand.Name + " pipeline folders", schema: relTo(filepath.Join(shipDir, "schema", "pipeline.json")),
+			patterns: []string{pipes + "/*/pipeline.yml"}},
 		{name: brand.Name + " config", schema: relTo(filepath.Join(shipDir, "schema", "config.json")),
 			patterns: []string{relTo(filepath.Join(shipDir, "config.yml"))}},
 	}

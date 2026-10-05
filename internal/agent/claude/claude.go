@@ -107,6 +107,9 @@ func Args(req agent.Request) ([]string, bool) {
 	for _, d := range req.ReadDirs {
 		args = append(args, "--add-dir", d)
 	}
+	for _, d := range req.PluginDirs {
+		args = append(args, "--plugin-dir", d)
+	}
 	if req.BudgetUSD > 0 {
 		args = append(args, "--max-budget-usd", strconv.FormatFloat(req.BudgetUSD, 'f', 4, 64))
 	}

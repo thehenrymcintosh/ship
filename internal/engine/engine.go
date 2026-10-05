@@ -323,8 +323,10 @@ type Command struct {
 	Var    string
 	Value  string
 	All    bool // pause/resume: child runs too
-	// upgrade: notes on files the run's worktree has an older copy of
+	// upgrade: notes on files the run's worktree has an older copy of, and
+	// the new closure's pipeline folders
 	Warnings []string
+	Folders  map[string]string
 	// raise_budget: amounts to add (Action "retry" also retries a held run)
 	USD    float64
 	Tokens int64
@@ -412,7 +414,7 @@ func (e *Engine) Upgrade(ctx context.Context, id, step, source string) ([]string
 	if snap.Workspace != nil && snap.Provider != "none" && snap.Branch != "" {
 		warnings = e.UnsyncedFiles(ctx, snap.Repo, snap.Branch, closure)
 	}
-	if err := e.Do(id, Command{Name: CmdUpgrade, Step: step, Source: source, Warnings: warnings}); err != nil {
+	if err := e.Do(id, Command{Name: CmdUpgrade, Step: step, Source: source, Warnings: warnings, Folders: PipelineFolders(snap.Repo, closure)}); err != nil {
 		_ = os.RemoveAll(stage)
 		return nil, err
 	}
@@ -721,6 +723,12 @@ func (e *Engine) Start(ctx context.Context, req StartRequest) (*store.RunSnapsho
 	// Where the pipeline's history lives. The version itself is recorded
 	// once the worktree exists, from what the run's agents will actually use.
 	created.HistoryDir = HistoryDir(e.Loader(req.Repo), req.Repo, e.Home(), name)
+	created.PipelineFolders = PipelineFolders(req.Repo, closure)
+	if req.child != nil && pipeline.FolderOf(f.Path) == "" && filepath.Dir(f.Path) == filepath.Join(req.child.parentDir, store.PipelineDir) {
+		// The parent's copy has no folders of its own: keep the parent's.
+		created.PipelineFolders = req.child.parent.PipelineFolders
+	}
+	ensurePlugins(closure)
 	if provider != "none" && provider != parentProvider {
 		// The worktree checks out the run's branch if it exists already,
 		// otherwise a new one from the base: compare with what it'll have.

@@ -156,6 +156,7 @@ type RunSnapshot struct {
 	Upgrades          int               `json:"upgrades,omitempty"` // times moved onto a newer pipeline
 	PipelineHash      string            `json:"pipeline_hash,omitempty"`
 	HistoryDir        string            `json:"history_dir,omitempty"`
+	PipelineFolders   map[string]string `json:"pipeline_folders,omitempty"`
 	Warnings          []string          `json:"warnings,omitempty"`
 	CreatedAt         time.Time         `json:"created_at"`
 	UpdatedAt         time.Time         `json:"updated_at"`
@@ -242,6 +243,7 @@ func Apply(s *RunSnapshot, e Event) error {
 		s.Provider, s.Branch, s.Base = d.Provider, d.Branch, d.Base
 		s.FakeAgents, s.ShipVersion = d.FakeAgents, d.ShipVersion
 		s.PipelineVersion, s.PipelineHash, s.HistoryDir = d.PipelineVersion, d.PipelineHash, d.HistoryDir
+		s.PipelineFolders = d.PipelineFolders
 		s.Warnings = d.Warnings
 		for k, v := range d.Vars {
 			s.Vars[k] = v
@@ -417,6 +419,7 @@ func Apply(s *RunSnapshot, e Event) error {
 			return err
 		}
 		s.PipelineVersion, s.PipelineHash, s.Warnings = 0, "", d.Warnings
+		s.PipelineFolders = d.PipelineFolders
 		s.Upgrades++
 	case EvBaseMoved:
 		s.BaseMoved = true

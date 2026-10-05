@@ -746,8 +746,10 @@ func (d *Daemon) repoPipelines(repo string) []PipelineInfo {
 	cfg, _ := d.eng.Config(repo)
 	l := d.eng.Loader(repo)
 	out := []PipelineInfo{}
+	opts := d.eng.ValidateOptions(cfg)
+	opts.SkillExists = d.eng.SkillCheck(repo)
 	for _, name := range l.Names() {
-		f, findings := l.Validate(name, d.eng.ValidateOptions(cfg))
+		f, findings := l.Validate(name, opts)
 		pi := PipelineInfo{Name: name, Findings: findings, Global: l.Dir(name) != engine.PipelinesDir(repo)}
 		if pi.Findings == nil {
 			pi.Findings = []pipeline.Finding{}

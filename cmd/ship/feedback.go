@@ -138,7 +138,7 @@ func (a *app) pipelineCmd() *cobra.Command {
 		Short: "Pipeline versions, feedback and stats: versions, feedback, refine, report, close, stats",
 	}
 	cmd.PersistentFlags().String("repo", "", "repo path (default: the git repo of the current dir)")
-	cmd.AddCommand(a.versionsCmd(), a.pipelineFeedbackCmd(), a.closeCmd(), a.refineCmd(), a.reportCmd(), a.statsCmd())
+	cmd.AddCommand(a.versionsCmd(), a.pipelineFeedbackCmd(), a.closeCmd(), a.refineCmd(), a.reportCmd(), a.statsCmd(), a.migrateCmd())
 	return cmd
 }
 

@@ -10,6 +10,7 @@ import (
 	"github.com/thehenrymcintosh/ship/internal/config"
 	"github.com/thehenrymcintosh/ship/internal/daemon"
 	"github.com/thehenrymcintosh/ship/internal/engine"
+	"github.com/thehenrymcintosh/ship/internal/history"
 	"github.com/thehenrymcintosh/ship/internal/pipeline"
 )
 
@@ -19,7 +20,20 @@ func (a *app) validateOpts(repo string) pipeline.Options {
 	if err != nil {
 		cfg = config.Defaults()
 	}
-	return pipeline.Options{AgentCheck: daemon.NewRegistry().Check, AgentBase: cfg.Agent}
+	in := history.Inputs{Repo: repo, ClaudeDir: config.ClaudeDir()}
+	return pipeline.Options{AgentCheck: daemon.NewRegistry().Check, AgentBase: cfg.Agent, SkillExists: func(f *pipeline.File, skill string) bool {
+		return !in.ResolveSkill(skill, f.Name, pipeline.FolderOf(f.Path)).Missing
+	}}
+}
+
+// pipelineArg maps a pipeline folder given as a path to its pipeline file.
+func pipelineArg(p string) string {
+	if st, err := os.Stat(p); err == nil && st.IsDir() {
+		if f := pipeline.FindIn(filepath.Dir(filepath.Clean(p)), filepath.Base(filepath.Clean(p))); f != "" {
+			return f
+		}
+	}
+	return p
 }
 
 // loader returns the repo + global pipeline search path. repo may be "".
@@ -52,7 +66,7 @@ func (a *app) validateCmd() *cobra.Command {
 			checked := 0
 			if len(args) > 0 {
 				for _, f := range args {
-					_, fs := pipeline.ValidateFile(f, opts, engine.GlobalPipelinesDir(a.home))
+					_, fs := pipeline.ValidateFile(pipelineArg(f), opts, engine.GlobalPipelinesDir(a.home))
 					all = append(all, fs...)
 					checked++
 				}
@@ -143,7 +157,7 @@ func (a *app) graphCmd() *cobra.Command {
 			var f *pipeline.File
 			var fs []pipeline.Finding
 			if _, err := os.Stat(args[0]); err == nil {
-				f, fs = pipeline.ParseFile(args[0])
+				f, fs = pipeline.ParseFile(pipelineArg(args[0]))
 			} else {
 				f, fs = a.loader(currentRepo()).Load(args[0])
 			}

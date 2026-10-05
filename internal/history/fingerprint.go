@@ -63,6 +63,17 @@ type Inputs struct {
 	Repo      string // main checkout; repo-relative references resolve here
 	Home      string // ~/.ship ($SHIP_HOME); "$SHIP_HOME/bin/x" resolves here
 	ClaudeDir string // ~/.claude; user-level skills and commands
+	// Folders maps a folder pipeline's name to its folder (as the run sees
+	// it), whose skills come first. Nil uses each file's own folder.
+	Folders map[string]string
+}
+
+// folder is the pipeline folder f's skills resolve from, or "".
+func (in Inputs) folder(f *pipeline.File) string {
+	if in.Folders != nil {
+		return in.Folders[f.Name]
+	}
+	return pipeline.FolderOf(f.Path)
 }
 
 var (
@@ -90,8 +101,8 @@ func Compute(in Inputs) Fingerprint {
 				continue
 			}
 			for _, line := range []*string{s.Agent, s.Split} {
-				if name := slashName(pipeline.Str(line)); name != "" {
-					add(in.resolveSkill(name))
+				if name := pipeline.SkillName(pipeline.Str(line)); name != "" {
+					add(in.ResolveSkill(name, f.Name, in.folder(f)))
 				}
 			}
 			if s.Rules != "" {
@@ -123,23 +134,23 @@ func Compute(in Inputs) Fingerprint {
 	return Fingerprint{Hash: hex.EncodeToString(h.Sum(nil)), Parts: parts}
 }
 
-// slashName returns "review" for "/review mode=code".
-func slashName(line string) string {
-	line = strings.TrimSpace(line)
-	if !strings.HasPrefix(line, "/") {
-		return ""
+// ResolveSkill finds a skill (a directory with SKILL.md) or a slash command
+// (a .md file): in the pipeline's folder first (folder may be ""), then the
+// repo, then for the user, as Claude Code does. "<pipeline>:skill" names
+// the folder's skill explicitly; another plugin's skill is missing (ship
+// can't see plugins).
+func (in Inputs) ResolveSkill(name, pipe, folder string) Part {
+	if plugin, skill, ok := strings.Cut(name, ":"); ok {
+		if plugin == pipe {
+			if dir := pipeline.FolderSkill(folder, skill); dir != "" {
+				return Part{Kind: KindSkill, Name: skill, Path: dir, Hash: hashDir(dir)}
+			}
+		}
+		return Part{Kind: KindSkill, Name: name, Missing: true}
 	}
-	f := strings.Fields(line)
-	name := strings.TrimPrefix(f[0], "/")
-	if name == "" || strings.Contains(name, "{{") {
-		return ""
+	if dir := pipeline.FolderSkill(folder, name); dir != "" {
+		return Part{Kind: KindSkill, Name: name, Path: dir, Hash: hashDir(dir)}
 	}
-	return name
-}
-
-// resolveSkill finds a skill (a directory with SKILL.md) or a slash command
-// (a .md file), in the repo first, then for the user, as Claude Code does.
-func (in Inputs) resolveSkill(name string) Part {
 	var roots []string
 	if in.Repo != "" {
 		roots = append(roots, filepath.Join(in.Repo, ".claude"))

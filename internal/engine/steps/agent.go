@@ -206,6 +206,7 @@ func invoke(ctx context.Context, v *Visit, c *agentCall) (agent.Output, Result) 
 		Model: c.cfg.Model, Effort: c.cfg.Effort,
 		Permission:   agent.Permission{Mode: c.cfg.PermissionMode, Allowed: c.cfg.AllowedTools, Disallowed: c.cfg.DisallowedTools},
 		ReadDirs:     []string{v.RunDir},
+		PluginDirs:   v.PluginDirs,
 		OutputSchema: c.schema, SessionID: v.SessionID, ResumeID: v.ResumeID,
 		Timeout: v.Timeout, Env: v.Env, ExtraArgs: c.cfg.ExtraArgs,
 		TranscriptW: tw, StderrW: io.MultiWriter(ew, outputWriter{v, "stderr"}),

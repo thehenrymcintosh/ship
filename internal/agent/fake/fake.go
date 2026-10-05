@@ -30,6 +30,10 @@ import (
 // ScriptEnv names the env var holding the script path.
 const ScriptEnv = brand.EnvPrefix + "FAKE_AGENT"
 
+// PluginDirsEnv lists the request's plugin dirs (colon-separated) for a
+// scripted run: snippet.
+const PluginDirsEnv = brand.EnvPrefix + "FAKE_PLUGIN_DIRS"
+
 // Entry is one scripted response.
 type Entry struct {
 	Outcome string            `yaml:"outcome"`
@@ -191,7 +195,9 @@ func (a *Adapter) Run(ctx context.Context, req agent.Request, sink agent.Sink) (
 			}
 		}
 		if e.Run != "" {
-			if err := runShell(ctx, req.Workdir, req.Env, e.Run); err != nil {
+			// The snippet can see which plugins a real agent would load.
+			env := append(append([]string{}, req.Env...), PluginDirsEnv+"="+strings.Join(req.PluginDirs, ":"))
+			if err := runShell(ctx, req.Workdir, env, e.Run); err != nil {
 				return agent.Response{IsError: true, ErrorText: "fake run: " + err.Error(), SessionID: session, ExitCode: 1}, nil
 			}
 		}

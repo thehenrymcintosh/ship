@@ -72,6 +72,9 @@ type Options struct {
 	// AgentBase is the agent config from user/project config, merged under
 	// the pipeline's agent block.
 	AgentBase AgentConfig
+	// SkillExists reports whether a skill (or slash command) a step calls
+	// can be found for the pipeline file (W108). nil skips the check.
+	SkillExists func(f *File, skill string) bool
 }
 
 type validator struct {
@@ -610,7 +613,7 @@ func (v *validator) checkGraph() {
 	}
 }
 
-// checkAgents covers E014, W104 and W107.
+// checkAgents covers E014, W104, W107 and W108.
 func (v *validator) checkAgents() {
 	p := v.p
 	// W107: a step that can send work back to a step it shares a
@@ -659,7 +662,42 @@ func (v *validator) checkAgents() {
 				v.errf("E014", Ptr("steps", name), "%s", msg)
 			}
 		}
+		// W108: a skill nobody can find. Plugin skills (/plugin:skill of
+		// another plugin) can't be checked, so only plain names are.
+		if v.opts.SkillExists != nil {
+			for _, field := range []string{"agent", "split"} {
+				line := s.Agent
+				if field == "split" {
+					line = s.Split
+				}
+				skill := SkillName(Str(line))
+				if skill == "" || (strings.Contains(skill, ":") && !strings.HasPrefix(skill, v.f.Name+":")) {
+					continue
+				}
+				if !v.opts.SkillExists(v.f, skill) {
+					where := ".claude/skills or ~/.claude/skills"
+					if FolderOf(v.f.Path) != "" {
+						where = "the pipeline's skills folder, " + where
+					}
+					v.warnf("W108", Ptr("steps", name, field), "skill /%s isn't in %s; if it comes from a plugin, ignore this", skill, where)
+				}
+			}
+		}
 	}
+}
+
+// SkillName returns the skill or command a step line calls: "review" for
+// "/review mode=code", "" when the line isn't a slash command.
+func SkillName(line string) string {
+	line = strings.TrimSpace(line)
+	if !strings.HasPrefix(line, "/") {
+		return ""
+	}
+	name := strings.TrimPrefix(strings.Fields(line)[0], "/")
+	if name == "" || strings.Contains(name, "{{") {
+		return ""
+	}
+	return name
 }
 
 func contains(s []string, x string) bool {

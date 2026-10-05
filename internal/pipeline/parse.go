@@ -61,8 +61,12 @@ func Ptr(seg ...string) string {
 	return b.String()
 }
 
-// NameFromPath returns the pipeline name for a file path.
+// NameFromPath returns the pipeline name for a file path: the file's
+// basename, or the folder's name for <name>/pipeline.yml.
 func NameFromPath(path string) string {
+	if f := FolderOf(path); f != "" {
+		return filepath.Base(f)
+	}
 	base := filepath.Base(path)
 	return strings.TrimSuffix(strings.TrimSuffix(base, ".yml"), ".yaml")
 }

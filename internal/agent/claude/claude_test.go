@@ -68,9 +68,9 @@ func TestParserFallbacks(t *testing.T) {
 }
 
 func TestArgs(t *testing.T) {
-	args, stdin := Args(agent.Request{Prompt: "/review", ResumeID: "r", SessionID: "s", Model: "opus", Permission: agent.Permission{Mode: "acceptEdits", Allowed: []string{"Bash(make *)"}}, ReadDirs: []string{"/run"}, BudgetUSD: 1.5, OutputSchema: json.RawMessage(`{}`)})
+	args, stdin := Args(agent.Request{Prompt: "/review", ResumeID: "r", SessionID: "s", Model: "opus", Permission: agent.Permission{Mode: "acceptEdits", Allowed: []string{"Bash(make *)"}}, ReadDirs: []string{"/run"}, PluginDirs: []string{"/wt/.ship/pipelines/pr"}, BudgetUSD: 1.5, OutputSchema: json.RawMessage(`{}`)})
 	got := strings.Join(args, " ")
-	for _, want := range []string{"-p /review", "--resume r", "--model opus", "--permission-mode acceptEdits", "--allowed-tools Bash(make *)", "--add-dir /run", "--max-budget-usd 1.5000", "--json-schema {}"} {
+	for _, want := range []string{"-p /review", "--resume r", "--model opus", "--permission-mode acceptEdits", "--allowed-tools Bash(make *)", "--add-dir /run", "--plugin-dir /wt/.ship/pipelines/pr", "--max-budget-usd 1.5000", "--json-schema {}"} {
 		if !strings.Contains(got, want) {
 			t.Errorf("missing %q in %s", want, got)
 		}
