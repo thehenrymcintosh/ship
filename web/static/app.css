@@ -299,3 +299,12 @@ form.inline { display: inline-flex; gap: 0.4rem; align-items: center; flex-wrap:
 .toast { pointer-events: auto; max-width: 32rem; background: var(--surface); border: 1px solid var(--border); border-left: 4px solid var(--danger);
   border-radius: 8px; padding: 0.65rem 0.9rem; box-shadow: 0 8px 24px rgb(0 0 0 / 0.18); font-size: 0.9rem; white-space: pre-wrap; overflow-wrap: anywhere; }
 .toast.ok { border-left-color: var(--ok); }
+
+/* feedback */
+.fb { border-top: 1px solid var(--border); padding: 0.5rem 0; }
+.fb p { margin: 0.2rem 0 0; font-size: 0.9rem; white-space: pre-wrap; overflow-wrap: anywhere; }
+.fb-form { display: grid; gap: 0.5rem; margin-top: 0.6rem; }
+.fb-row { display: flex; gap: 0.5rem; align-items: center; }
+.fb-row select { flex: 1; min-width: 0; }
+.fb-hint { margin: 0.6rem 0 0; }
+.ok-text { color: var(--ok); }

@@ -22,6 +22,7 @@ import (
 	"github.com/thehenrymcintosh/ship/internal/brand"
 	"github.com/thehenrymcintosh/ship/internal/brief"
 	"github.com/thehenrymcintosh/ship/internal/config"
+	"github.com/thehenrymcintosh/ship/internal/history"
 	"github.com/thehenrymcintosh/ship/internal/notify"
 	"github.com/thehenrymcintosh/ship/internal/pipeline"
 	"github.com/thehenrymcintosh/ship/internal/store"
@@ -55,7 +56,10 @@ type Options struct {
 	// GlobalPipelines is the user-wide pipeline dir (~/.ship/pipelines),
 	// searched after the repo's own .ship/pipelines.
 	GlobalPipelines string
-	Log             *slog.Logger
+	// ClaudeDir is Claude Code's user dir (default ~/.claude), where
+	// user-level skills referenced by pipelines are found.
+	ClaudeDir string
+	Log       *slog.Logger
 }
 
 // Engine runs pipelines.
@@ -92,6 +96,9 @@ func New(o Options) *Engine {
 	}
 	if o.BaseEnv == nil {
 		o.BaseEnv = os.Environ()
+	}
+	if o.ClaudeDir == "" {
+		o.ClaudeDir = config.ClaudeDir()
 	}
 	// Workspace commands see the same environment as steps.
 	providers := o.Providers
@@ -573,16 +580,16 @@ func (e *Engine) Start(ctx context.Context, req StartRequest) (*store.RunSnapsho
 	if err := os.WriteFile(filepath.Join(dir, store.BriefFile), req.Brief, 0o600); err != nil {
 		return fail(err)
 	}
+	closure, err := loader.Closure(name)
+	if err != nil {
+		return fail(invalid("%v", err))
+	}
 	if req.child != nil {
 		if err := copyDir(filepath.Join(req.child.parentDir, store.PipelineDir), filepath.Join(dir, store.PipelineDir)); err != nil {
 			return fail(err)
 		}
 	} else {
-		files, err := loader.Closure(name)
-		if err != nil {
-			return fail(invalid("%v", err))
-		}
-		for _, cf := range files {
+		for _, cf := range closure {
 			if err := os.WriteFile(filepath.Join(dir, store.PipelineDir, cf.Name+".yml"), cf.Source, 0o600); err != nil {
 				return fail(err)
 			}
@@ -599,6 +606,14 @@ func (e *Engine) Start(ctx context.Context, req StartRequest) (*store.RunSnapsho
 		ID: id, Pipeline: name, Repo: req.Repo, RepoOrigin: gitws.Origin(ctx, req.Repo),
 		BriefTitle: b.Title, Start: p.Start, Vars: vars, ShipVersion: brand.Version,
 		Provider: provider, Branch: branch, Base: base, FakeAgents: req.FakeAgents,
+	}
+	// Version the pipeline (and the skills, rules and scripts it uses), so
+	// feedback on this run is tied to exactly what produced it.
+	created.HistoryDir = HistoryDir(e.Loader(req.Repo), req.Repo, e.Home(), name)
+	if v, err := e.RegisterVersion(req.Repo, closure, created.HistoryDir, history.SourceEdit, "", nil); err != nil {
+		e.o.Log.Warn("versioning pipeline", "pipeline", name, "err", err)
+	} else {
+		created.PipelineVersion, created.PipelineHash = v.Version, v.Hash
 	}
 	if req.child != nil {
 		created.Parent = &store.ParentRef{ID: req.child.parent.ID, Step: req.child.step}

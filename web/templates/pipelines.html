@@ -28,6 +28,7 @@
 {{define "pipeline-card"}}
 <article class="card pipeline">
   <header class="card-head"><h3>{{.Name}}{{if .Global}} <span class="badge">global</span>{{end}}</h3>{{if .Errors}}<span class="badge danger">invalid</span>{{end}}</header>
+  {{if .Version}}<p class="muted small">{{.Version}}{{if .Open}} · <strong>{{.Open}} open feedback</strong> · <code>ship pipeline refine {{.Name}}</code>{{end}}</p>{{end}}
   {{if .Description}}<p>{{.Description}}</p>{{end}}
   {{if .Pipeline}}<div class="graph small-graph" data-src="/api/pipelines/{{.Name}}/graph?repo={{.Repo}}"></div>{{end}}
   {{if .Findings}}<ul class="findings">{{range .Findings}}<li class="sev-{{.Severity}}"><code>{{.Code}}</code> <span class="muted">{{basename .File}}:{{.Line}}</span> {{.Message}}</li>{{end}}</ul>{{end}}

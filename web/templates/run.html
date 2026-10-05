@@ -24,7 +24,7 @@
     <div class="facts">
       {{template "pill" $s}}
       {{if not (terminal $s.Status)}}<span class="phase">{{phase $s .P}}</span>{{end}}
-      <span title="pipeline">{{$s.Pipeline}}</span>
+      <span title="pipeline">{{$s.Pipeline}}{{with .Version}} <span class="muted" title="pipeline version: the pipeline plus the skills, rules and scripts it uses">{{.}}</span>{{end}}</span>
       {{if $s.Branch}}<span class="branch" title="branch ← base"><code>{{$s.Branch}}</code> ← <code>{{$s.Base}}</code></span>{{end}}
       {{with money $s.CostUSD}}<span class="cost" title="agent cost">{{.}}</span>{{end}}
       <span class="muted" title="{{$s.CreatedAt}}">started {{ago $s.CreatedAt}}</span>
@@ -161,6 +161,23 @@
   </ol>
 </section>
 {{end}}
+<section class="card feedback-card">
+  <header class="card-head"><h2>Feedback</h2>{{with .Version}}<span class="muted small" title="recorded against this pipeline version">{{$s.Pipeline}} {{.}}</span>{{end}}</header>
+  {{range .Feedback}}
+  <div class="fb">
+    <div class="muted small">#{{.ID}}{{with .Step}} · {{.}}{{end}} · {{.Source}}{{with .Author}} · {{.}}{{end}}{{if eq .Status "addressed"}} · <span class="ok-text">addressed in v{{.AddressedIn}}</span>{{else if eq .Status "closed"}} · closed{{end}}{{with .Link}} · <a href="{{.}}" target="_blank" rel="noopener">link</a>{{end}}</div>
+    <p>{{.Text}}</p>
+  </div>
+  {{end}}
+  <form class="fb-form" hx-post="/api/runs/{{$s.ID}}/feedback" hx-swap="none" hx-on::after-request="if (event.detail.successful) this.reset()">
+    <textarea name="text" rows="3" required placeholder="What was good or bad about this work? It's kept with this pipeline version for refining it."></textarea>
+    <div class="fb-row">
+      <select name="step" aria-label="About which step"><option value="">The whole run</option>{{range .Steps}}<option>{{.}}</option>{{end}}</select>
+      <button class="btn small">Add feedback</button>
+    </div>
+  </form>
+  <p class="muted small fb-hint">Or comment on the run's PR starting with <code>ship:</code>. <code>ship pipeline refine {{$s.Pipeline}}</code> turns open feedback into a proposed new version.</p>
+</section>
 <section class="card small-print">
   <dl class="kv">
     <div><dt>Repo</dt><dd><code>{{$s.Repo}}</code></dd></div>

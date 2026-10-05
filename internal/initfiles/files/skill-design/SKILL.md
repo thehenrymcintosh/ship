@@ -14,6 +14,11 @@ the workflow in plain language, then write and check the file yourself.
 
 ## How to work
 
+If the user wants to improve a pipeline based on feedback they've given on
+its runs, suggest `ship pipeline refine <pipeline>`: it reads the recorded
+feedback and proposes a new version. Use this skill for designing pipelines
+and for changes the user describes directly.
+
 1. **Look first.** Run `ship ls --pipelines` to see the existing pipelines and
    where each comes from (repo or global). Read any that are relevant. If the
    user wants to change one, start from it. Also run `ship templates`: if a

@@ -26,11 +26,13 @@ func read(name string) []byte {
 }
 
 // Skills returns the Claude Code skills, with paths relative to a skills
-// dir (<repo>/.claude/skills or ~/.claude/skills): the handoff skill, and
-// the user-invoked /ship-design skill for designing pipelines.
+// dir (<repo>/.claude/skills or ~/.claude/skills): the handoff skill, the
+// user-invoked /ship-design skill for designing pipelines, and the feedback
+// skill.
 func Skills() []File {
 	return []File{
 		{brand.SkillName + "/SKILL.md", read("skill/SKILL.md"), 0o644},
 		{brand.DesignSkillName + "/SKILL.md", read("skill-design/SKILL.md"), 0o644},
+		{brand.FeedbackSkillName + "/SKILL.md", read("skill-feedback/SKILL.md"), 0o644},
 	}
 }

@@ -29,6 +29,8 @@ const (
 	Repo = "thehenrymcintosh/" + Name
 	// DesignSkillName is the user-invoked pipeline design skill.
 	DesignSkillName = Name + "-design"
+	// FeedbackSkillName records feedback on runs from Claude Code.
+	FeedbackSkillName = Name + "-feedback"
 )
 
 // Version is set at build time with -ldflags.

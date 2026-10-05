@@ -19,6 +19,7 @@ import (
 
 	"github.com/thehenrymcintosh/ship/internal/brand"
 	"github.com/thehenrymcintosh/ship/internal/engine"
+	"github.com/thehenrymcintosh/ship/internal/history"
 	"github.com/thehenrymcintosh/ship/internal/pipeline"
 	"github.com/thehenrymcintosh/ship/internal/store"
 )
@@ -46,6 +47,8 @@ func (d *Daemon) routes() http.Handler {
 	api("POST /api/runs/{id}/cancel", d.command(engine.CmdCancel))
 	api("POST /api/runs/{id}/reacquire", d.command(engine.CmdReacquire))
 	api("POST /api/runs/{id}/open", d.openThing)
+	api("GET /api/runs/{id}/feedback", d.runFeedback)
+	api("POST /api/runs/{id}/feedback", d.addFeedback)
 	api("GET /api/inbox", d.inbox)
 	api("GET /api/repos", d.repos)
 	api("GET /api/pipelines", d.pipelines)
@@ -808,4 +811,57 @@ func (d *Daemon) clean(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, 200, res)
+}
+
+func (d *Daemon) runFeedback(w http.ResponseWriter, r *http.Request) {
+	id, ok := d.resolve(w, r)
+	if !ok {
+		return
+	}
+	snap, err := d.eng.Snapshot(id)
+	if err != nil {
+		writeEngineErr(w, err)
+		return
+	}
+	items, err := engine.FeedbackForRun(snap, d.home)
+	if err != nil {
+		writeEngineErr(w, err)
+		return
+	}
+	if items == nil {
+		items = []history.Item{}
+	}
+	writeJSON(w, 200, items)
+}
+
+func (d *Daemon) addFeedback(w http.ResponseWriter, r *http.Request) {
+	id, ok := d.resolve(w, r)
+	if !ok {
+		return
+	}
+	var b struct {
+		Step   string `json:"step"`
+		Text   string `json:"text"`
+		Source string `json:"source"`
+	}
+	if err := decode(r, &b); err != nil {
+		writeErr(w, 400, "bad_request", err.Error())
+		return
+	}
+	src := b.Source
+	if src == "" {
+		src = history.FromUI
+		if r.Header.Get("X-Ship-Client") == "cli" {
+			src = history.FromCLI
+		}
+	}
+	f, err := d.eng.AddFeedback(id, b.Step, b.Text, src, "", "", "")
+	if err != nil {
+		writeEngineErr(w, err)
+		return
+	}
+	if r.Header.Get("HX-Request") == "true" {
+		w.Header().Set("HX-Trigger", "ship-refresh")
+	}
+	writeJSON(w, http.StatusCreated, f)
 }

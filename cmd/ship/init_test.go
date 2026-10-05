@@ -53,6 +53,9 @@ func TestInitInstallsHandoffSkill(t *testing.T) {
 	if !strings.Contains(out, "hand this to ship") {
 		t.Errorf("init should mention the handoff:\n%s", out)
 	}
+	if _, err := os.Stat(filepath.Join(repo, ".claude", "skills", "ship-feedback", "SKILL.md")); err != nil {
+		t.Fatalf("feedback skill missing: %v", err)
+	}
 	design, err := os.ReadFile(filepath.Join(repo, ".claude", "skills", "ship-design", "SKILL.md"))
 	if err != nil || !strings.Contains(string(design), "disable-model-invocation: true") {
 		t.Fatalf("design skill missing or model-invocable: %v", err)

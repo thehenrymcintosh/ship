@@ -25,9 +25,11 @@ func (a *app) initCmd() *cobra.Command {
 schemas, and map the schemas for VS Code (.vscode/settings.json) and
 JetBrains IDEs (.idea/jsonSchemas.xml, wherever a .idea project exists).
 
-It also installs two Claude Code skills in .claude/skills: /` + brand.DesignSkillName + `, which
-you invoke to design a pipeline in plain language, and ` + brand.SkillName + `, so you can
-say "hand this to ` + brand.Name + `" at the end of a planning chat to start a run.
+It also installs three Claude Code skills in .claude/skills: /` + brand.DesignSkillName + `, which
+you invoke to design a pipeline in plain language; ` + brand.SkillName + `, so you can
+say "hand this to ` + brand.Name + `" at the end of a planning chat to start a run; and
+` + brand.FeedbackSkillName + `, which records your critiques of a run's work for refining the
+pipeline later.
 
 No pipelines are added: design one with /` + brand.DesignSkillName + `, or copy a template with
 ` + "`" + brand.Name + ` templates` + "`" + ` and ` + "`" + brand.Name + ` add <template>` + "`" + `.
@@ -153,17 +155,8 @@ func writeStarter(root string, f initfiles.File, label string, overwrite bool) e
 	return nil
 }
 
-// claudeDir is Claude Code's user config dir: $CLAUDE_CONFIG_DIR or ~/.claude.
-func claudeDir() string {
-	if d := os.Getenv("CLAUDE_CONFIG_DIR"); d != "" {
-		return d
-	}
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return ".claude"
-	}
-	return filepath.Join(home, ".claude")
-}
+// claudeDir is Claude Code's user config dir.
+func claudeDir() string { return config.ClaudeDir() }
 
 func tildify(p string) string {
 	if home, err := os.UserHomeDir(); err == nil {

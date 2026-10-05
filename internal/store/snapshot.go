@@ -132,6 +132,9 @@ type RunSnapshot struct {
 	PermissionDenials int               `json:"permission_denials,omitempty"`
 	FakeAgents        string            `json:"fake_agents,omitempty"`
 	ShipVersion       string            `json:"ship_version,omitempty"`
+	PipelineVersion   int               `json:"pipeline_version,omitempty"`
+	PipelineHash      string            `json:"pipeline_hash,omitempty"`
+	HistoryDir        string            `json:"history_dir,omitempty"`
 	CreatedAt         time.Time         `json:"created_at"`
 	UpdatedAt         time.Time         `json:"updated_at"`
 	FinishedAt        *time.Time        `json:"finished_at,omitempty"`
@@ -216,6 +219,7 @@ func Apply(s *RunSnapshot, e Event) error {
 		s.Parent, s.Slice = d.Parent, d.Slice
 		s.Provider, s.Branch, s.Base = d.Provider, d.Branch, d.Base
 		s.FakeAgents, s.ShipVersion = d.FakeAgents, d.ShipVersion
+		s.PipelineVersion, s.PipelineHash, s.HistoryDir = d.PipelineVersion, d.PipelineHash, d.HistoryDir
 		for k, v := range d.Vars {
 			s.Vars[k] = v
 		}

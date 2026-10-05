@@ -75,6 +75,10 @@ type RunCreated struct {
 	Branch      string            `json:"branch"`
 	Base        string            `json:"base,omitempty"`
 	FakeAgents  string            `json:"fake_agents,omitempty"`
+	// The pipeline version this run uses, and where its history lives.
+	PipelineVersion int    `json:"pipeline_version,omitempty"`
+	PipelineHash    string `json:"pipeline_hash,omitempty"`
+	HistoryDir      string `json:"history_dir,omitempty"`
 }
 
 // WorkspaceAcquired records a lease.

@@ -199,6 +199,11 @@ func Serve(ctx context.Context, o Options) error {
 	}
 	o.Log.Info("daemon started", "url", d.info.URL(), "pid", d.info.PID, "version", brand.Version, "recovered", n)
 
+	// Import "ship:" PR comments as feedback.
+	pollCtx, stopPoll := context.WithCancel(context.Background())
+	defer stopPoll()
+	go newPRPoller(d.st, o.Home, o.Log).run(pollCtx, 5*time.Minute)
+
 	srv := &http.Server{Handler: d.routes(), ReadHeaderTimeout: 10 * time.Second}
 	srvErr := make(chan error, 1)
 	go func() { srvErr <- srv.Serve(ln) }()

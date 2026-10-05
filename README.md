@@ -45,8 +45,8 @@ cd your-repo
 ship init
 ```
 
-This creates `.ship/` (where pipelines live) and installs two Claude Code
-skills: `/ship-design` and `ship-handoff`.
+This creates `.ship/` (where pipelines live) and installs three Claude Code
+skills: `/ship-design`, `ship-handoff` and `ship-feedback`.
 
 **2. Design a pipeline with Claude.** In Claude Code, run `/ship-design` and
 say what you want in plain words:
@@ -68,6 +68,12 @@ criteria) and starts a run. The web UI opens on it.
 it needs you, for example an agent is stuck or the slices of a big change need
 approving, it shows up in the UI's inbox (with a desktop notification on
 macOS). Answer there or from the terminal.
+
+**5. Tell it what you thought.** When a run's work was off (or great), say so:
+in the run's page, in Claude Code ("tell ship the docs were bloated"), or in
+a PR comment starting with `ship:`. Feedback builds up against the pipeline
+version that did the work, and `ship pipeline refine` turns it into a better
+version. See [Improving pipelines with feedback](#improving-pipelines-with-feedback).
 
 ### The web UI
 
@@ -109,6 +115,8 @@ takes a run, any unique part of its id works (`3fa`, `rate-limit`).
 | `ship cd <run>` | Print the worktree path: `cd "$(ship cd 3fa)"` |
 | `ship open [run]` | Open the web UI |
 | `ship validate` | Check this repo's pipelines |
+| `ship feedback <run> [--step s] "…"` | Record feedback on a run's work |
+| `ship pipeline refine <pipeline>` | Propose a new version from the feedback |
 | `ship templates` / `ship add <name>` | List and add pipeline templates |
 | `ship init` / `ship update` | Set up a repo / update ship |
 
@@ -208,6 +216,68 @@ To choose explicitly, set `workspace.provider` in `.ship/config.yml`, in
 `~/.ship/config.yml`, or in a pipeline: `auto` (the default: treehouse if
 installed, otherwise git), `git`, `treehouse` (fails if treehouse is
 missing), or `none` (work directly in your checkout, one run at a time).
+
+## Improving pipelines with feedback
+
+You judge the work; `ship` keeps track of what you said and which version of
+the pipeline it was about, and Claude helps you act on it.
+
+**Versions are automatic.** A pipeline's version is a fingerprint of the
+pipeline file, any pipelines it fans out to, every skill or slash command its
+steps call (found in the repo's `.claude/skills/` or your `~/.claude/skills/`,
+including all the skill's files), and the rules files and helper scripts it
+uses. Each run records the version it used. When anything in that set
+changes, whether you edited it or `refine` did, the next run is the next
+version (v1, v2, …). `ship pipeline versions <pipeline>` lists them, with
+what changed in each.
+
+**Give feedback wherever you are.** It's stored against the version that
+did the work, optionally about one step:
+
+- The run's page in the web UI has a feedback box.
+- In Claude Code, just say it: "tell ship the PR description didn't explain
+  why", "give ship feedback: the review missed the race condition". The
+  `ship-feedback` skill finds the run and step and records it.
+- On a PR a run opened, start a comment with `ship:`, e.g.
+  `ship: tests only cover the happy path`. `ship` picks these up every few
+  minutes (it needs the `gh` CLI). Other review comments are left alone:
+  they're instructions for the agents.
+- From the terminal:
+
+  ```sh
+  ship feedback 3fa "the architecture was right, but the writing was weak"
+  ship feedback 3fa --step docs "too long, and no examples"
+  ship feedback --pipeline pr "reviews keep missing error handling"
+  ```
+
+Positive feedback is worth giving too; it tells a refinement what to keep.
+
+**Refine.** When feedback has built up:
+
+```sh
+ship pipeline feedback pr      # what's open
+ship pipeline refine pr        # propose a new version
+```
+
+Claude reads the open feedback, the pipeline and the skills, rules and
+scripts it uses, and proposes changes. Each change says which feedback it
+addresses, and anything it decided not to act on is listed with a reason. It
+can only change the pipeline's own files, or add new ones under `.ship/` or
+a skills folder. You see the diff, then **apply** it, **keep** it to make the
+changes yourself, or **discard** it. Applying records the new version as
+addressing that feedback. If you fix something by hand instead, mark the
+feedback done with `ship pipeline close pr 4 7`.
+
+**See whether it's working.** `ship pipeline report pr` has Claude read all
+the feedback version by version, relative to how many runs each version had.
+It reports the recurring themes, what changed after each version (including
+regressions), and what's most worth fixing next. It analyses your judgements;
+nothing grades the work automatically.
+
+Everything lives in `.ship/history/<pipeline>/` (`versions.jsonl`,
+`feedback.jsonl`, saved proposals and reports), beside the pipeline, so
+commit it with the pipeline and the reasoning behind each version travels
+with it. Global pipelines keep theirs in `~/.ship/history/`.
 
 ## Briefs
 
@@ -425,6 +495,7 @@ scripts belong in `~/.ship/bin`, called as `"$SHIP_HOME/bin/<script>"`.
 | Path | What |
 |---|---|
 | `<repo>/.ship/` | pipelines, helper scripts, rules, config (commit these) |
+| `<repo>/.ship/history/<pipeline>/` | the pipeline's versions, feedback, refinement proposals and reports (commit these) |
 | `<repo>/.claude/skills/ship-*` | the Claude Code skills |
 | `~/.ship/state/runs/<id>/` | everything about a run: its event log, brief, and each step's input, output and handover |
 | `~/.ship/pipelines/`, `~/.ship/templates/` | global pipelines and your templates |

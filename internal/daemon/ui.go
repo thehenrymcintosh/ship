@@ -22,6 +22,7 @@ import (
 	"github.com/thehenrymcintosh/ship/internal/brand"
 	"github.com/thehenrymcintosh/ship/internal/brief"
 	"github.com/thehenrymcintosh/ship/internal/engine"
+	"github.com/thehenrymcintosh/ship/internal/history"
 	"github.com/thehenrymcintosh/ship/internal/pipeline"
 	"github.com/thehenrymcintosh/ship/internal/store"
 	"github.com/thehenrymcintosh/ship/web"
@@ -339,6 +340,8 @@ type RunView struct {
 	Progress   string
 	ParentT    string
 	Bypass     bool
+	Version    string
+	Feedback   []history.Item
 }
 
 func (d *Daemon) runView(id string) (*RunView, error) {
@@ -391,6 +394,14 @@ func (d *Daemon) runView(id string) (*RunView, error) {
 	v.CanResume = s.Status == store.StatusNeedsAttention && lv != nil && lv.Interrupted && lv.SessionID != ""
 	v.CanRetry = s.Status == store.StatusNeedsAttention || (s.Status == store.StatusAsking && s.PendingAsk != nil && s.PendingAsk.Kind == store.AskKindAsk && s.CameFrom != "")
 	v.Executing = lv != nil && lv.Running()
+	if s.PipelineVersion > 0 {
+		h := s.PipelineHash
+		if len(h) > 8 {
+			h = h[:8]
+		}
+		v.Version = fmt.Sprintf("v%d · %s", s.PipelineVersion, h)
+	}
+	v.Feedback, _ = engine.FeedbackForRun(s, d.home)
 
 	if a := s.PendingAsk; a != nil {
 		for _, show := range a.Show {
@@ -626,6 +637,8 @@ func (d *Daemon) visitTab(id string, seq int, tab string) (*TabView, error) {
 // PipelineCard is one pipeline on the pipelines page.
 type PipelineCard struct {
 	PipelineInfo
+	Version   string
+	Open      int
 	Repo      string
 	FromBrief []VarField
 	Errors    bool
@@ -650,13 +663,16 @@ type PipelineRepo struct {
 	Cards []PipelineCard
 }
 
-func cardsFor(repo string, infos []PipelineInfo, onlyGlobal *bool) []PipelineCard {
+func cardsFor(repo string, infos []PipelineInfo, onlyGlobal *bool, status func(repo, name string) (string, int)) []PipelineCard {
 	var out []PipelineCard
 	for _, pi := range infos {
 		if onlyGlobal != nil && pi.Global != *onlyGlobal {
 			continue
 		}
 		c := PipelineCard{PipelineInfo: pi, Repo: repo, Errors: pipeline.HasErrors(pi.Findings)}
+		if status != nil {
+			c.Version, c.Open = status(repo, pi.Name)
+		}
 		if pi.Pipeline != nil {
 			for _, n := range pi.Pipeline.SortedVars() {
 				if vr := pi.Pipeline.Variables[n]; vr != nil && vr.Source() == pipeline.SourceFromBrief {
@@ -825,9 +841,9 @@ func (d *Daemon) pagePipelines(w http.ResponseWriter, r *http.Request) {
 	}
 	notGlobal, global := false, true
 	for _, repo := range repos {
-		view.Repos = append(view.Repos, PipelineRepo{Path: repo, Name: filepath.Base(repo), Cards: cardsFor(repo, d.repoPipelines(repo), &notGlobal)})
+		view.Repos = append(view.Repos, PipelineRepo{Path: repo, Name: filepath.Base(repo), Cards: cardsFor(repo, d.repoPipelines(repo), &notGlobal, d.eng.PipelineStatus)})
 	}
-	view.Global = cardsFor("", d.repoPipelines(""), &global)
+	view.Global = cardsFor("", d.repoPipelines(""), &global, d.eng.PipelineStatus)
 	d.render(w, "pipelines", "layout", d.layout("Pipelines", "pipelines", view))
 }
 

@@ -85,6 +85,18 @@ func Home() string {
 	return filepath.Join(home, brand.Dir)
 }
 
+// ClaudeDir is Claude Code's user config dir: $CLAUDE_CONFIG_DIR or ~/.claude.
+func ClaudeDir() string {
+	if d := os.Getenv("CLAUDE_CONFIG_DIR"); d != "" {
+		return d
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return ".claude"
+	}
+	return filepath.Join(home, ".claude")
+}
+
 // UserFile is <home>/config.yml.
 func UserFile(home string) string { return filepath.Join(home, "config.yml") }
 

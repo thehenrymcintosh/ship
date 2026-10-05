@@ -46,6 +46,9 @@ type Entry struct {
 	InvalidAttempts int `yaml:"invalid_attempts"`
 	// Denials simulates permission denials.
 	Denials []string `yaml:"denials"`
+	// Output, when set, is returned verbatim as the structured result
+	// (for callers with their own schema, like `ship pipeline refine`).
+	Output map[string]any `yaml:"output"`
 }
 
 // Script is a parsed fake-agent script.
@@ -168,6 +171,13 @@ func (a *Adapter) Run(ctx context.Context, req agent.Request, sink agent.Sink) (
 	if req.Attempt < e.InvalidAttempts {
 		resp.Structured = json.RawMessage(`{"oops": true}`)
 		resp.Text = "I forgot the format."
+	} else if e.Output != nil {
+		b, err := json.Marshal(e.Output)
+		if err != nil {
+			return agent.Response{IsError: true, ErrorText: "fake output: " + err.Error(), ExitCode: 1}, nil
+		}
+		resp.Structured = b
+		resp.Text = string(b)
 	} else {
 		out := agent.Output{Outcome: e.Outcome, Summary: e.Summary, Vars: e.Vars, Slices: e.Slices}
 		b, _ := json.Marshal(out)
