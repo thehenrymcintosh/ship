@@ -106,11 +106,11 @@ steps:                        # names: lowercase letters, digits, - and _
     model: opus
     max_budget_usd: 2         # per visit (also max_tokens); hitting it is an `error` outcome
     next:                     # the agent chooses one of these outcomes
-      pass: gate
+      pass: checks
       changes: implement
       stuck: check-in
 
-  gate:
+  checks:
     description: Clean tree and green tests
     run: |                    # bash; exit 0 → pass, anything else → fail
       test -z "$(git status --porcelain)" || { echo "uncommitted changes"; exit 1; }

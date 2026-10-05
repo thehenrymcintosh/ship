@@ -15,8 +15,8 @@ implement → review ⇄ fix → verify ⇄ fix → checks ⇄ fix → write PR 
   of the same problem; a simplification pass questions every component the
   intent doesn't require; and anything whose remedy would extend the change
   goes to you.
-- **Each gate fixes its own findings** inside its own budget (`max_visits`),
-  and the pipeline only moves forward.
+- **Review, verify and checks each fix their own findings** inside their own
+  budget (`max_visits`), and the pipeline only moves forward.
 - **Verification drives the real product** in a disposable setup, with
   evidence, and reports what it couldn't test instead of guessing.
 - **Your decisions are facts.** Every step reads the earlier handovers and

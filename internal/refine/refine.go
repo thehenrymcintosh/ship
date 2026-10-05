@@ -330,7 +330,7 @@ func versionHistory(c Context) string {
 			line += fmt.Sprintf(" addressing %v", v.Addresses)
 		}
 		if c.RunsPerVersion != nil {
-			line += fmt.Sprintf(" — %d runs", c.RunsPerVersion[v.Version])
+			line += fmt.Sprintf(" (%d runs)", c.RunsPerVersion[v.Version])
 		}
 		b.WriteString(line + "\n")
 	}
@@ -454,11 +454,11 @@ func Report(ctx context.Context, c Context) (string, float64, error) {
 	b.WriteString(versionHistory(c))
 	b.WriteString("\n## All feedback\n")
 	for _, it := range items {
-		line := feedbackLine(it) + " — " + it.Status
+		line := feedbackLine(it) + " (" + it.Status
 		if it.AddressedIn > 0 {
 			line += fmt.Sprintf(" in v%d", it.AddressedIn)
 		}
-		b.WriteString(line + "\n")
+		b.WriteString(line + ")\n")
 	}
 	var out struct {
 		Report string `json:"report"`

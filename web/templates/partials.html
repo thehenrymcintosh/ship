@@ -1,6 +1,6 @@
 {{define "pill"}}<span class="pill st-{{.Status}}" title="{{.StatusReason}}">{{if eq .Status "running"}}<span class="spin" aria-hidden="true"></span>{{end}}{{.Status}}</span>{{end}}
 
-{{define "mini-pill"}}<span class="mini st-{{.Status}}" title="{{.ID}} · {{.Status}}{{if .StatusReason}} — {{.StatusReason}}{{end}}"></span>{{end}}
+{{define "mini-pill"}}<span class="mini st-{{.Status}}" title="{{.ID}} · {{.Status}}{{if .StatusReason}}: {{.StatusReason}}{{end}}"></span>{{end}}
 
 {{/* run-action: the pending action panel (asks, split review, needs attention, PR watch). Data: *RunView */}}
 {{define "run-action"}}

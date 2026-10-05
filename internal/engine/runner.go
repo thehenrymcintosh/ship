@@ -923,7 +923,7 @@ func (r *runner) route(v *steps.Visit, res steps.Result) {
 	if res.Outcome == steps.OutcomeError && res.Error != nil && res.Error.Reason == "run_budget" {
 		// Retrying can't help until someone raises the budget, so hold the
 		// run for them rather than routing to an error handler.
-		r.park(fmt.Sprintf("budget reached at %s — %s", v.StepName, res.Error.Message))
+		r.park(fmt.Sprintf("budget reached at %s (%s)", v.StepName, res.Error.Message))
 		return
 	}
 	if res.Outcome == steps.OutcomeError {
@@ -940,7 +940,7 @@ func (r *runner) route(v *steps.Visit, res steps.Result) {
 			if res.Error != nil {
 				msg = res.Error.Reason + ": " + res.Error.Message
 			}
-			r.park(fmt.Sprintf("error at %s — %s", v.StepName, msg))
+			r.park(fmt.Sprintf("error at %s: %s", v.StepName, msg))
 			return
 		}
 		r.transition(v.StepName, t, res.Outcome, reason, false)
@@ -989,7 +989,7 @@ func (r *runner) checkBaseDrift() {
 // park sets needs_attention and notifies.
 func (r *runner) park(reason string) {
 	r.setStatus(store.StatusNeedsAttention, reason)
-	r.e.o.Notifier.Notify(brand.Name+" — "+r.snap().Title, "Needs attention: "+reason)
+	r.e.o.Notifier.Notify(brand.Name+": "+r.snap().Title, "Needs attention: "+reason)
 }
 
 // interrupted records a visit cut short by shutdown. Asks, waits, fanouts
@@ -1159,7 +1159,7 @@ func (r *runner) askVars(st *pipeline.Step) (ok, alive bool) {
 				q = rendered
 			}
 			r.emit(store.EvAskPending, store.AskPending{Seq: 0, Kind: store.AskKindVar, Question: q, Input: "required", Var: name})
-			r.e.o.Notifier.Notify(brand.Name+" — "+s.Title, q)
+			r.e.o.Notifier.Notify(brand.Name+": "+s.Title, q)
 		}
 		r.setStatus(store.StatusAsking, "variable "+name)
 		for answered := false; !answered; {
@@ -1385,7 +1385,7 @@ func (v *visitRT) Await(ctx context.Context) (steps.Command, error) {
 func (v *visitRT) Agents() *agent.Registry         { return v.r.e.o.Agents }
 func (v *visitRT) AgentBase() pipeline.AgentConfig { return v.r.cfg.Agent }
 func (v *visitRT) Notify(title, message string) {
-	v.r.e.o.Notifier.Notify(brand.Name+" — "+title, message)
+	v.r.e.o.Notifier.Notify(brand.Name+": "+title, message)
 }
 func (v *visitRT) Snapshot() *store.RunSnapshot { return v.r.snap() }
 

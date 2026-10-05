@@ -12,7 +12,7 @@ agent:
   effort: high
 
 defaults:
-  max_visits: 4            # each gate's fix budget
+  max_visits: 4            # how many fix rounds each check (review, verify, checks) gets
   when_exhausted: check-in
   on_error: check-in
 

@@ -211,7 +211,7 @@ func (a *app) statusCmd() *cobra.Command {
 				fmt.Printf("tokens:    %s\n", steps.FormatTokens(s.Tokens))
 			}
 			if s.BaseMoved {
-				fmt.Println(a.color("33", "base moved: the parent slice changed — a restack may be needed"))
+				fmt.Println(a.color("33", "base moved: the parent slice changed, so a restack may be needed"))
 			}
 			if s.PermissionDenials > 0 {
 				fmt.Println(a.color("33", fmt.Sprintf("%d permission denials: consider allowed_tools", s.PermissionDenials)))

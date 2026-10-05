@@ -40,7 +40,7 @@ func (p *Provider) bin() string {
 
 // ErrNotInstalled is returned by Check when treehouse isn't on PATH. There's
 // no silent fallback to git.
-var ErrNotInstalled = errors.New(`workspace provider "treehouse" selected but treehouse is not installed — install it or set workspace.provider: git`)
+var ErrNotInstalled = errors.New(`workspace provider "treehouse" selected but treehouse is not installed. Install it, or set workspace.provider: git`)
 
 // Check requires treehouse on PATH.
 func (p *Provider) Check(ctx context.Context, repo string) error {

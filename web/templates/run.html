@@ -33,7 +33,7 @@
       <span class="muted id">{{$s.ID}}</span>
     </div>
     <div class="badges">
-      {{if $s.BaseMoved}}<span class="badge warn" title="The base branch moved since this slice started; a restack may be needed">parent slice changed — restack may be needed</span>{{end}}
+      {{if $s.BaseMoved}}<span class="badge warn" title="The base branch moved since this slice started; a restack may be needed">parent slice changed, a restack may be needed</span>{{end}}
       {{if $s.WorkspaceMissing}}<span class="badge danger">worktree missing</span>{{end}}
       {{if $s.PermissionDenials}}<span class="badge warn" title="Tool calls the agent wasn't allowed to make; consider allowed_tools">{{plural $s.PermissionDenials "permission denial"}}</span>{{end}}
       {{if .Bypass}}<span class="badge danger" title="permission_mode: bypassPermissions">bypassPermissions</span>{{end}}

@@ -202,7 +202,7 @@
       var cls = "node t-" + d.type + (d.current ? " current" : "") + (d.visits ? " visited" : "");
       var ng = svg("g", { class: cls, transform: "translate(" + n.x + "," + n.y + ")", tabindex: 0, "data-step": d.id }, g);
       var title = svg("title", {}, ng);
-      title.textContent = d.id + " (" + d.type + ")" + (d.description ? " — " + d.description : "") + (d.visits ? " · " + d.visits + " visits" : "");
+      title.textContent = d.id + " (" + d.type + ")" + (d.description ? ": " + d.description : "") + (d.visits ? " · " + d.visits + " visits" : "");
       svg("rect", { width: n.width, height: n.height, rx: d.type === "ask" ? 16 : 7 }, ng);
       var gl = svg("text", { x: 10, y: 20, class: "glyph" }, ng);
       gl.textContent = GLYPH[d.type] || "";
