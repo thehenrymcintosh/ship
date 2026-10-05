@@ -147,7 +147,7 @@ type Step struct {
 	Agent       *string `yaml:"agent,omitempty"`
 	Prompt      *string `yaml:"prompt,omitempty"`
 	AgentConfig `yaml:",inline"`
-	Session     string   `yaml:"session,omitempty" jsonschema:"enum=fresh,enum=continue"`
+	Session     string   `yaml:"session,omitempty" jsonschema:"pattern=^[a-z][a-z0-9_-]*$"`
 	Context     []string `yaml:"context,omitempty"`
 	Save        *Save    `yaml:"save,omitempty"`
 	SaveOn      string   `yaml:"save_on,omitempty" jsonschema:"enum=pass,enum=any"`
@@ -215,6 +215,19 @@ func (s *Step) Type() string {
 		return k[0]
 	}
 	return ""
+}
+
+// Thread is the conversation a step's agent works in: "" for a fresh
+// session every visit, the step's own name for `session: continue`, or the
+// name given (steps with the same session name share one conversation).
+func (s *Step) Thread(step string) string {
+	switch s.Session {
+	case "", "fresh":
+		return ""
+	case "continue":
+		return step
+	}
+	return s.Session
 }
 
 // IsAgentLike reports whether the step runs an agent (agent and split).

@@ -72,14 +72,8 @@ func buildCall(v *Visit, outcomes []string, extra string) (*agentCall, *Result) 
 	}
 	c := &agentCall{adapter: ad, cfg: cfg}
 
-	switch v.ResumeKind {
-	case "interrupted":
-		c.prompt = agent.ResumePrompt
-	case "continue":
-		c.prompt = agent.RevisitPrompt(v.StepName, v.Number, v.Prev)
-	case "resplit":
-		c.prompt = "The reviewer asked for a different split:\n\n" + v.Note + "\n\nRe-split the brief taking this into account, then report your result again."
-	default:
+	// task renders the step's own prompt (skill line, then prompt text).
+	task := func() (string, *Result) {
 		var parts []string
 		line := pipeline.Str(v.Step.Agent)
 		if v.Step.Split != nil {
@@ -89,7 +83,7 @@ func buildCall(v *Visit, outcomes []string, extra string) (*agentCall, *Result) 
 			r, err := tmpl.Render(line, v.Scope, tmpl.Plain)
 			if err != nil {
 				res := renderError(err)
-				return nil, &res
+				return "", &res
 			}
 			parts = append(parts, r)
 		}
@@ -97,15 +91,37 @@ func buildCall(v *Visit, outcomes []string, extra string) (*agentCall, *Result) 
 			r, err := tmpl.Render(*v.Step.Prompt, v.Scope, tmpl.Plain)
 			if err != nil {
 				res := renderError(err)
-				return nil, &res
+				return "", &res
 			}
 			parts = append(parts, r)
 		}
-		c.prompt = strings.Join(parts, "\n\n")
-		if strings.TrimSpace(c.prompt) == "" {
+		p := strings.Join(parts, "\n\n")
+		if strings.TrimSpace(p) == "" {
 			// e.g. `split: ""` with no prompt: the system prompt says what to do.
-			c.prompt = "Do the work for this step as described in your instructions, then report your result."
+			p = "Do the work for this step as described in your instructions, then report your result."
 		}
+		return p, nil
+	}
+
+	switch v.ResumeKind {
+	case "interrupted":
+		c.prompt = agent.ResumePrompt
+	case "continue":
+		c.prompt = agent.RevisitPrompt(v.StepName, v.Number, v.Since)
+	case "shared":
+		t, fail := task()
+		if fail != nil {
+			return nil, fail
+		}
+		c.prompt = agent.SharedPrompt(v.StepName, v.Number, v.Since, t)
+	case "resplit":
+		c.prompt = "The reviewer asked for a different split:\n\n" + v.Note + "\n\nRe-split the brief taking this into account, then report your result again."
+	default:
+		t, fail := task()
+		if fail != nil {
+			return nil, fail
+		}
+		c.prompt = t
 		if v.ResumeKind == "resplit-fresh" {
 			c.prompt += "\n\nThe reviewer asked for a different split:\n\n" + v.Note
 		}

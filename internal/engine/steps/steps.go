@@ -48,8 +48,10 @@ type Visit struct {
 	// Agent sessions.
 	SessionID  string // fresh session to assign
 	ResumeID   string // session to resume
-	ResumeKind string // "", "continue", "interrupted", "resplit"
+	ResumeKind string // "", "continue", "shared", "interrupted", "resplit"
 	Note       string // re-split note
+	Thread     string // the named conversation, if any
+	Since      string // for a resumed conversation: what happened since its last turn
 	// ForceCLI overrides every agent step's cli (fake-agent dry runs).
 	ForceCLI string
 

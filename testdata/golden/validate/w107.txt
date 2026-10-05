@@ -1,0 +1,5 @@
+w107.yml:4:3: warn W106: agent step "implement" has no outcome leading to a human (ask) and no on_error; an error will park the run
+w107.yml:8:3: warn W106: agent step "review" has no outcome leading to a human (ask) and no on_error; an error will park the run
+w107.yml:10:5: warn W107: step "review" shares session "builder" with "implement", which it can send work back to (changes → implement); an agent checking work in the conversation that produced it inherits its blind spots, so consider giving "review" its own session
+w107.yml:12:3: warn W106: agent step "docs" has no outcome leading to a human (ask) and no on_error; an error will park the run
+w107.yml:16:3: warn W106: agent step "evidence" has no outcome leading to a human (ask) and no on_error; an error will park the run

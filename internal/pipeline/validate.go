@@ -598,9 +598,36 @@ func (v *validator) checkGraph() {
 	}
 }
 
-// checkAgents covers E014 and W104.
+// checkAgents covers E014, W104 and W107.
 func (v *validator) checkAgents() {
 	p := v.p
+	// W107: a step that can send work back to a step it shares a
+	// conversation with is checking its own work.
+	for _, name := range p.SortedSteps() {
+		s := p.Steps[name]
+		if s == nil || !s.IsAgentLike() || s.Session == "" || s.Session == "fresh" {
+			continue
+		}
+		// Only steps that decide between outcomes (reviewers, verifiers) check work.
+		if s.Next == nil || !s.Next.IsMap || len(s.OutcomeNames()) < 2 {
+			continue
+		}
+		thread := s.Thread(name)
+		forward := p.Edges()
+		for _, o := range s.OutcomeNames() {
+			t, ok := s.Target(o)
+			ts := p.Steps[t]
+			if !ok || t == name || ts == nil || !ts.IsAgentLike() || ts.Thread(t) != thread {
+				continue
+			}
+			// "Back" means the target leads on to this step again.
+			if !Reachable(t, forward, nil)[name] {
+				continue
+			}
+			v.warnf("W107", Ptr("steps", name, "session"), "step %q shares session %q with %q, which it can send work back to (%s → %s); an agent checking work in the conversation that produced it inherits its blind spots, so consider giving %q its own session", name, thread, t, o, t, name)
+			break
+		}
+	}
 	if p.Agent != nil {
 		if p.Agent.PermissionMode == "bypassPermissions" {
 			v.warnf("W104", Ptr("agent", "permission_mode"), "permission_mode: bypassPermissions lets agents run anything without asking")

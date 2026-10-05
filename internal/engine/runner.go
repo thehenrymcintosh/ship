@@ -301,28 +301,94 @@ func (r *runner) executor(typ string) steps.Executor {
 	return nil
 }
 
-// sessions decides the agent session for a new visit.
-func (r *runner) sessions(s *store.RunSnapshot, name string, st *pipeline.Step, nv nextVisit) (sessionID, resumeID, kind string) {
+// sessionPlan is how a new agent visit's Claude session is chosen.
+type sessionPlan struct {
+	sessionID string              // fresh session to start
+	resumeID  string              // session to resume
+	kind      string              // "", continue, shared, interrupted, resplit, resplit-fresh
+	thread    string              // the conversation the visit belongs to
+	last      *store.VisitSummary // the conversation's previous visit, when resuming it
+}
+
+// sessions decides the agent session for a new visit. Steps whose
+// `session:` names the same conversation resume its latest session.
+func (r *runner) sessions(s *store.RunSnapshot, name string, st *pipeline.Step, nv nextVisit) sessionPlan {
 	if !st.IsAgentLike() {
-		return "", "", ""
+		return sessionPlan{}
 	}
+	thread := st.Thread(name)
 	switch nv.resumeKind {
 	case "interrupted":
-		return "", nv.resumeID, "interrupted"
+		return sessionPlan{resumeID: nv.resumeID, kind: "interrupted", thread: thread}
 	case "resplit":
 		if nv.resumeID != "" {
-			return "", nv.resumeID, "resplit"
+			return sessionPlan{resumeID: nv.resumeID, kind: "resplit", thread: thread}
 		}
-		return uuid.NewString(), "", "resplit-fresh"
+		return sessionPlan{sessionID: uuid.NewString(), kind: "resplit-fresh", thread: thread}
 	}
-	if st.Session == "continue" {
+	if thread != "" {
 		for i := len(s.Visits) - 1; i >= 0; i-- {
-			if v := s.Visits[i]; v.Step == name && v.SessionID != "" {
-				return "", v.SessionID, "continue"
+			v := &s.Visits[i]
+			// Runs from before named sessions recorded no thread; match continue by step.
+			same := v.Thread == thread || v.Thread == "" && st.Session == "continue" && v.Step == name
+			if same && v.SessionID != "" {
+				kind := "continue"
+				if v.Step != name {
+					kind = "shared"
+				}
+				return sessionPlan{resumeID: v.SessionID, kind: kind, thread: thread, last: v}
 			}
 		}
 	}
-	return uuid.NewString(), "", ""
+	return sessionPlan{sessionID: uuid.NewString(), thread: thread}
+}
+
+// sinceLastTurn tells a resumed agent what happened since its previous
+// visit: the steps that ran in between, and what changed in the worktree.
+func (r *runner) sinceLastTurn(s *store.RunSnapshot, last *store.VisitSummary, worktree string) string {
+	if last == nil {
+		return ""
+	}
+	var b strings.Builder
+	var done []string
+	for _, v := range s.Visits {
+		if v.Seq > last.Seq && v.Finished != nil {
+			line := fmt.Sprintf("- %s → %s", v.Step, v.Outcome)
+			if sum := firstLine(v.Summary); sum != "" {
+				line += ": " + sum
+			}
+			done = append(done, line)
+		}
+	}
+	if len(done) > 0 {
+		b.WriteString("Steps since then:\n" + strings.Join(done, "\n") + "\n")
+	} else {
+		b.WriteString("No other steps have run since then.\n")
+	}
+	if last.HeadSHA != "" && worktree != "" {
+		ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+		defer cancel()
+		if log, err := gitws.Git(ctx, worktree, "log", "--oneline", "-n", "30", last.HeadSHA+"..HEAD"); err == nil && log != "" {
+			b.WriteString("\nCommits since then:\n" + log + "\n")
+		}
+		if stat, err := gitws.Git(ctx, worktree, "diff", "--stat", last.HeadSHA); err == nil && stat != "" {
+			lines := strings.Split(stat, "\n")
+			if len(lines) > 60 {
+				lines = append(lines[:59], fmt.Sprintf("… and %d more lines", len(lines)-59))
+			}
+			b.WriteString("\nFiles changed since then (committed and not):\n" + strings.Join(lines, "\n") + "\n")
+			b.WriteString("Run `git diff " + last.HeadSHA[:min(12, len(last.HeadSHA))] + "` to see the changes in full.\n")
+		}
+	}
+	return b.String()
+}
+
+func firstLine(s string) string {
+	s = strings.TrimSpace(s)
+	if i := strings.IndexByte(s, '\n'); i >= 0 {
+		return s[:i]
+	}
+	return s
 }
 
 type visitResult struct {
@@ -346,6 +412,7 @@ func (r *runner) visit(name string, st *pipeline.Step, resume *store.VisitSummar
 
 	var seq, number int
 	var cameFrom, dirName, sessionID, resumeID, resumeKind string
+	var plan sessionPlan
 	var started time.Time
 	gotSlot := false
 	agentLike := st.IsAgentLike()
@@ -358,13 +425,19 @@ func (r *runner) visit(name string, st *pipeline.Step, resume *store.VisitSummar
 			r.park("can't create visit dir: " + err.Error())
 			return true
 		}
-		sessionID, resumeID, resumeKind = r.sessions(s, name, st, nv)
+		plan = r.sessions(s, name, st, nv)
+		sessionID, resumeID, resumeKind = plan.sessionID, plan.resumeID, plan.kind
+		head := ""
+		if s.Workspace != nil {
+			head = gitws.Tip(context.Background(), s.Workspace.Path, "HEAD")
+		}
 		if agentLike {
 			gotSlot = r.e.tryAcquireSlot()
 		}
 		if err := r.emit(store.EvVisitStarted, store.VisitStarted{
 			Seq: seq, Step: name, Type: typ, VisitNumber: number, CameFrom: cameFrom,
 			SessionID: sessionID, ResumeID: resumeID, Queued: agentLike && !gotSlot, Dir: dirName,
+			Thread: plan.thread, HeadSHA: head,
 		}); err != nil {
 			if gotSlot {
 				r.e.releaseSlot()
@@ -413,6 +486,7 @@ func (r *runner) visit(name string, st *pipeline.Step, resume *store.VisitSummar
 		Timeout: r.pipe.Timeout(st), OutputTail: r.pipe.OutputTail(), Prev: prev, Snapshot: s,
 		BriefPath: filepath.Join(r.dir, store.BriefFile), Acceptance: r.brief.AcceptanceMarkdown(),
 		SessionID: sessionID, ResumeID: resumeID, ResumeKind: resumeKind, Note: nv.note,
+		Thread: plan.thread, Since: r.sinceLastTurn(s, plan.last, worktree),
 		ForceCLI: forceCLI, Resumed: resume != nil, StartedAt: started,
 	}
 	if err != nil {

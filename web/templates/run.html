@@ -78,7 +78,7 @@
       {{else if .Interrupted}}<span class="chip warn">interrupted</span>
       {{else}}<span class="chip oc-{{.Outcome}}">{{.Outcome}}</span>{{end}}
       <span class="vsum">{{if .Error}}<code>{{.Error.Reason}}</code> {{end}}{{trunc 140 .Summary}}</span>
-      <span class="vmeta">{{with dur .DurationMS}}<span>{{.}}</span>{{end}}{{with money .CostUSD}}<span>{{.}}</span>{{end}}{{if .PermissionDenials}}<span class="warn-text" title="permission denials">⚠ {{.PermissionDenials}}</span>{{end}}{{if .CameFrom}}<span class="muted" title="came from">← {{.CameFrom}}</span>{{end}}</span>
+      <span class="vmeta">{{with dur .DurationMS}}<span>{{.}}</span>{{end}}{{with money .CostUSD}}<span>{{.}}</span>{{end}}{{if .PermissionDenials}}<span class="warn-text" title="permission denials">⚠ {{.PermissionDenials}}</span>{{end}}{{if .CameFrom}}<span class="muted" title="came from">← {{.CameFrom}}</span>{{end}}{{if .Thread}}<span class="muted" title="{{if .ResumeID}}resumed{{else}}started{{end}} the agent conversation &quot;{{.Thread}}&quot;">{{if .ResumeID}}↻{{else}}◌{{end}} {{.Thread}}</span>{{end}}</span>
     </summary>
     <div class="visit-body">
       <div class="tabs" role="tablist">

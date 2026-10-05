@@ -535,3 +535,70 @@ func TestEmptyPromptGetsDefault(t *testing.T) {
 		t.Fatalf("empty prompt should get a default:\n%s", in)
 	}
 }
+
+func TestNamedSessions(t *testing.T) {
+	en := newEnv(t, map[string]string{"p": `version: 1
+start: domain
+defaults: {max_visits: 0}
+steps:
+  domain:
+    prompt: Design the domain model.
+    session: design
+    next: review
+  review:
+    prompt: Review the domain model.
+    next: interface
+  interface:
+    prompt: Design the interfaces.
+    session: design
+    next: verify
+  verify:
+    prompt: Verify everything.
+    session: continue
+    next: {pass: done, again: fix}
+  fix:
+    prompt: Fix what verify found.
+    next: verify
+`})
+	commit := "run: 'echo \"$SHIP_STEP $SHIP_VISIT_SEQ\" >> log.txt && git add -A && git commit -qm \"$SHIP_STEP $SHIP_VISIT_SEQ\"'"
+	s := en.start("p", "", nil, `domain: [{outcome: done, summary: "modelled orders", `+commit+`}]
+review: [{outcome: done, summary: "domain looks right", `+commit+`}]
+interface: [{outcome: done, summary: "designed the API"}]
+verify:
+  - {outcome: again, summary: "missing a test"}
+  - {outcome: pass, summary: "all good"}
+fix: [{outcome: done, summary: "added the test", `+commit+`}]
+`)
+	s = en.waitStatus(s.ID, store.StatusDone)
+	if got := visitTrail(s); got != "domain:done review:done interface:done verify:again fix:done verify:pass" {
+		t.Fatal(got)
+	}
+	v := s.Visits
+	// interface resumes domain's conversation; review is fresh in between.
+	if v[0].Thread != "design" || v[2].Thread != "design" || v[2].ResumeID != v[0].SessionID || v[1].ResumeID != "" || v[1].Thread != "" {
+		t.Fatalf("design thread: %+v | %+v | %+v", v[0], v[1], v[2])
+	}
+	// verify continues its own conversation on its second visit.
+	if v[3].Thread != "verify" || v[5].ResumeID != v[3].SessionID {
+		t.Fatalf("verify thread: %+v %+v", v[3], v[5])
+	}
+	if v[0].HeadSHA == "" {
+		t.Fatal("visits should record the worktree HEAD")
+	}
+	input := func(i int) string {
+		b, _ := os.ReadFile(filepath.Join(en.st.RunDir(s.ID), "visits", v[i].Dir, "input.md"))
+		return string(b)
+	}
+	in := input(2)
+	for _, want := range []string{`now as step "interface"`, "Design the interfaces.", "- review → done: domain looks right", "Commits since then:", "review 2"} {
+		if !strings.Contains(in, want) {
+			t.Errorf("interface prompt missing %q:\n%s", want, in)
+		}
+	}
+	in = input(5)
+	for _, want := range []string{`back at step "verify" (visit 2)`, "- fix → done: added the test", "fix 5", "log.txt"} {
+		if !strings.Contains(in, want) {
+			t.Errorf("verify revisit prompt missing %q:\n%s", want, in)
+		}
+	}
+}

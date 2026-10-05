@@ -220,16 +220,28 @@ func CorrectionPrompt(validationErr string) string {
 		". Report it now using the structured output tool."
 }
 
-// RevisitPrompt is the prompt for a `session: continue` revisit.
-func RevisitPrompt(step string, visit int, prev *PrevInfo) string {
+// RevisitPrompt resumes a step's own conversation on a revisit. since
+// describes what happened in between; the latest handover is in the
+// system prompt.
+func RevisitPrompt(step string, visit int, since string) string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "You are back at step %q (visit %d).", step, visit)
-	if prev != nil {
-		fmt.Fprintf(&b, " Since your last turn, %q finished with %q:\n<handover>\n%s\n</handover>\n", prev.Step, prev.Outcome, prev.Handover)
-	} else {
-		b.WriteString("\n")
+	fmt.Fprintf(&b, "You are back at step %q (visit %d).\n\n", step, visit)
+	if since != "" {
+		b.WriteString("Since your last turn:\n" + since + "\n")
 	}
-	b.WriteString("Continue the work, then report your result again.")
+	b.WriteString("The latest handover is in your instructions. Check the current state of the worktree, continue the work, then report your result again.")
+	return b.String()
+}
+
+// SharedPrompt resumes a conversation another step started (a named
+// session), handing it this step's task.
+func SharedPrompt(step string, visit int, since, task string) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "This conversation continues, now as step %q (visit %d) of the pipeline. Use what you learned earlier in this conversation; the work you did then is already in the worktree.\n\n", step, visit)
+	if since != "" {
+		b.WriteString("Since your last turn:\n" + since + "\n")
+	}
+	b.WriteString("Your task for this step:\n\n" + task + "\n\nWhen you're done, report your result for this step (its outcomes are listed in your instructions).")
 	return b.String()
 }
 

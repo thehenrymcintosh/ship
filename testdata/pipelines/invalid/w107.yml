@@ -1,0 +1,19 @@
+version: 1
+start: implement
+steps:
+  implement:
+    prompt: Implement it.
+    session: builder
+    next: review
+  review:
+    prompt: Review it.
+    session: builder
+    next: {pass: docs, changes: implement}
+  docs:
+    prompt: Document it.
+    session: writer
+    next: evidence
+  evidence:
+    prompt: Gather PR evidence.
+    session: writer
+    next: done

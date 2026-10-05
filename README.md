@@ -328,7 +328,7 @@ defaults:
 steps:
   implement:
     prompt: Implement the plan in the brief. Commit your work.
-    session: continue      # on a revisit, resume the same Claude session
+    session: builder       # a named conversation (see "Sharing an agent between steps")
     next: review           # one target for every outcome
 
   review:
@@ -382,6 +382,52 @@ Each step has exactly one of these:
   fix-and-review loops can't spin forever. When the cap is hit the run goes
   to `when_exhausted`, or pauses. Choosing an option in an `ask` step resets
   the counter of the step it leads to.
+
+### Sharing an agent between steps
+
+By default every agent step starts a fresh Claude conversation: it gets the
+brief and the previous step's handover, and re-reads whatever code it needs.
+That keeps steps independent, but rebuilding context costs tokens. `session:`
+lets steps share a conversation instead:
+
+```yaml
+steps:
+  domain:
+    prompt: Design the domain model.
+    session: design        # starts the "design" conversation
+    next: review
+  review:
+    prompt: Review the domain model.   # fresh: an independent reviewer
+    next: interface
+  interface:
+    prompt: Design the interfaces on top of it.
+    session: design        # resumes it: already knows the domain model
+    next: verify
+  verify:
+    prompt: Check everything works end to end.
+    session: continue      # its own conversation, resumed on each revisit
+    next: {pass: done, again: fix}
+```
+
+- `fresh` (the default): a new conversation every visit.
+- `continue`: the step's own conversation, resumed each time the run comes
+  back to it. Good for a verifier that re-checks later, or an implementer in
+  a fix loop.
+- Any other name: steps with the same name share one conversation. The first
+  to run starts it; each later one resumes it with its own prompt and
+  outcomes. Good for steps that build on each other: domain design then
+  interface design, writing docs then gathering PR evidence.
+
+A resumed agent is told what happened since its last turn: the steps that ran
+in between (with their summaries), the commits made since, and the files
+that changed, including uncommitted ones. On the run's page, a ↻ beside a
+visit marks a resumed conversation.
+
+Keep checking steps separate from the work they check: a reviewer that shares
+the implementer's conversation inherits its blind spots. `ship validate`
+warns (W107) when a step can send work back to a step it shares a session
+with. Long shared conversations also grow with every step, so sharing pays
+off for closely related steps rather than whole pipelines.
 
 ### Variables
 

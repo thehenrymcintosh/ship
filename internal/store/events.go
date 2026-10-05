@@ -107,6 +107,8 @@ type VisitStarted struct {
 	ResumeID    string `json:"resume_id,omitempty"`
 	Queued      bool   `json:"queued"`
 	Dir         string `json:"dir"`
+	Thread      string `json:"thread,omitempty"`   // the agent conversation this visit belongs to
+	HeadSHA     string `json:"head_sha,omitempty"` // worktree HEAD when the visit started
 }
 
 // SeqOnly is the data of visit_dequeued, visit_interrupted, slices_approved.

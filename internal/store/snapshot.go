@@ -88,6 +88,8 @@ type VisitSummary struct {
 	CostUSD           float64    `json:"cost_usd,omitempty"`
 	SessionID         string     `json:"session_id,omitempty"`
 	ResumeID          string     `json:"resume_id,omitempty"`
+	Thread            string     `json:"thread,omitempty"`
+	HeadSHA           string     `json:"head_sha,omitempty"`
 	Queued            bool       `json:"queued,omitempty"`
 	Interrupted       bool       `json:"interrupted,omitempty"`
 	Polls             int        `json:"polls,omitempty"`
@@ -248,6 +250,7 @@ func Apply(s *RunSnapshot, e Event) error {
 		s.Visits = append(s.Visits, VisitSummary{
 			Seq: d.Seq, Step: d.Step, Type: d.Type, VisitNumber: d.VisitNumber, CameFrom: d.CameFrom,
 			Dir: d.Dir, Started: ts, SessionID: d.SessionID, ResumeID: d.ResumeID, Queued: d.Queued,
+			Thread: d.Thread, HeadSHA: d.HeadSHA,
 		})
 	case EvVisitDequeued:
 		var d SeqOnly

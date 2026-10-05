@@ -95,7 +95,7 @@ steps:                        # names: lowercase letters, digits, - and _
   implement:
     prompt: |                 # what to do; the brief and the previous handover are provided automatically
       Implement the plan in the brief. Add or update tests. Commit your work.
-    session: continue         # revisits resume the same agent session
+    session: builder          # fresh (default) | continue | a shared conversation name
     next: review              # one target for every outcome
 
   review:
@@ -165,6 +165,16 @@ such as `SHIP_RUN_ID`, `SHIP_RUN_DIR`, `SHIP_BRANCH`, `SHIP_VAR_<NAME>` and
 `SHIP_HOME`.
 
 ## Design rules of thumb
+
+- **Sessions.** `session: <name>` makes steps share one Claude conversation,
+  so later steps keep what earlier ones learned instead of re-reading the
+  code (domain design then interface design; docs then PR evidence).
+  `session: continue` resumes a step's own conversation on revisits (a fix
+  loop, a verifier that re-checks later). A resumed agent is told which steps
+  ran since its last turn and what changed in git. Keep reviewers and
+  verifiers out of the conversation whose work they check; `ship validate`
+  warns about this (W107). Default to fresh for steps that should be
+  independent.
 
 - **Write agent steps as `prompt:`** unless a matching skill really exists.
   Only use `agent: /<name>` after checking that `.claude/skills/<name>/SKILL.md`

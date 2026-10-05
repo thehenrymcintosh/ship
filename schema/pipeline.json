@@ -244,10 +244,8 @@
         },
         "session": {
           "type": "string",
-          "enum": [
-            "fresh",
-            "continue"
-          ]
+          "pattern": "^[a-z][a-z0-9_-]*$",
+          "description": "Agent steps: fresh (default) starts a new conversation each visit; continue resumes this step's own conversation on revisits; any other name is a shared conversation: steps with the same session name continue one conversation, so later steps keep what earlier ones learned."
         },
         "context": {
           "items": {
