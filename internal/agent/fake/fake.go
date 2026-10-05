@@ -172,10 +172,10 @@ func (a *Adapter) Run(ctx context.Context, req agent.Request, sink agent.Sink) (
 		return resp, nil
 	}
 	if e.Tokens > 0 && req.MaxTokens > 0 && e.Tokens > req.MaxTokens {
-		return agent.Response{SessionID: session, IsError: true, OverBudget: "tokens", Tokens: req.MaxTokens + 1, CostUSD: e.Cost, ExitCode: 1, ErrorText: "stopped at its token budget"}, nil
+		return agent.Response{SessionID: session, IsError: true, OverBudget: "tokens", Tokens: req.MaxTokens + 1, CostUSD: e.Cost, Limited: e.LimitNotice, ExitCode: 1, ErrorText: "stopped at its token budget"}, nil
 	}
 	if e.Cost > 0 && req.BudgetUSD > 0 && e.Cost > req.BudgetUSD {
-		return agent.Response{SessionID: session, IsError: true, OverBudget: "usd", CostUSD: req.BudgetUSD, ExitCode: 1, ErrorText: "reached its spending limit"}, nil
+		return agent.Response{SessionID: session, IsError: true, OverBudget: "usd", CostUSD: req.BudgetUSD, Limited: e.LimitNotice, ExitCode: 1, ErrorText: "reached its spending limit"}, nil
 	}
 	if req.Attempt == 0 {
 		for p, content := range e.Write {

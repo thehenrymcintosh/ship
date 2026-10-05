@@ -56,6 +56,22 @@ steps:
 	}
 }
 
+// A budget stop that also carried a limit report is a budget stop: it routes
+// at once instead of waiting for the limit to reset.
+func TestBudgetStopWithLimitNoticeRoutesAtOnce(t *testing.T) {
+	en := newEnv(t, map[string]string{"p": `version: 1
+start: work
+steps:
+  work: {prompt: Do it., max_tokens: 50, on_error: fallback, next: done}
+  fallback: {run: "true", next: done}
+`})
+	s := en.start("p", "", nil, `work: [{outcome: done, summary: big, tokens: 200, limit_notice: true}]`)
+	s = en.waitStatus(s.ID, store.StatusDone)
+	if got := visitTrail(s); got != "work:error fallback:pass" || s.Visits[0].Error == nil || s.Visits[0].Error.Reason != "budget" {
+		t.Fatalf("trail %q error %+v", got, s.Visits[0].Error)
+	}
+}
+
 func TestRunTokenBudgetHoldsTheRun(t *testing.T) {
 	en := newEnv(t, map[string]string{"p": `version: 1
 start: work

@@ -242,9 +242,10 @@ func invoke(ctx context.Context, v *Visit, c *agentCall) (agent.Output, Result) 
 		if ctx.Err() != nil {
 			return agent.Output{}, Result{Outcome: OutcomeCancelled, Summary: "cancelled", Cost: r.Cost, Tokens: r.Tokens, TokenUsage: r.TokenUsage, SessionID: r.SessionID}
 		}
-		// A limit only counts when the invocation failed: the CLI can report
-		// a spent window and still finish (on extra usage, say).
-		if resp.Limited && (err != nil || resp.IsError) {
+		// A limit only counts when the invocation failed, and not at a
+		// budget: the CLI can report a spent window and carry on (on extra
+		// usage, say).
+		if resp.Limited && (err != nil || resp.IsError) && resp.OverBudget == "" {
 			// Wait the limit out, then carry on in the same conversation.
 			wait, ok := limitWait(resp.RetryAt, req.LimitRetry)
 			if !ok {
