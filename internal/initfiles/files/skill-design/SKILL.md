@@ -89,7 +89,7 @@ defaults:
   on_error: check-in          # where `error` outcomes go (else the run pauses)
   timeout: 30m                # per visit (90s, 5m, 2h, 7d)
 
-limits: { max_transitions: 200, max_budget_usd: 10 }
+limits: { max_transitions: 200, max_budget_usd: 10, max_tokens: 5m }  # at a budget the run waits for a person to raise it
 
 steps:                        # names: lowercase letters, digits, - and _
   implement:
@@ -104,6 +104,7 @@ steps:                        # names: lowercase letters, digits, - and _
       Review the changes on this branch (git diff against {{run.base}}) against the
       brief's plan and acceptance criteria. Pass only if they're met and the code is sound.
     model: opus
+    max_budget_usd: 2         # per visit (also max_tokens); hitting it is an `error` outcome
     next:                     # the agent chooses one of these outcomes
       pass: gate
       changes: implement

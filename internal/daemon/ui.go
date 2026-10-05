@@ -23,6 +23,7 @@ import (
 	"github.com/thehenrymcintosh/ship/internal/brand"
 	"github.com/thehenrymcintosh/ship/internal/brief"
 	"github.com/thehenrymcintosh/ship/internal/engine"
+	"github.com/thehenrymcintosh/ship/internal/engine/steps"
 	"github.com/thehenrymcintosh/ship/internal/history"
 	"github.com/thehenrymcintosh/ship/internal/pipeline"
 	"github.com/thehenrymcintosh/ship/internal/store"
@@ -37,6 +38,7 @@ var funcs = template.FuncMap{
 	"ago":    ago,
 	"dur":    durMS,
 	"money":  money,
+	"tokens": steps.FormatTokens,
 	"short":  shortID,
 	"trunc":  truncRunes,
 	"pretty": prettyJSON,
@@ -362,6 +364,24 @@ type RunView struct {
 	Feedback   []history.Item
 	WatchingPR bool // a pr step is polling right now
 	Upgrade    *UpgradeView
+	Budget     BudgetView
+	Window     *RunWindow
+}
+
+// BudgetView is the run's budget, raised amounts included (0 = no limit).
+type BudgetView struct {
+	USD    float64
+	Tokens int64
+	Stop   bool // the run is held at its budget
+}
+
+// RunWindow is what the run (with its slices) spent in the current 5-hour
+// usage window.
+type RunWindow struct {
+	USD    float64
+	Pct    int // of the window used by the whole account
+	Level  string
+	Resets time.Time
 }
 
 // UpgradeView offers to move a run onto its pipeline as edited since.
@@ -459,6 +479,17 @@ func (d *Daemon) runView(id string) (*RunView, error) {
 	if s.PR != nil && lv != nil && lv.Seq == s.PR.Seq && lv.Running() {
 		v.WatchingPR = true
 	}
+
+	if v.P != nil {
+		if l := v.P.MaxBudget(); l > 0 {
+			v.Budget.USD = l + s.ExtraBudgetUSD
+		}
+		if l := v.P.MaxTokens(); l > 0 {
+			v.Budget.Tokens = l + s.ExtraTokens
+		}
+	}
+	v.Budget.Stop = s.Status == store.StatusNeedsAttention && strings.HasPrefix(s.StatusReason, "budget reached")
+	v.Window = d.runWindow(s, kids)
 
 	if a := s.PendingAsk; a != nil {
 		for _, show := range a.Show {

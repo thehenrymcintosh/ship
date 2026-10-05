@@ -84,8 +84,19 @@
 <section class="card action attention">
   <header class="action-head"><span class="badge warn">Needs attention</span><h2>{{$s.StatusReason}}</h2><span class="muted">{{ago $s.UpdatedAt}}</span></header>
   {{with $s.LastVisit}}{{if .Error}}<p class="error-line"><code>{{.Error.Reason}}</code> {{.Error.Message}}</p>{{end}}{{end}}
+  {{if and .Budget.Stop (or .Budget.USD .Budget.Tokens)}}
+  <form class="answer budget-form" hx-post="/api/runs/{{$s.ID}}/budget" hx-swap="none">
+    <input type="hidden" name="action" value="retry">
+    <p class="small">So far: {{or (money $s.CostUSD) "$0"}}{{with .Budget.USD}} of {{money .}}{{end}}{{if .Budget.Tokens}} · {{tokens $s.Tokens}} of {{tokens .Budget.Tokens}} tokens{{end}}. Raise the budget by:</p>
+    <div class="choices">
+      {{if .Budget.USD}}<label class="inline-field"><span>$</span><input name="usd" inputmode="decimal" placeholder="5" size="6" aria-label="Dollars to add"></label>{{end}}
+      {{if .Budget.Tokens}}<label class="inline-field"><input name="tokens" placeholder="500k" size="7" aria-label="Tokens to add"><span>tokens</span></label>{{end}}
+      <button class="btn primary">Raise and retry</button>
+    </div>
+  </form>
+  {{end}}
   <div class="choices">
-    <button class="btn primary" hx-post="/api/runs/{{$s.ID}}/retry" hx-swap="none">Retry step</button>
+    <button class="btn{{if not .Budget.Stop}} primary{{end}}" hx-post="/api/runs/{{$s.ID}}/retry" hx-swap="none">Retry step</button>
     {{if .CanResume}}<button class="btn" hx-post="/api/runs/{{$s.ID}}/resume-session" hx-swap="none" title="Resume the interrupted agent session">Resume agent session</button>{{end}}
     {{if $s.WorkspaceMissing}}<button class="btn" hx-post="/api/runs/{{$s.ID}}/reacquire" hx-swap="none">Re-acquire worktree</button>{{end}}
     <form class="inline" hx-post="/api/runs/{{$s.ID}}/goto" hx-swap="none">

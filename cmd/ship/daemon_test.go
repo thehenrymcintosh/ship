@@ -252,6 +252,11 @@ func TestUsageAndFocus(t *testing.T) {
 		t.Fatalf("usage meter: %v\n%s", err, page)
 	}
 
+	if err := h.c.Do("GET", "/fragments/runs/"+a+"/side", nil, &page); err != nil ||
+		!strings.Contains(string(page), "<strong>$1.00</strong> in the current 5-hour window") || !strings.Contains(string(page), "Focus on this run") {
+		t.Fatalf("run side: %v\n%s", err, page)
+	}
+
 	var res struct{ Paused []string }
 	if err := h.c.Do("POST", "/api/runs/"+a+"/focus", nil, &res); err != nil {
 		t.Fatal(err)
@@ -262,5 +267,36 @@ func TestUsageAndFocus(t *testing.T) {
 	h.waitFor(b, func(s *store.RunSnapshot) bool { return s.PauseRequested })
 	if s := h.waitFor(a, func(*store.RunSnapshot) bool { return true }); s.PauseRequested {
 		t.Fatal("focus paused the run it focused on")
+	}
+}
+
+func TestRaiseBudgetFromTheUI(t *testing.T) {
+	h := newHarness(t, map[string]string{"p": `version: 1
+start: work
+limits: {max_budget_usd: 0.5}
+steps:
+  work: {agent: /work, next: done}
+`})
+	id := h.startRun("p", "work: [{outcome: done, summary: pricey, cost: 1}, {outcome: done, summary: ok, cost: 1}]\n")
+	h.waitFor(id, func(s *store.RunSnapshot) bool { return s.Status == store.StatusNeedsAttention })
+	var page []byte
+	if err := h.c.Do("GET", "/fragments/runs/"+id+"/header", nil, &page); err != nil || !strings.Contains(string(page), "of $0.50") {
+		t.Fatalf("header: %v\n%s", err, page)
+	}
+	if err := h.c.Do("GET", "/fragments/runs/"+id+"/action", nil, &page); err != nil {
+		t.Fatal(err)
+	}
+	if p := string(page); !strings.Contains(p, "Raise and retry") || !strings.Contains(p, `name="usd"`) || strings.Contains(p, `name="tokens"`) {
+		t.Fatalf("action: %s", p)
+	}
+	if err := h.c.Do("POST", "/api/runs/"+id+"/budget", daemon.CommandBody{USD: "5", Action: "retry"}, nil); err != nil {
+		t.Fatal(err)
+	}
+	s := h.waitFor(id, func(s *store.RunSnapshot) bool { return s.Status.Terminal() })
+	if s.Status != store.StatusDone || s.ExtraBudgetUSD != 5 {
+		t.Fatalf("%s %v", s.Status, s.ExtraBudgetUSD)
+	}
+	if err := h.c.Do("GET", "/fragments/runs/"+id+"/header", nil, &page); err != nil || !strings.Contains(string(page), "of $5.50") {
+		t.Fatalf("header after raising: %v\n%s", err, page)
 	}
 }

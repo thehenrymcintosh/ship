@@ -95,11 +95,20 @@ served only on `127.0.0.1` and signs your browser in with a local token.
     the handover it wrote for the next step, and its raw result.
   - When the run needs you: the question, any context it chose to show, a
     note box and one button per choice.
+  - What the run has cost so far, in dollars and tokens, against its budget
+    if it has one. When it stops at its budget, you can raise it and retry
+    in place.
+  - What the run has spent in Claude's current 5-hour usage window, and a
+    **Focus** button that pauses your other runs so this one can finish.
   - Controls to retry a step, jump to another step, resume an interrupted
     agent session, or cancel. You can also edit the run's variables, and
     copy the worktree path or open it in your editor or terminal.
 - **Inbox:** everything waiting for you across all runs, oldest first,
   answerable in place.
+- **Usage meter:** the top bar shows how much of Claude's 5-hour and weekly
+  usage limits your account has used (as of the last agent step), and the
+  runs page breaks the current window down by run, with advice when several
+  runs are racing for what's left.
 - **Pipelines:** each repo's pipelines (and your global ones) as graphs,
   with any validation problems and a form to start a run.
 
@@ -117,6 +126,9 @@ takes a run, any unique part of its id works (`3fa`, `rate-limit`).
 | `ship answer <run> [choice] --note "…"` | Answer a question (prompts for the choice if you leave it out) |
 | `ship pause <run>` / `ship resume <run>` | Hold a run after its current step, and carry on later (`--all` includes its slices) |
 | `ship retry <run>`, `ship goto <run> <step>`, `ship cancel <run>` | Step in manually |
+| `ship budget <run> --usd 5 --tokens 1m [--retry]` | Raise a run's budget, and retry a run that stopped at it |
+| `ship usage` | Claude's usage limits, and what each run spent this window |
+| `ship focus <run>` | Pause every other active run so this one can finish |
 | `ship upgrade <run> [--step s]` | Move a run onto its pipeline as you've since edited it |
 | `ship cd <run>` | Print the worktree path: `cd "$(ship cd 3fa)"` |
 | `ship open [run]` | Open the web UI |
@@ -426,6 +438,38 @@ Each step has exactly one of these:
   fix-and-review loops can't spin forever. When the cap is hit the run goes
   to `when_exhausted`, or pauses. Choosing an option in an `ask` step resets
   the counter of the step it leads to.
+
+### Budgets and usage limits
+
+Give a run a budget in dollars, tokens or both, and agent and split steps a
+budget per visit:
+
+```yaml
+limits:
+  max_budget_usd: 20     # the whole run (slices have their own pipeline's limits)
+  max_tokens: 5m         # 200k, 1.5m and plain numbers all work
+steps:
+  review:
+    agent: /review
+    max_budget_usd: 2    # each visit to this step
+    max_tokens: 400k
+```
+
+- **A step's budget** works like an error: the agent is stopped, and the
+  step's `error` outcome goes to `on_error`, or the run waits in your inbox.
+- **The run's budget** always holds the run in your inbox ("budget reached
+  at …"), since retrying can't help until someone decides to spend more.
+  Raise it from the run's page, or with `ship budget <run> --usd 5 --retry`
+  (`--tokens 1m` for a token budget). The run's page shows what it has
+  spent against the budget, raised amounts included.
+- **Claude's usage limits.** When an agent hits your account's 5-hour or
+  weekly limit, the step waits until the limit resets (the run shows as
+  waiting) and then carries on in the same conversation, so nothing is
+  lost. `ship usage` and the meter in the web UI's top bar show how much
+  of each limit is used and what each run spent in the current window. If
+  several runs are going and the window is nearly used up, `ship focus
+  <run>` pauses the others after their current step so that one can finish;
+  `ship resume <run>` picks them up later.
 
 ### Sharing an agent between steps
 

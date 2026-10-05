@@ -138,6 +138,31 @@ func (d *Daemon) usageView() UsageView {
 	return v
 }
 
+// runWindow is a run's spend in the 5-hour window; it reads only the run and
+// its slices, so the run page can show it on every refresh.
+func (d *Daemon) runWindow(s *store.RunSnapshot, kids []*store.RunSnapshot) *RunWindow {
+	for _, w := range d.eng.Usage().Windows {
+		if w.Name != "five_hour" {
+			continue
+		}
+		since, ok := engine.WindowStart(w)
+		if !ok {
+			return nil
+		}
+		pct := int(math.Round(w.Utilization * 100))
+		rw := &RunWindow{Pct: pct, Level: level(pct, false), Resets: w.ResetsAt}
+		for _, r := range append([]*store.RunSnapshot{s}, kids...) {
+			for _, vs := range r.Visits {
+				if vs.Finished != nil && vs.Finished.After(since) {
+					rw.USD += vs.CostUSD
+				}
+			}
+		}
+		return rw
+	}
+	return nil
+}
+
 func (d *Daemon) getUsage(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, d.usageView())
 }

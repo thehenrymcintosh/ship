@@ -26,7 +26,8 @@
       {{if not (terminal $s.Status)}}<span class="phase">{{phase $s .P}}</span>{{end}}
       <span title="pipeline">{{$s.Pipeline}}{{with .Version}} <span class="muted" title="pipeline version: the pipeline plus the skills, rules and scripts it uses">{{.}}</span>{{end}}</span>
       {{if $s.Branch}}<span class="branch" title="branch ← base"><code>{{$s.Branch}}</code> ← <code>{{$s.Base}}</code></span>{{end}}
-      {{with money $s.CostUSD}}<span class="cost" title="agent cost">{{.}}</span>{{end}}
+      {{if or $s.CostUSD .Budget.USD}}<span class="cost{{if and .Budget.USD (ge $s.CostUSD .Budget.USD)}} warn-text{{end}}" title="agent cost{{if $s.ExtraBudgetUSD}}, budget raised by {{money $s.ExtraBudgetUSD}}{{end}}">{{or (money $s.CostUSD) "$0"}}{{with .Budget.USD}} <span class="muted">of {{money .}}</span>{{end}}</span>{{end}}
+      {{if or $s.Tokens .Budget.Tokens}}<span class="tokens{{if and .Budget.Tokens (ge $s.Tokens .Budget.Tokens)}} warn-text{{end}}" title="tokens used by agents{{if $s.ExtraTokens}}, budget raised by {{tokens $s.ExtraTokens}}{{end}}">{{tokens $s.Tokens}}{{with .Budget.Tokens}} <span class="muted">of {{tokens .}}</span>{{end}} tokens</span>{{end}}
       <span class="muted" title="{{$s.CreatedAt}}">started {{ago $s.CreatedAt}}</span>
       <span class="muted id">{{$s.ID}}</span>
     </div>
@@ -189,6 +190,20 @@
   </form>
   <p class="muted small fb-hint">Or comment on the run's PR starting with <code>ship:</code>. <code>ship pipeline refine {{$s.Pipeline}}</code> turns open feedback into a proposed new version.</p>
 </section>
+{{with .Window}}
+<section class="card window-card">
+  <header class="card-head"><h2>Usage</h2><a class="muted small" href="/#usage">all runs</a></header>
+  <p class="small">{{if .USD}}This run spent <strong>{{money .USD}}</strong> in the current 5-hour window.{{else}}This run hasn't spent anything in the current 5-hour window.{{end}}</p>
+  <div class="uw uw-{{.Level}}">
+    <div class="uw-top"><span class="small">5-hour limit, whole account</span><span>{{.Pct}}%</span></div>
+    <div class="uw-bar"><span style="width: {{.Pct}}%"></span></div>
+    {{with resets .Resets}}<div class="muted small">{{.}}</div>{{end}}
+  </div>
+  {{if not (terminal $s.Status)}}{{if not (or (eq $s.Status "paused") $s.PauseRequested)}}
+  <button class="btn small" hx-post="/api/runs/{{$s.ID}}/focus" hx-swap="none" hx-confirm="Pause every other active run after its current step, so this one can finish?" title="Pause the other runs so this one can finish">Focus on this run</button>
+  {{end}}{{end}}
+</section>
+{{end}}
 <section class="card small-print">
   <dl class="kv">
     <div><dt>Repo</dt><dd><code>{{$s.Repo}}</code></dd></div>

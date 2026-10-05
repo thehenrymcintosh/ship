@@ -338,3 +338,12 @@ form.inline { display: inline-flex; gap: 0.4rem; align-items: center; flex-wrap:
 .usage-runs tr.finished { color: var(--muted); }
 .usage-runs .actions { text-align: right; white-space: nowrap; }
 @media (max-width: 640px) { .usage-meter .um-label { display: none; } .usage-runs th:nth-child(3), .usage-runs td:nth-child(3) { display: none; } }
+.window-card p { margin: 0 0 0.6rem; }
+.window-card .uw { margin-bottom: 0.6rem; }
+.run-head .tokens { font-variant-numeric: tabular-nums; }
+
+/* Budget stop */
+.budget-form { border-top: 1px solid var(--border); padding-top: 0.6rem; margin-bottom: 0.6rem; }
+.budget-form p { margin: 0 0 0.4rem; }
+.inline-field { display: inline-flex; align-items: center; gap: 0.3rem; }
+.inline-field input { width: 6rem; }
