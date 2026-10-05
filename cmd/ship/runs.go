@@ -15,6 +15,7 @@ import (
 
 	"github.com/thehenrymcintosh/ship/internal/brand"
 	"github.com/thehenrymcintosh/ship/internal/engine"
+	"github.com/thehenrymcintosh/ship/internal/engine/steps"
 	"github.com/thehenrymcintosh/ship/internal/pipeline"
 	"github.com/thehenrymcintosh/ship/internal/store"
 )
@@ -206,6 +207,9 @@ func (a *app) statusCmd() *cobra.Command {
 			if c := money(s.CostUSD); c != "" {
 				fmt.Printf("cost:      %s\n", c)
 			}
+			if s.Tokens > 0 {
+				fmt.Printf("tokens:    %s\n", steps.FormatTokens(s.Tokens))
+			}
 			if s.BaseMoved {
 				fmt.Println(a.color("33", "base moved: the parent slice changed — a restack may be needed"))
 			}
@@ -242,7 +246,11 @@ func (a *app) statusCmd() *cobra.Command {
 					if v.DurationMS > 0 {
 						dur = (time.Duration(v.DurationMS) * time.Millisecond).Round(time.Second).String()
 					}
-					fmt.Fprintf(tw, "  %d\t%s %s\t%s\t%s\t%s\t%s\n", v.Seq, pipeline.TypeGlyph(v.Type), v.Step, outcome, dur, money(v.CostUSD), truncate(firstLine(v.Summary), 70))
+					tok := ""
+					if v.Tokens > 0 {
+						tok = steps.FormatTokens(v.Tokens) + " tok"
+					}
+					fmt.Fprintf(tw, "  %d\t%s %s\t%s\t%s\t%s\t%s\t%s\n", v.Seq, pipeline.TypeGlyph(v.Type), v.Step, outcome, dur, money(v.CostUSD), tok, truncate(firstLine(v.Summary), 70))
 				}
 				tw.Flush()
 			}

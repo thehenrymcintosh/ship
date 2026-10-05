@@ -135,10 +135,10 @@ func (a *app) printRecorded(f history.Feedback) error {
 func (a *app) pipelineCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "pipeline",
-		Short: "Pipeline versions and feedback: versions, feedback, refine, report, close",
+		Short: "Pipeline versions, feedback and stats: versions, feedback, refine, report, close, stats",
 	}
 	cmd.PersistentFlags().String("repo", "", "repo path (default: the git repo of the current dir)")
-	cmd.AddCommand(a.versionsCmd(), a.pipelineFeedbackCmd(), a.closeCmd(), a.refineCmd(), a.reportCmd())
+	cmd.AddCommand(a.versionsCmd(), a.pipelineFeedbackCmd(), a.closeCmd(), a.refineCmd(), a.reportCmd(), a.statsCmd())
 	return cmd
 }
 

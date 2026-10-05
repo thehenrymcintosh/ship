@@ -78,6 +78,8 @@ type Response struct {
 	// output. Cache reads (re-reading the conversation, billed at a tenth)
 	// aren't counted, or every long session would look enormous.
 	Tokens int64
+	// TokenUsage breaks the tokens down, cache reads included.
+	TokenUsage Usage
 	// Limited is set when Claude refused for a usage or rate limit (or was
 	// overloaded); RetryAt is when it says the limit resets, if it said.
 	Limited bool
@@ -112,6 +114,14 @@ type Usage struct {
 
 // Tokens is the count budgets use: everything but cache reads.
 func (u Usage) Tokens() int64 { return u.Input + u.CacheCreation + u.Output }
+
+// Add adds o to u.
+func (u *Usage) Add(o Usage) {
+	u.Input += o.Input
+	u.CacheCreation += o.CacheCreation
+	u.CacheRead += o.CacheRead
+	u.Output += o.Output
+}
 
 // UIEvent is one live event for the UI: assistant text, a tool call or a
 // tool result.

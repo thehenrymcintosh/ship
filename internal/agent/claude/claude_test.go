@@ -121,7 +121,7 @@ func TestParserLimitsAndTokens(t *testing.T) {
 	} {
 		p.Line([]byte(l))
 	}
-	if r := p.Response(); r.Limited || seen != 140 {
+	if r := p.Response(); r.Limited || seen != 140 || r.TokenUsage.CacheRead != 5000 || r.TokenUsage.Input != 15 {
 		t.Fatalf("limited %v tokens %d", r.Limited, seen)
 	}
 	// The session limit as claude reports it.
@@ -129,7 +129,7 @@ func TestParserLimitsAndTokens(t *testing.T) {
 	p.Line([]byte(`{"type":"assistant","message":{"id":"m3","model":"<synthetic>","content":[{"type":"text","text":"You've hit your session limit · resets 4:50pm (Europe/London)"}]},"error":"rate_limit"}`))
 	p.Line([]byte(`{"type":"result","subtype":"success","is_error":true,"result":"You've hit your session limit · resets 4:50pm (Europe/London)","usage":{"input_tokens":34,"cache_creation_input_tokens":54791,"cache_read_input_tokens":773291,"output_tokens":13426}}`))
 	r := p.Response()
-	if !r.Limited || r.RetryAt.Unix() != 1791215400 || r.Tokens != 34+54791+13426 {
+	if !r.Limited || r.RetryAt.Unix() != 1791215400 || r.Tokens != 34+54791+13426 || r.TokenUsage.CacheRead != 773291 || r.TokenUsage.Output != 13426 {
 		t.Fatalf("%+v", r)
 	}
 }

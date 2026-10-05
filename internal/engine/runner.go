@@ -827,7 +827,7 @@ func (r *runner) finishVisit(v *steps.Visit, typ string, vr visitResult, abort *
 		abort = nil
 	}
 	if abort != nil {
-		res = steps.Result{Outcome: steps.OutcomeCancelled, Summary: "Ended by " + abort.cmd.Source + " (" + abort.cmd.Name + ")", Cost: res.Cost, Tokens: res.Tokens, SessionID: res.SessionID}
+		res = steps.Result{Outcome: steps.OutcomeCancelled, Summary: "Ended by " + abort.cmd.Source + " (" + abort.cmd.Name + ")", Cost: res.Cost, Tokens: res.Tokens, TokenUsage: res.TokenUsage, SessionID: res.SessionID}
 	} else if res.Outcome == steps.OutcomeCancelled {
 		// Cancelled without an abort (shouldn't happen): treat as an error.
 		res = steps.ErrorResult("cancelled", "the visit was cancelled")
@@ -837,7 +837,7 @@ func (r *runner) finishVisit(v *steps.Visit, typ string, vr visitResult, abort *
 		for _, k := range sortedKeys(res.Vars) {
 			if err := CheckFormat(r.pipe, k, res.Vars[k]); err != nil {
 				e := steps.ErrorResult("format:"+k, err.Error())
-				e.Cost, e.SessionID, e.Output = res.Cost, res.SessionID, res.Output
+				e.Cost, e.Tokens, e.TokenUsage, e.SessionID, e.Output = res.Cost, res.Tokens, res.TokenUsage, res.SessionID, res.Output
 				res = e
 				break
 			}
@@ -853,7 +853,7 @@ func (r *runner) finishVisit(v *steps.Visit, typ string, vr visitResult, abort *
 	_ = writeHandover(v.File("handover.md"), r.id, v.StepName, v.Number, res, finished, r.pipe.OutputTail())
 	if err := r.emit(store.EvVisitFinished, store.VisitFinished{
 		Seq: v.Seq, Outcome: res.Outcome, Summary: res.Summary, Vars: res.Vars, Error: res.Error,
-		CostUSD: res.Cost, Tokens: res.Tokens, DurationMS: dur, SessionID: res.SessionID, PermissionDenials: len(res.PermissionDenials),
+		CostUSD: res.Cost, Tokens: res.Tokens, Usage: res.TokenUsage.Ptr(), DurationMS: dur, SessionID: res.SessionID, PermissionDenials: len(res.PermissionDenials),
 	}); err != nil {
 		return false
 	}

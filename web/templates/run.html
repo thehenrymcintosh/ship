@@ -11,6 +11,7 @@
       <header class="card-head"><h2>Timeline</h2><span id="timeline-filter" class="muted"></span></header>
       <div id="run-timeline" hx-get="/fragments/runs/{{$v.S.ID}}/timeline" hx-trigger="sse:run throttle:700ms, ship-refresh from:body" hx-swap="innerHTML">{{template "run-timeline" $v}}</div>
     </section>
+    <div id="run-steps" hx-get="/fragments/runs/{{$v.S.ID}}/steps" hx-trigger="sse:run throttle:2s, ship-refresh from:body" hx-swap="innerHTML">{{template "run-steps" $v}}</div>
   </div>
   <aside id="run-side" class="run-side" hx-get="/fragments/runs/{{$v.S.ID}}/side" hx-trigger="sse:run throttle:1s, ship-refresh from:body" hx-swap="innerHTML">{{template "run-side" $v}}</aside>
 </div>
@@ -90,7 +91,7 @@
       {{else if .Interrupted}}<span class="chip warn">interrupted</span>
       {{else}}<span class="chip oc-{{.Outcome}}">{{.Outcome}}</span>{{end}}
       <span class="vsum">{{if .Error}}<code>{{.Error.Reason}}</code> {{end}}{{trunc 140 .Summary}}</span>
-      <span class="vmeta">{{with dur .DurationMS}}<span>{{.}}</span>{{end}}{{with money .CostUSD}}<span>{{.}}</span>{{end}}{{if .PermissionDenials}}<span class="warn-text" title="permission denials">⚠ {{.PermissionDenials}}</span>{{end}}{{if .CameFrom}}<span class="muted" title="came from">← {{.CameFrom}}</span>{{end}}{{if .Thread}}<span class="muted" title="{{if .ResumeID}}resumed{{else}}started{{end}} the agent conversation &quot;{{.Thread}}&quot;">{{if .ResumeID}}↻{{else}}◌{{end}} {{.Thread}}</span>{{end}}</span>
+      <span class="vmeta">{{with dur .DurationMS}}<span>{{.}}</span>{{end}}{{with money .CostUSD}}<span>{{.}}</span>{{end}}{{$u := usage .Tokens .Usage}}{{if $u}}<span class="vtok" title="{{usageTitle .Tokens .Usage}}">{{$u}}</span>{{end}}{{if .PermissionDenials}}<span class="warn-text" title="permission denials">⚠ {{.PermissionDenials}}</span>{{end}}{{if .CameFrom}}<span class="muted" title="came from">← {{.CameFrom}}</span>{{end}}{{if .Thread}}<span class="muted" title="{{if .ResumeID}}resumed{{else}}started{{end}} the agent conversation &quot;{{.Thread}}&quot;">{{if .ResumeID}}↻{{else}}◌{{end}} {{.Thread}}</span>{{end}}</span>
     </summary>
     <div class="visit-body">
       <div class="tabs" role="tablist">
@@ -106,6 +107,33 @@
 {{end}}
 </ol>
 {{end}}
+
+{{define "run-steps"}}{{if .StepStats}}
+<section class="card steps-card">
+  <header class="card-head"><h2>Steps</h2><span class="muted small">totals over each step's finished visits</span></header>
+  <p class="muted small">A step that takes far longer or uses far more tokens than the rest may be doing too much and be worth splitting; a very small one may be worth merging into its neighbour.</p>
+  <div class="table-scroll">
+  <table class="step-stats">
+    <thead><tr><th>Step</th><th class="num">Visits</th><th class="num">Time</th><th class="num">Cost</th><th class="num" title="Counted toward budgets: input, cache writes and output">Tokens</th><th class="num">In</th><th class="num">Out</th><th class="num" title="Cache writes">Cache write</th><th class="num" title="Cache reads: re-reading the conversation, not counted toward budgets">Cache read</th></tr></thead>
+    <tbody>
+    {{range .StepStats}}
+      <tr>
+        <td><span class="glyph" aria-hidden="true">{{glyph .Type}}</span> {{.Step}}</td>
+        <td class="num">{{.Visits}}</td>
+        <td class="num">{{dur .DurationMS}}</td>
+        <td class="num">{{money .CostUSD}}</td>
+        <td class="num">{{if .Tokens}}{{tokens .Tokens}}{{end}}</td>
+        <td class="num">{{if .Usage.Input}}{{tokens .Usage.Input}}{{end}}</td>
+        <td class="num">{{if .Usage.Output}}{{tokens .Usage.Output}}{{end}}</td>
+        <td class="num">{{if .Usage.CacheWrite}}{{tokens .Usage.CacheWrite}}{{end}}</td>
+        <td class="num">{{if .Usage.CacheRead}}{{tokens .Usage.CacheRead}}{{end}}</td>
+      </tr>
+    {{end}}
+    </tbody>
+  </table>
+  </div>
+</section>
+{{end}}{{end}}
 
 {{define "visit-tab"}}
 {{if .Empty}}<p class="muted">{{.Empty}}</p>

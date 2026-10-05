@@ -75,6 +75,7 @@ type Result struct {
 	Error             *store.StepError
 	Cost              float64
 	Tokens            int64
+	TokenUsage        store.TokenUsage
 	ExitCode          *int
 	SessionID         string
 	PermissionDenials []json.RawMessage

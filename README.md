@@ -126,7 +126,7 @@ takes a run, any unique part of its id works (`3fa`, `rate-limit`).
 |---|---|
 | `ship start --brief brief.md` | Start a run from a brief file (`-` reads stdin) |
 | `ship ls` | Active runs (`--all` includes finished ones; `--pipelines` lists pipelines) |
-| `ship status <run>` | Where a run is: current step, visits, pending question, worktree |
+| `ship status <run>` | Where a run is: current step, visits (with time, cost and tokens), pending question, worktree |
 | `ship logs <run> -f` | Follow the current step's output |
 | `ship answer <run> [choice] --note "…"` | Answer a question (prompts for the choice if you leave it out) |
 | `ship pause <run>` / `ship resume <run>` | Hold a run after its current step, and carry on later (`--all` includes its slices) |
@@ -142,6 +142,7 @@ takes a run, any unique part of its id works (`3fa`, `rate-limit`).
 | `ship validate` | Check this repo's pipelines |
 | `ship feedback <run> [--step s] "…"` | Record feedback on a run's work |
 | `ship pipeline refine <pipeline>` | Propose a new version from the feedback |
+| `ship pipeline stats <pipeline>` | Average time, cost and tokens per step across recent runs |
 | `ship templates` / `ship add <name>` | List and add pipeline templates |
 | `ship init` / `ship update` | Set up a repo / update ship |
 
@@ -346,6 +347,13 @@ the feedback version by version, relative to how many runs each version had.
 It reports the recurring themes, what changed after each version (including
 regressions), and what's most worth fixing next. It analyses your judgements;
 nothing grades the work automatically.
+
+**See where the time and tokens go.** The run page has a table of each
+step's visits, time, cost and tokens (input, output, cache writes and cache
+reads), and `ship pipeline stats pr` averages the same per step across the
+pipeline's recent runs. A step that takes far longer or uses far more tokens
+than the rest may be doing too much and be worth splitting; a very small one
+may be worth merging into its neighbour.
 
 Everything lives in `.ship/history/<pipeline>/` (`versions.jsonl`,
 `feedback.jsonl`, saved proposals and reports), beside the pipeline, so

@@ -74,29 +74,30 @@ type Ask struct {
 
 // VisitSummary is the snapshot's view of a visit.
 type VisitSummary struct {
-	Seq               int        `json:"seq"`
-	Step              string     `json:"step"`
-	Type              string     `json:"type"`
-	VisitNumber       int        `json:"visit_number"`
-	CameFrom          string     `json:"came_from,omitempty"`
-	Dir               string     `json:"dir"`
-	Outcome           string     `json:"outcome,omitempty"`
-	Summary           string     `json:"summary,omitempty"`
-	Error             *StepError `json:"error,omitempty"`
-	Started           time.Time  `json:"started"`
-	Finished          *time.Time `json:"finished,omitempty"`
-	DurationMS        int64      `json:"duration_ms,omitempty"`
-	CostUSD           float64    `json:"cost_usd,omitempty"`
-	Tokens            int64      `json:"tokens,omitempty"`
-	SessionID         string     `json:"session_id,omitempty"`
-	ResumeID          string     `json:"resume_id,omitempty"`
-	Thread            string     `json:"thread,omitempty"`
-	HeadSHA           string     `json:"head_sha,omitempty"`
-	Queued            bool       `json:"queued,omitempty"`
-	Interrupted       bool       `json:"interrupted,omitempty"`
-	Polls             int        `json:"polls,omitempty"`
-	LastPoll          string     `json:"last_poll,omitempty"`
-	PermissionDenials int        `json:"permission_denials,omitempty"`
+	Seq               int         `json:"seq"`
+	Step              string      `json:"step"`
+	Type              string      `json:"type"`
+	VisitNumber       int         `json:"visit_number"`
+	CameFrom          string      `json:"came_from,omitempty"`
+	Dir               string      `json:"dir"`
+	Outcome           string      `json:"outcome,omitempty"`
+	Summary           string      `json:"summary,omitempty"`
+	Error             *StepError  `json:"error,omitempty"`
+	Started           time.Time   `json:"started"`
+	Finished          *time.Time  `json:"finished,omitempty"`
+	DurationMS        int64       `json:"duration_ms,omitempty"`
+	CostUSD           float64     `json:"cost_usd,omitempty"`
+	Tokens            int64       `json:"tokens,omitempty"`
+	Usage             *TokenUsage `json:"usage,omitempty"`
+	SessionID         string      `json:"session_id,omitempty"`
+	ResumeID          string      `json:"resume_id,omitempty"`
+	Thread            string      `json:"thread,omitempty"`
+	HeadSHA           string      `json:"head_sha,omitempty"`
+	Queued            bool        `json:"queued,omitempty"`
+	Interrupted       bool        `json:"interrupted,omitempty"`
+	Polls             int         `json:"polls,omitempty"`
+	LastPoll          string      `json:"last_poll,omitempty"`
+	PermissionDenials int         `json:"permission_denials,omitempty"`
 }
 
 // Running reports whether the visit hasn't finished.
@@ -279,7 +280,7 @@ func Apply(s *RunSnapshot, e Event) error {
 			t := ts
 			v.Finished = &t
 			v.Outcome, v.Summary, v.Error = d.Outcome, truncate(d.Summary, summaryLimit), d.Error
-			v.CostUSD, v.Tokens, v.DurationMS = d.CostUSD, d.Tokens, d.DurationMS
+			v.CostUSD, v.Tokens, v.DurationMS, v.Usage = d.CostUSD, d.Tokens, d.DurationMS, d.Usage
 			v.Queued = false
 			v.PermissionDenials = d.PermissionDenials
 			if d.SessionID != "" {

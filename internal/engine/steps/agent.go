@@ -213,7 +213,7 @@ func invoke(ctx context.Context, v *Visit, c *agentCall) (agent.Output, Result) 
 	}
 	sink := agent.SinkFunc(func(e agent.UIEvent) { v.RT.AgentEvent(e) })
 	fail := func(e Result) (agent.Output, Result) {
-		e.Cost, e.Tokens, e.SessionID, e.PermissionDenials, e.Usage = r.Cost, r.Tokens, r.SessionID, r.PermissionDenials, r.Usage
+		e.Cost, e.Tokens, e.TokenUsage, e.SessionID, e.PermissionDenials, e.Usage = r.Cost, r.Tokens, r.TokenUsage, r.SessionID, r.PermissionDenials, r.Usage
 		return agent.Output{}, e
 	}
 
@@ -230,6 +230,8 @@ func invoke(ctx context.Context, v *Visit, c *agentCall) (agent.Output, Result) 
 		resp, err := c.adapter.Run(ctx, req, sink)
 		r.Cost += resp.CostUSD
 		r.Tokens += resp.Tokens
+		u := resp.TokenUsage
+		r.TokenUsage.Add(store.TokenUsage{Input: u.Input, Output: u.Output, CacheWrite: u.CacheCreation, CacheRead: u.CacheRead})
 		r.PermissionDenials = append(r.PermissionDenials, resp.PermissionDenials...)
 		if resp.SessionID != "" {
 			r.SessionID = resp.SessionID
@@ -238,7 +240,7 @@ func invoke(ctx context.Context, v *Visit, c *agentCall) (agent.Output, Result) 
 			r.Usage = resp.Usage
 		}
 		if ctx.Err() != nil {
-			return agent.Output{}, Result{Outcome: OutcomeCancelled, Summary: "cancelled", Cost: r.Cost, Tokens: r.Tokens, SessionID: r.SessionID}
+			return agent.Output{}, Result{Outcome: OutcomeCancelled, Summary: "cancelled", Cost: r.Cost, Tokens: r.Tokens, TokenUsage: r.TokenUsage, SessionID: r.SessionID}
 		}
 		if resp.Limited {
 			// Wait the limit out, then carry on in the same conversation.
@@ -253,7 +255,7 @@ func invoke(ctx context.Context, v *Visit, c *agentCall) (agent.Output, Result) 
 			select {
 			case <-time.After(wait):
 			case <-ctx.Done():
-				return agent.Output{}, Result{Outcome: OutcomeCancelled, Summary: "cancelled", Cost: r.Cost, Tokens: r.Tokens, SessionID: r.SessionID}
+				return agent.Output{}, Result{Outcome: OutcomeCancelled, Summary: "cancelled", Cost: r.Cost, Tokens: r.Tokens, TokenUsage: r.TokenUsage, SessionID: r.SessionID}
 			}
 			_ = v.RT.SetStatus(store.StatusRunning, "")
 			req.LimitRetry++
@@ -380,6 +382,37 @@ func FormatTokens(n int64) string {
 	return fmt.Sprint(n)
 }
 
+// FormatUsage writes a visit's tokens briefly, with the breakdown when
+// there is one: "41k tok · in 12k / out 9k / cache 20k write, 300k read".
+func FormatUsage(tokens int64, u *store.TokenUsage) string {
+	if u == nil || u.IsZero() {
+		if tokens <= 0 {
+			return ""
+		}
+		return FormatTokens(tokens) + " tok"
+	}
+	if tokens <= 0 {
+		tokens = u.Total()
+	}
+	return fmt.Sprintf("%s tok · in %s / out %s / cache %s write, %s read", FormatTokens(tokens),
+		FormatTokens(u.Input), FormatTokens(u.Output), FormatTokens(u.CacheWrite), FormatTokens(u.CacheRead))
+}
+
+// DescribeUsage spells a visit's tokens out in full, for a tooltip.
+func DescribeUsage(tokens int64, u *store.TokenUsage) string {
+	if u == nil || u.IsZero() {
+		if tokens <= 0 {
+			return ""
+		}
+		return fmt.Sprintf("%d tokens (input, cache writes and output)", tokens)
+	}
+	if tokens <= 0 {
+		tokens = u.Total()
+	}
+	return fmt.Sprintf("%d tokens counted toward budgets\ninput: %d\noutput: %d\ncache writes: %d\ncache reads: %d (re-reading the conversation, not counted)",
+		tokens, u.Input, u.Output, u.CacheWrite, u.CacheRead)
+}
+
 type outputWriter struct {
 	v      *Visit
 	stream string
@@ -468,7 +501,7 @@ If the work fits in one change, return a single slice covering everything. If yo
 	slices, err := writeSlices(v, out.Slices)
 	if err != nil {
 		e := ErrorResult("slices", err.Error())
-		e.Cost, e.SessionID = r.Cost, r.SessionID
+		e.Cost, e.Tokens, e.TokenUsage, e.SessionID = r.Cost, r.Tokens, r.TokenUsage, r.SessionID
 		return e, nil
 	}
 	if err := v.RT.Emit(store.EvSlicesProposed, store.SlicesProposed{Seq: v.Seq, Slices: slices}); err != nil {
@@ -576,6 +609,7 @@ func reviewSplit(ctx context.Context, v *Visit, summary string, slices []store.S
 	ok := Result{Outcome: "ok", Summary: summary, Cost: cost}
 	if base != nil {
 		ok.SessionID, ok.PermissionDenials, ok.Usage = base.SessionID, base.PermissionDenials, base.Usage
+		ok.Tokens, ok.TokenUsage = base.Tokens, base.TokenUsage
 	}
 	sliceSummary := func(sl []store.Slice) string {
 		var b strings.Builder
@@ -610,7 +644,7 @@ func reviewSplit(ctx context.Context, v *Visit, summary string, slices []store.S
 	for {
 		cmd, err := v.RT.Await(ctx)
 		if err != nil {
-			return Result{Outcome: OutcomeCancelled, Summary: "cancelled", Cost: cost}, nil
+			return Result{Outcome: OutcomeCancelled, Summary: "cancelled", Cost: cost, Tokens: ok.Tokens, TokenUsage: ok.TokenUsage}, nil
 		}
 		action := cmd.Action
 		if cmd.Name == "answer" && action == "" {
@@ -646,7 +680,7 @@ func reviewSplit(ctx context.Context, v *Visit, summary string, slices []store.S
 				return Result{}, err
 			}
 			cmd.Respond(nil)
-			return Result{Outcome: "resplit", Internal: "resplit", Summary: cmd.Note, Cost: cost, SessionID: ok.SessionID, HumanReset: true}, nil
+			return Result{Outcome: "resplit", Internal: "resplit", Summary: cmd.Note, Cost: cost, Tokens: ok.Tokens, TokenUsage: ok.TokenUsage, SessionID: ok.SessionID, HumanReset: true}, nil
 		case "reload":
 			fresh, err := ReloadSlices(v.File("slices"))
 			if err != nil {
@@ -669,7 +703,7 @@ func reviewSplit(ctx context.Context, v *Visit, summary string, slices []store.S
 			if strings.TrimSpace(cmd.Note) != "" {
 				s += ": " + cmd.Note
 			}
-			return Result{Outcome: "stop", Internal: "stop", Summary: s, Cost: cost, SessionID: ok.SessionID, HumanReset: true}, nil
+			return Result{Outcome: "stop", Internal: "stop", Summary: s, Cost: cost, Tokens: ok.Tokens, TokenUsage: ok.TokenUsage, SessionID: ok.SessionID, HumanReset: true}, nil
 		default:
 			cmd.Respond(&InvalidError{fmt.Sprintf("unknown review action %q (approve, resplit, reload, stop)", action)})
 		}

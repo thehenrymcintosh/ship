@@ -42,6 +42,9 @@ type Entry struct {
 	Exit    int               `yaml:"exit"`
 	Cost    float64           `yaml:"cost"`
 	Tokens  int64             `yaml:"tokens"`
+	// Usage breaks the tokens down; when set without tokens, tokens is
+	// input + cache_write + output.
+	Usage *Usage `yaml:"usage"`
 	// Limited makes the first N tries hit a usage limit that resets after
 	// LimitReset (default: no reset time given).
 	Limited    int    `yaml:"limited"`
@@ -54,6 +57,14 @@ type Entry struct {
 	// Output, when set, is returned verbatim as the structured result
 	// (for callers with their own schema, like `ship pipeline refine`).
 	Output map[string]any `yaml:"output"`
+}
+
+// Usage is a scripted token breakdown.
+type Usage struct {
+	Input      int64 `yaml:"input"`
+	Output     int64 `yaml:"output"`
+	CacheWrite int64 `yaml:"cache_write"`
+	CacheRead  int64 `yaml:"cache_read"`
 }
 
 // Script is a parsed fake-agent script.
@@ -118,6 +129,13 @@ func (a *Adapter) Run(ctx context.Context, req agent.Request, sink agent.Sink) (
 		i = len(entries) - 1
 	}
 	e := entries[i]
+	var usage agent.Usage
+	if u := e.Usage; u != nil {
+		usage = agent.Usage{Input: u.Input, Output: u.Output, CacheCreation: u.CacheWrite, CacheRead: u.CacheRead}
+		if e.Tokens == 0 {
+			e.Tokens = usage.Tokens()
+		}
+	}
 	session := req.SessionID
 	if session == "" {
 		session = req.ResumeID
@@ -175,7 +193,7 @@ func (a *Adapter) Run(ctx context.Context, req agent.Request, sink agent.Sink) (
 			}
 		}
 	}
-	resp := agent.Response{SessionID: session, CostUSD: e.Cost, Tokens: e.Tokens, ExitCode: e.Exit}
+	resp := agent.Response{SessionID: session, CostUSD: e.Cost, Tokens: e.Tokens, TokenUsage: usage, ExitCode: e.Exit}
 	for _, d := range e.Denials {
 		b, _ := json.Marshal(map[string]any{"tool_name": d})
 		resp.PermissionDenials = append(resp.PermissionDenials, b)

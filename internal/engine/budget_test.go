@@ -85,3 +85,44 @@ steps:
 		t.Fatalf("error %+v", lv.Error)
 	}
 }
+
+func TestTokenBreakdownPerVisit(t *testing.T) {
+	en := newEnv(t, map[string]string{"p": `version: 1
+start: work
+steps:
+  work: {prompt: Do it., next: check}
+  check: {prompt: Check it., next: {again: work, ok: done}}
+`})
+	// work's first visit needs a correction, so its two tries are summed.
+	s := en.start("p", "", nil, `work:
+  - {outcome: done, summary: ok, invalid_attempts: 1, usage: {input: 10, output: 20, cache_write: 30, cache_read: 400}}
+check:
+  - {outcome: again, summary: more, usage: {input: 1, output: 2, cache_write: 3, cache_read: 4}}
+  - {outcome: ok, summary: fine, usage: {input: 1, output: 2, cache_write: 3, cache_read: 4}}
+`)
+	s = en.waitStatus(s.ID, store.StatusDone)
+	w := s.Visits[0]
+	if w.Usage == nil || *w.Usage != (store.TokenUsage{Input: 20, Output: 40, CacheWrite: 60, CacheRead: 800}) || w.Tokens != 120 {
+		t.Fatalf("work usage %+v tokens %d", w.Usage, w.Tokens)
+	}
+	stats := store.StepStats(s.Visits)
+	if len(stats) != 2 || stats[0].Step != "work" || stats[0].Visits != 2 || stats[1].Visits != 2 {
+		t.Fatalf("stats %+v", stats)
+	}
+	if c := stats[1]; c.Tokens != 12 || c.Usage != (store.TokenUsage{Input: 2, Output: 4, CacheWrite: 6, CacheRead: 8}) {
+		t.Fatalf("check stats %+v", c)
+	}
+	// The breakdown survives a rebuild from the log.
+	re, _, err := store.Rebuild(en.e.o.Store.RunDir(s.ID))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if u := re.Visits[0].Usage; u == nil || u.CacheRead != 800 {
+		t.Fatalf("rebuilt usage %+v", u)
+	}
+	// work ran twice in one of two runs: once per run on average.
+	avg := store.AverageStepStats([]*store.RunSnapshot{s, {}})
+	if avg[0].Runs != 1 || avg[0].Visits != 1 || avg[0].Tokens != 120 || avg[0].Usage.CacheRead != 800 {
+		t.Fatalf("averages %+v", avg[0])
+	}
+}

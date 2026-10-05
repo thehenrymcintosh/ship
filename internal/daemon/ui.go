@@ -33,18 +33,20 @@ import (
 // --- templates -------------------------------------------------------------
 
 var funcs = template.FuncMap{
-	"md":     Markdown,
-	"glyph":  pipeline.TypeGlyph,
-	"ago":    ago,
-	"dur":    durMS,
-	"money":  money,
-	"tokens": steps.FormatTokens,
-	"short":  shortID,
-	"trunc":  truncRunes,
-	"pretty": prettyJSON,
-	"join":   strings.Join,
-	"brand":  func() string { return brand.Name },
-	"phase":  phase,
+	"md":         Markdown,
+	"glyph":      pipeline.TypeGlyph,
+	"ago":        ago,
+	"dur":        durMS,
+	"money":      money,
+	"tokens":     steps.FormatTokens,
+	"usage":      steps.FormatUsage,
+	"usageTitle": steps.DescribeUsage,
+	"short":      shortID,
+	"trunc":      truncRunes,
+	"pretty":     prettyJSON,
+	"join":       strings.Join,
+	"brand":      func() string { return brand.Name },
+	"phase":      phase,
 	"plural": func(n int, s string) string {
 		if n == 1 {
 			return fmt.Sprintf("%d %s", n, s)
@@ -378,6 +380,7 @@ type RunView struct {
 	Acceptance []string
 	Children   []*store.RunSnapshot
 	Visits     []store.VisitSummary // newest first
+	StepStats  []store.StepStat     // finished visits summed by step
 	Steps      []string
 	Panels     []Panel
 	Slices     []SliceView
@@ -463,6 +466,7 @@ func (d *Daemon) runView(id string) (*RunView, error) {
 	for i := len(s.Visits) - 1; i >= 0; i-- {
 		v.Visits = append(v.Visits, s.Visits[i])
 	}
+	v.StepStats = store.StepStats(s.Visits)
 	if v.P != nil {
 		v.Steps = v.P.SortedSteps()
 		for _, n := range v.Steps {
@@ -909,7 +913,7 @@ func (d *Daemon) fragRun(w http.ResponseWriter, r *http.Request) {
 	}
 	part := r.PathValue("part")
 	switch part {
-	case "header", "action", "timeline", "side":
+	case "header", "action", "timeline", "steps", "side":
 	default:
 		http.Error(w, "unknown fragment", 404)
 		return

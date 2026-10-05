@@ -141,3 +141,65 @@ func TestRefineRejectsOutsideFiles(t *testing.T) {
 		t.Fatal("wrote outside the allowed files")
 	}
 }
+
+func TestPipelineStatsAndStatusTokens(t *testing.T) {
+	h := newHarness(t, map[string]string{"docs": reviewPipe})
+	run := func(args ...string) string {
+		t.Helper()
+		cmd := exec.Command(shipBin, append([]string{"--home", h.home}, args...)...)
+		cmd.Dir, cmd.Env = h.repo, append(os.Environ(), "SHIP_HOME="+h.home, "NO_COLOR=1")
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("ship %v: %v\n%s", args, err, out)
+		}
+		return string(out)
+	}
+	script := `write: [{outcome: done, summary: wrote, cost: 0.5, usage: {input: 1000, output: 2000, cache_write: 3000, cache_read: 40000}}]
+review:
+  - {outcome: changes, summary: again, usage: {input: 10, output: 20}}
+  - {outcome: pass, summary: ok, usage: {input: 10, output: 20}}
+`
+	id1 := h.startRun("docs", script)
+	h.waitFor(id1, func(s *store.RunSnapshot) bool { return s.Status == store.StatusDone })
+	id2 := h.startRun("docs", "write: [{outcome: done, summary: wrote, tokens: 4000}]\nreview: [{outcome: pass, summary: ok}]\n")
+	h.waitFor(id2, func(s *store.RunSnapshot) bool { return s.Status == store.StatusDone })
+
+	out := run("status", id1)
+	if !strings.Contains(out, "6k tok") {
+		t.Fatalf("status has no tokens column:\n%s", out)
+	}
+	var s store.RunSnapshot
+	if err := json.Unmarshal([]byte(run("status", id1, "--json")), &s); err != nil {
+		t.Fatal(err)
+	}
+	if u := s.Visits[0].Usage; u == nil || u.CacheRead != 40000 || u.Output != 2000 {
+		t.Fatalf("status --json usage %+v", u)
+	}
+
+	// The run page: tokens on each visit, and the per-step table.
+	var page []byte
+	if err := h.c.Do("GET", "/fragments/runs/"+id1+"/timeline", nil, &page); err != nil || !strings.Contains(string(page), "6k tok · in 1k / out 2k / cache 3k write, 40k read") {
+		t.Fatalf("timeline: %v\n%s", err, page)
+	}
+	if err := h.c.Do("GET", "/fragments/runs/"+id1+"/steps", nil, &page); err != nil || !strings.Contains(string(page), "worth splitting") || !strings.Contains(string(page), "80k") {
+		t.Fatalf("steps: %v\n%s", err, page)
+	}
+
+	var st pipelineStats
+	if err := json.Unmarshal([]byte(run("pipeline", "stats", "docs", "--json")), &st); err != nil {
+		t.Fatal(err)
+	}
+	if len(st.Runs) != 2 || len(st.Steps) != 2 {
+		t.Fatalf("stats %+v", st)
+	}
+	// The first run wrote twice (6000 tokens each), the second once (4000);
+	// review ran twice, then once.
+	w, r := st.Steps[0], st.Steps[1]
+	if w.Step != "write" || w.Tokens != 8000 || w.Usage.CacheRead != 40000 || w.CostUSD != 0.5 || r.Visits != 1.5 || r.Runs != 2 {
+		t.Fatalf("averages %+v %+v", w, r)
+	}
+	out = run("pipeline", "stats", "docs")
+	if !strings.Contains(out, "last 2 runs") || !strings.Contains(out, "CACHE READ") || !strings.Contains(out, "40k") || !strings.Contains(out, "1.5") {
+		t.Fatalf("stats:\n%s", out)
+	}
+}

@@ -190,7 +190,7 @@ type Parser struct {
 	lastText  string
 	// Tokens per API message so far (a message's usage repeats on each of
 	// its content lines).
-	msgTokens map[string]int64
+	msgTokens map[string]agent.Usage
 	onTokens  func(total int64)
 }
 
@@ -300,14 +300,15 @@ func (p *Parser) Line(line []byte) {
 		}
 		if u := l.Message.Usage; u != nil && l.Message.ID != "" {
 			if p.msgTokens == nil {
-				p.msgTokens = map[string]int64{}
+				p.msgTokens = map[string]agent.Usage{}
 			}
-			p.msgTokens[l.Message.ID] = u.Tokens()
-			var total int64
-			for _, n := range p.msgTokens {
-				total += n
+			p.msgTokens[l.Message.ID] = *u
+			var sum agent.Usage
+			for _, mu := range p.msgTokens {
+				sum.Add(mu)
 			}
-			p.resp.Tokens = total
+			total := sum.Tokens()
+			p.resp.Tokens, p.resp.TokenUsage = total, sum
 			if p.onTokens != nil {
 				p.onTokens(total)
 			}
@@ -357,7 +358,7 @@ func (p *Parser) Line(line []byte) {
 		p.resp.Usage = l.Usage
 		var u agent.Usage
 		if json.Unmarshal(l.Usage, &u) == nil && u.Tokens() > 0 {
-			p.resp.Tokens = u.Tokens()
+			p.resp.Tokens, p.resp.TokenUsage = u.Tokens(), u
 		}
 		if strings.Contains(l.Subtype, "budget") {
 			p.resp.OverBudget = "usd"

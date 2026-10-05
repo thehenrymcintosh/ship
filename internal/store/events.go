@@ -140,9 +140,41 @@ type VisitFinished struct {
 	Error             *StepError        `json:"error,omitempty"`
 	CostUSD           float64           `json:"cost_usd"`
 	Tokens            int64             `json:"tokens,omitempty"`
+	Usage             *TokenUsage       `json:"usage,omitempty"` // breakdown of an agent visit's tokens
 	DurationMS        int64             `json:"duration_ms"`
 	SessionID         string            `json:"session_id,omitempty"`
 	PermissionDenials int               `json:"permission_denials,omitempty"`
+}
+
+// TokenUsage breaks an agent visit's tokens down, summed over its tries.
+// Tokens (the total budgets count) is Input + CacheWrite + Output.
+type TokenUsage struct {
+	Input      int64 `json:"input,omitempty"`
+	Output     int64 `json:"output,omitempty"`
+	CacheWrite int64 `json:"cache_write,omitempty"`
+	CacheRead  int64 `json:"cache_read,omitempty"`
+}
+
+// Add adds o to u.
+func (u *TokenUsage) Add(o TokenUsage) {
+	u.Input += o.Input
+	u.Output += o.Output
+	u.CacheWrite += o.CacheWrite
+	u.CacheRead += o.CacheRead
+}
+
+// IsZero reports whether nothing was counted.
+func (u TokenUsage) IsZero() bool { return u == TokenUsage{} }
+
+// Total is the count budgets use: everything but cache reads.
+func (u TokenUsage) Total() int64 { return u.Input + u.CacheWrite + u.Output }
+
+// Ptr returns &u, or nil when u is zero (for omitempty fields).
+func (u TokenUsage) Ptr() *TokenUsage {
+	if u.IsZero() {
+		return nil
+	}
+	return &u
 }
 
 // BudgetRaised adds to a run's budget beyond its pipeline's limits.
