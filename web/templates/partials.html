@@ -72,11 +72,14 @@
     </form>
   {{else}}
     <header class="action-head"><span class="badge check-in">Check-in</span><h2>{{$a.Question}}</h2><span class="muted">{{ago $a.Since}}</span></header>
-    {{range .Panels}}<details class="panel" open><summary>{{.Title}}</summary><div class="md">{{.HTML}}</div></details>{{end}}
-    <form class="answer" hx-post="/api/runs/{{$s.ID}}/answer" hx-swap="none">
-      {{if ne $a.Input "none"}}<label class="note"><span>Note {{if eq $a.Input "required"}}<span class="muted">(required)</span>{{else}}<span class="muted">(optional; the next step receives it)</span>{{end}}</span>
-        <textarea name="note" rows="2" {{if eq $a.Input "required"}}required{{end}}></textarea></label>{{end}}
-      <div class="choices">{{range $i, $c := $a.Choices}}<button class="btn{{if eq $i 0}} primary{{end}}" name="choice" value="{{$c}}">{{$c}}</button>{{end}}</div>
+    {{$notes := ne $a.Input "none"}}{{$needs := false}}
+    {{range .Panels}}{{if .NeedsYou}}{{$needs = true}}{{end}}{{template "ask-panel" (dict "P" . "Notes" $notes "Run" $s.ID)}}{{end}}
+    <form class="answer ask-bar{{if .Panels}} sticky{{end}}" data-ask-form hx-post="/api/runs/{{$s.ID}}/answer" hx-swap="none">
+      {{if .Panels}}<p class="ask-bar-q"><span class="badge check-in">Check-in</span> {{$a.Question}}</p>{{end}}
+      {{if $notes}}<label class="note"><span>Your note {{if eq $a.Input "required"}}<span class="muted">(required)</span>{{else}}<span class="muted">(optional)</span>{{end}}</span>
+        <textarea name="note" rows="2" {{if eq $a.Input "required"}}required{{end}} placeholder="Anything the next steps should know: what to fix, what to leave, why"></textarea>
+        <span class="muted small note-hint">It becomes this check-in's handover: the next step gets it, and it stays in the run for every later step.{{if $needs}} Your calls on the findings above are added to it.{{end}}</span></label>{{end}}
+      <div class="choices">{{range $i, $c := .Choices}}<button class="btn choice{{if eq $i 0}} primary{{else if .Danger}} danger ghost{{end}}" name="choice" value="{{.Label}}"{{with .Target}} title="{{.}}"{{end}}><span>{{.Label}}</span>{{with .Target}}<span class="choice-to">{{.}}</span>{{end}}</button>{{end}}</div>
     </form>
   {{end}}
 </section>
@@ -107,6 +110,42 @@
   </div>
 </section>
 {{end}}
+{{end}}
+
+{{/* ask-panel: context shown with a check-in, with review findings as cards. Data: dict P (Panel), Notes (bool), Run */}}
+{{define "ask-panel"}}{{$p := .P}}{{$run := .Run}}{{$notes := .Notes}}
+<details class="panel" open><summary>{{$p.Title}}{{if $p.Findings}} <span class="muted small">· {{plural $p.Findings "finding"}}{{with $p.NeedsYou}} · <span class="needs-you-count">{{len .}} for you to decide</span>{{end}}</span>{{end}}</summary>
+  {{if $p.Parts}}
+  {{with $p.NeedsYou}}<p class="needs-you-line small">Your call: {{range $i, $id := .}}{{if $i}}, {{end}}<a href="#f-{{$run}}-{{$id}}">{{$id}}</a>{{end}}</p>{{end}}
+  {{range $p.Parts}}
+    {{with .Finding}}
+    <article class="finding lv-{{.Level}}{{if .NeedsYou}} needs-you{{end}}" id="f-{{$run}}-{{.ID}}">
+      <details open>
+        <summary class="finding-head">
+          <span class="finding-id">{{.ID}}</span>
+          <span class="sev sev-{{.Level}}">{{.Severity}}</span>
+          {{with .Action}}<span class="act">{{.}}</span>{{end}}
+          {{if .NeedsYou}}<span class="badge check-in">your call</span>{{end}}
+          <span class="finding-title">{{.Title}}</span>
+          {{with .Where}}<span class="finding-where">{{.}}</span>{{end}}
+        </summary>
+        {{with .Body}}<div class="md finding-body">{{.}}</div>{{end}}
+      </details>
+      {{if and .NeedsYou $notes}}
+      <div class="finding-note">
+        <label class="small" for="fn-{{$run}}-{{.ID}}">Your call on {{.ID}}</label>
+        <div class="quick">
+          <button type="button" class="btn small ghost" data-fill="Yes, do it.">Do it</button>
+          <button type="button" class="btn small ghost" data-fill="No, leave it as it is.">Leave it</button>
+        </div>
+        <textarea id="fn-{{$run}}-{{.ID}}" rows="2" data-finding-note="{{.ID}}" placeholder="e.g. yes, but only for matrix jobs"></textarea>
+      </div>
+      {{end}}
+    </article>
+    {{else}}<div class="md">{{.HTML}}</div>{{end}}
+  {{end}}
+  {{else}}<div class="md">{{$p.HTML}}</div>{{end}}
+</details>
 {{end}}
 
 {{/* usage-meter: the account's usage limits, compact, for the top bar. Data: UsageView */}}

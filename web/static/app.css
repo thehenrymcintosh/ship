@@ -347,3 +347,38 @@ form.inline { display: inline-flex; gap: 0.4rem; align-items: center; flex-wrap:
 .budget-form p { margin: 0 0 0.4rem; }
 .inline-field { display: inline-flex; align-items: center; gap: 0.3rem; }
 .inline-field input { width: 6rem; }
+
+/* Check-ins: findings and the answer bar */
+.ask-bar.sticky { position: sticky; bottom: 0; z-index: 5; background: var(--surface); border-top: 1px solid var(--border);
+  margin: 0.75rem -1.1rem -1rem; padding: 0.75rem 1.1rem 0.9rem; border-radius: 0 0 var(--radius) var(--radius);
+  box-shadow: 0 -6px 16px rgb(0 0 0 / 0.08); max-height: 60vh; overflow-y: auto; }
+.ask-bar-q { margin: 0; font-weight: 600; font-size: 0.92rem; }
+.note-hint { display: block; margin-top: 0.15rem; }
+.btn.choice { display: inline-flex; flex-direction: column; align-items: flex-start; line-height: 1.2; text-align: left; }
+.choice-to { font-size: 0.72rem; font-weight: 400; opacity: 0.8; }
+.needs-you-count { color: var(--st-asking); font-weight: 600; }
+.needs-you-line { margin: 0.5rem 0; }
+.finding { border: 1px solid var(--border); border-left: 4px solid var(--muted); border-radius: 8px; background: var(--surface);
+  margin: 0.55rem 0; padding: 0.5rem 0.7rem; min-width: 0; scroll-margin-top: 1rem; }
+.finding.lv-warn { border-left-color: var(--warn); }
+.finding.lv-danger { border-left-color: var(--danger); }
+.finding.needs-you { border-color: color-mix(in srgb, var(--st-asking) 55%, var(--border)); border-left-color: var(--st-asking);
+  background: color-mix(in srgb, var(--st-asking) 6%, var(--surface)); }
+.finding-head { cursor: pointer; display: flex; flex-wrap: wrap; gap: 0.35rem 0.5rem; align-items: baseline; list-style: none; }
+.finding-head::-webkit-details-marker { display: none; }
+.finding-id { font-family: var(--mono); font-weight: 700; font-size: 0.85rem; }
+.sev, .act { font-size: 0.72rem; font-weight: 600; padding: 0.02rem 0.4rem; border-radius: 5px; border: 1px solid var(--border); color: var(--muted); }
+.sev-warn { color: var(--warn); border-color: color-mix(in srgb, var(--warn) 40%, transparent); background: color-mix(in srgb, var(--warn) 10%, transparent); }
+.sev-danger { color: var(--danger); border-color: color-mix(in srgb, var(--danger) 40%, transparent); background: color-mix(in srgb, var(--danger) 10%, transparent); }
+.finding-title { flex: 1 1 100%; font-weight: 500; font-size: 0.92rem; }
+.finding-where { font-family: var(--mono); font-size: 0.75rem; color: var(--muted); overflow-wrap: anywhere; }
+.finding-body { font-size: 0.9rem; margin-top: 0.35rem; }
+.finding-body ul { margin: 0.25rem 0; padding-left: 1.2rem; }
+.finding-note { display: grid; gap: 0.35rem; margin-top: 0.5rem; padding-top: 0.5rem; border-top: 1px dashed color-mix(in srgb, var(--st-asking) 40%, var(--border)); }
+.finding-note label { font-weight: 600; color: var(--st-asking); }
+.finding-note .quick { display: flex; gap: 0.4rem; flex-wrap: wrap; }
+.finding-note textarea { width: 100%; }
+@media (max-width: 640px) {
+  .ask-bar.sticky { max-height: 50vh; }
+  .ask-bar-q .badge { display: none; }
+}

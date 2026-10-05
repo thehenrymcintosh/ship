@@ -94,7 +94,12 @@ served only on `127.0.0.1` and signs your browser in with a local token.
     output, or the agent's messages and tool calls), the exact input it got,
     the handover it wrote for the next step, and its raw result.
   - When the run needs you: the question, any context it chose to show, a
-    note box and one button per choice.
+    note box and one button per choice, each saying where it leads. The
+    question and buttons stay in view while you read a long handover.
+    Review findings written as `R1 [warning, auto-fix] file:line: …` show as
+    cards coloured by severity, and the ones the reviewer left to you
+    (`ask-user`) are highlighted, each with its own box for your call; those
+    are added to your note.
   - What the run has cost so far, in dollars and tokens, against its budget
     if it has one. When it stops at its budget, you can raise it and retry
     in place.

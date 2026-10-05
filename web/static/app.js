@@ -41,6 +41,11 @@
   document.addEventListener("htmx:afterRequest", function (e) {
     var form = e.detail.elt.closest && e.detail.elt.closest("form.var-form");
     if (form && e.detail.successful) toast("Variable set", true);
+    var ask = e.detail.elt.closest && e.detail.elt.closest("[data-ask-form]");
+    if (ask && e.detail.successful) {
+      ask.reset();
+      (ask.closest(".action") || document).querySelectorAll("[data-finding-note]").forEach(function (t) { t.value = ""; });
+    }
     if (e.detail.elt.hasAttribute && e.detail.elt.hasAttribute("data-prune") && e.detail.successful) {
       try {
         var res = JSON.parse(e.detail.xhr.responseText), n = (res.pruned || []).length, kept = (res.skipped || []).length;
@@ -56,6 +61,55 @@
     while (n >= 1024 && i < units.length - 1) { n /= 1024; i++; }
     return (i ? n.toFixed(1) : n) + " " + units[i];
   }
+
+  // ---- check-ins -------------------------------------------------------------
+  // Calls on individual findings are added to the note, one line each.
+  document.addEventListener("htmx:configRequest", function (e) {
+    var form = e.detail.elt.closest && e.detail.elt.closest("[data-ask-form]");
+    if (!form) return;
+    var card = form.closest(".action") || document;
+    var lines = [];
+    card.querySelectorAll("[data-finding-note]").forEach(function (t) {
+      var v = t.value.trim();
+      if (v) lines.push(t.dataset.findingNote + ": " + v);
+    });
+    if (!lines.length) return;
+    var note = (e.detail.parameters.note || "").trim();
+    e.detail.parameters.note = (note ? note + "\n\n" : "") + lines.join("\n");
+  });
+  // Refreshes of the action card mustn't lose what you've typed or folded.
+  var actionState = null;
+  document.addEventListener("htmx:beforeSwap", function (e) {
+    if (e.detail.target.id !== "run-action") return;
+    actionState = { vals: {}, closed: {} };
+    e.detail.target.querySelectorAll("textarea, input:not([type=hidden])").forEach(function (el) {
+      var k = el.id || el.name;
+      if (k && el.value) actionState.vals[k] = el.value;
+    });
+    e.detail.target.querySelectorAll(".finding[id] > details:not([open])").forEach(function (d) {
+      actionState.closed[d.parentNode.id] = true;
+    });
+  });
+  document.addEventListener("htmx:afterSwap", function (e) {
+    if (e.detail.target.id !== "run-action" || !actionState) return;
+    var st = actionState;
+    actionState = null;
+    e.detail.target.querySelectorAll("textarea, input:not([type=hidden])").forEach(function (el) {
+      var k = el.id || el.name;
+      if (k && st.vals[k] && !el.value) el.value = st.vals[k];
+    });
+    Object.keys(st.closed).forEach(function (id) {
+      var d = document.getElementById(id);
+      if (d && d.firstElementChild) d.firstElementChild.open = false;
+    });
+  });
+  document.addEventListener("click", function (e) {
+    var b = e.target.closest("[data-fill]");
+    if (!b) return;
+    var t = b.closest(".finding-note").querySelector("textarea");
+    t.value = b.dataset.fill;
+    t.focus();
+  });
 
   // ---- copy ----------------------------------------------------------------
   document.addEventListener("click", function (e) {

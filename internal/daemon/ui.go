@@ -328,6 +328,36 @@ func (d *Daemon) runGroups(filter string) ([]RepoGroup, error) {
 type Panel struct {
 	Title string
 	HTML  template.HTML
+	// A handover with review findings comes as parts instead.
+	Parts    []HandoverPart
+	Findings int
+	NeedsYou []string // ids of the findings left to the person
+}
+
+// ChoiceView is an ask button and where it leads.
+type ChoiceView struct {
+	Label  string
+	Target string // step name, or a description for done/stop
+	Danger bool
+}
+
+// handoverPanel renders a handover, picking out review findings.
+func handoverPanel(title, src string) Panel {
+	p := Panel{Title: title}
+	p.Parts = splitFindings(src)
+	if p.Parts == nil {
+		p.HTML = Markdown(src)
+		return p
+	}
+	for _, part := range p.Parts {
+		if f := part.Finding; f != nil {
+			p.Findings++
+			if f.NeedsYou {
+				p.NeedsYou = append(p.NeedsYou, f.ID)
+			}
+		}
+	}
+	return p
 }
 
 // SliceView is a slice card in the split review.
@@ -364,6 +394,7 @@ type RunView struct {
 	Feedback   []history.Item
 	WatchingPR bool // a pr step is polling right now
 	Upgrade    *UpgradeView
+	Choices    []ChoiceView // of a pending ask
 	Budget     BudgetView
 	Window     *RunWindow
 }
@@ -497,7 +528,7 @@ func (d *Daemon) runView(id string) (*RunView, error) {
 			case "prev.handover":
 				if pv := prevOf(s, a.Seq); pv != nil {
 					if b, err := os.ReadFile(filepath.Join(dir, store.VisitsDir, pv.Dir, "handover.md")); err == nil {
-						v.Panels = append(v.Panels, Panel{Title: "Handover from " + pv.Step, HTML: Markdown(string(b))})
+						v.Panels = append(v.Panels, handoverPanel("Handover from "+pv.Step, string(b)))
 					}
 				}
 			case "brief":
@@ -509,6 +540,28 @@ func (d *Daemon) runView(id string) (*RunView, error) {
 				}
 				v.Panels = append(v.Panels, Panel{Title: "Variables", HTML: Markdown(sb.String())})
 			}
+		}
+		var choices pipeline.OrderedMap
+		for _, vs := range s.Visits {
+			if vs.Seq == a.Seq && v.P != nil && v.P.Steps[vs.Step] != nil {
+				choices = v.P.Steps[vs.Step].Choices
+			}
+		}
+		for _, c := range a.Choices {
+			cv := ChoiceView{Label: c}
+			if t, ok := choices.Get(c); ok {
+				switch t {
+				case pipeline.TargetStop:
+					cv.Target, cv.Danger = "stops the run", true
+				case pipeline.TargetDone:
+					cv.Target = "finishes the run"
+				case pipeline.TargetCameFrom:
+					cv.Target = "back to " + s.CameFrom
+				default:
+					cv.Target = "→ " + t
+				}
+			}
+			v.Choices = append(v.Choices, cv)
 		}
 		if a.Kind == store.AskKindSplitReview {
 			for _, sl := range s.ProposedSlices {

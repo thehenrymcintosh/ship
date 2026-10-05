@@ -300,3 +300,52 @@ steps:
 		t.Fatalf("header after raising: %v\n%s", err, page)
 	}
 }
+
+func TestReviewDecisionCard(t *testing.T) {
+	h := newHarness(t, map[string]string{"p": `version: 1
+start: review
+steps:
+  review: {agent: /review, next: {ask: decision, pass: done}}
+  fix: {run: "true", next: done}
+  decision:
+    ask: Findings need your call.
+    show: [prev.handover]
+    input: optional
+    choices: {fix them: fix, accept: done, abandon: stop}
+`})
+	id := h.startRun("p", `review:
+  - outcome: ask
+    summary: |
+      Two findings.
+
+      R1 [warning, auto-fix] a.go:3: off by one.
+      - Remedy: use <=.
+
+      R2 [critical, ask-user] b.go:9: drops errors.
+      - Your call.
+`)
+	h.waitFor(id, func(s *store.RunSnapshot) bool { return s.Status == store.StatusAsking })
+	var page []byte
+	if err := h.c.Do("GET", "/fragments/runs/"+id+"/action", nil, &page); err != nil {
+		t.Fatal(err)
+	}
+	p := string(page)
+	for _, want := range []string{
+		`class="finding lv-warn"`, `class="finding lv-danger needs-you"`, `data-finding-note="R2"`,
+		"1 for you to decide", `href="#f-` + id + `-R2"`, "→ fix", "finishes the run", "stops the run",
+		`class="answer ask-bar sticky"`, "every later step",
+	} {
+		if !strings.Contains(p, want) {
+			t.Fatalf("missing %q in\n%s", want, p)
+		}
+	}
+	if strings.Contains(p, `data-finding-note="R1"`) {
+		t.Fatal("an auto-fix finding shouldn't ask for a call")
+	}
+	if err := h.c.Do("POST", "/api/runs/"+id+"/answer", daemon.CommandBody{Choice: "fix them", Note: "R2: log them"}, nil); err != nil {
+		t.Fatal(err)
+	}
+	if s := h.waitFor(id, func(s *store.RunSnapshot) bool { return s.Status.Terminal() }); s.Status != store.StatusDone {
+		t.Fatalf("%s", s.Status)
+	}
+}
