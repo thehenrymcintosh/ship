@@ -96,7 +96,7 @@ steps:
     pr: ""
     every: 2m
     settle: 15m
-    trigger: manual        # press Address on the run's page; auto sends after `settle` of quiet
+    trigger: manual        # press Address N now on the run's page; auto sends after `settle` of quiet
     max_visits: 0
     next: { feedback: address-review, ci_failed: fix-ci, merged: done, closed: stop }
 
@@ -112,7 +112,16 @@ steps:
     agent: /ship-fix
     prompt: The finding to address is the CI failure in your handover. If it isn't caused by this change, say so and choose stuck rather than changing code.
     session: fixer
-    next: { done: push, stuck: check-in }
+    next: { done: push, stuck: ci-decision }
+
+  ci-decision:
+    ask: "CI failed on the PR for \"{{brief.title}}\" and the fixer didn't change code. What next?"
+    show: [prev.handover]
+    input: optional
+    choices:
+      keep watching: in-review
+      fix it: fix-ci
+      abandon: stop
 
   push:
     run: git push origin {{run.branch}}

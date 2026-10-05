@@ -26,8 +26,9 @@ const PRTrigger = "pr_trigger"
 
 // rerun is a re-run ship requested for a cancelled check.
 type rerun struct {
-	URL string    `json:"url"` // the cancelled run's link
-	At  time.Time `json:"at"`
+	URL    string    `json:"url"` // the cancelled run's link
+	At     time.Time `json:"at"`
+	Failed bool      `json:"failed,omitempty"` // gh couldn't re-run it, so there's no grace
 }
 
 // rerunGrace is how long a re-run cancelled check may keep showing its old
@@ -84,8 +85,13 @@ func (p PR) now() time.Time {
 }
 
 // isFeedback reports whether a comment is review feedback for the agents:
-// not empty, not a "ship:" note about the pipeline, not an agent's own reply.
+// not empty, not a "ship:" note about the pipeline, not an agent's own reply,
+// and not a bot's conversation comment (coverage and preview reports). Bot
+// reviews and inline comments count: AI code reviewers leave real feedback.
 func isFeedback(c ghpr.Comment) bool {
+	if c.Bot && c.Kind == "comment" {
+		return false
+	}
 	body := strings.TrimSpace(c.Body)
 	if strings.Contains(body, AgentReplyMarker) {
 		return false
@@ -166,6 +172,12 @@ func (p PR) Execute(ctx context.Context, v *Visit) (Result, error) {
 		default:
 			failures = 0
 			res, done := p.decide(ctx, v, pr, st, &status, mapped, settle, trigger, logf)
+			if ctx.Err() != nil {
+				// A gh call was cut short and the result will be dropped:
+				// don't save what it decided, so it's decided again after a
+				// restart.
+				return Result{Outcome: OutcomeCancelled, Summary: "cancelled"}, nil
+			}
 			p.publish(v, &last, status)
 			st.save(v)
 			if done {
@@ -192,7 +204,7 @@ func (p PR) Execute(ctx context.Context, v *Visit) (Result, error) {
 				logf("feedback triggered by hand")
 				cmd.Respond(nil)
 			} else {
-				cmd.Respond(&InvalidError{"the run is watching its PR; to send review comments now, use Address feedback"})
+				cmd.Respond(&InvalidError{"the run is watching its PR; to send review comments now, use Address N now or ship pr --address"})
 			}
 		}
 	}
@@ -227,6 +239,7 @@ func (p PR) decide(ctx context.Context, v *Visit, pr *ghpr.PR, st *prState, stat
 
 	// CI on the PR's current head.
 	var failing []ghpr.Check
+	rerunOK := map[string]bool{} // Actions run → whether this poll's re-run of it worked
 	for _, c := range pr.Checks {
 		switch c.Bucket() {
 		case ghpr.Pass, ghpr.Skipped:
@@ -238,13 +251,23 @@ func (p PR) decide(ctx context.Context, v *Visit, pr *ghpr.PR, st *prState, stat
 			// as a failure, and give the re-run time to show up.
 			key := pr.HeadSHA + "\x00" + c.Label()
 			prev, requested := st.Reruns[key]
-			if requested && prev.URL == c.URL() && p.now().Sub(prev.At) < rerunGrace {
+			if requested && !prev.Failed && prev.URL == c.URL() && p.now().Sub(prev.At) < rerunGrace {
 				status.ChecksPending++
 				continue
 			}
 			if id := c.RunID(); id != "" && !requested {
-				st.Reruns[key] = rerun{URL: c.URL(), At: p.now()}
-				if err := ghpr.Rerun(ctx, v.Worktree, v.Env, id); err == nil {
+				// Several jobs of one Actions run re-run together.
+				ok, tried := rerunOK[id]
+				if !tried {
+					err := ghpr.Rerun(ctx, v.Worktree, v.Env, id)
+					if err != nil {
+						logf("check %q was cancelled and couldn't be re-run: %v", c.Label(), err)
+					}
+					ok = err == nil
+					rerunOK[id] = ok
+				}
+				st.Reruns[key] = rerun{URL: c.URL(), At: p.now(), Failed: !ok}
+				if ok {
 					logf("check %q was cancelled; re-running it once", c.Label())
 					status.ChecksPending++
 					continue
@@ -291,7 +314,7 @@ func (p PR) decide(ctx context.Context, v *Visit, pr *ghpr.PR, st *prState, stat
 	}
 
 	// Approved and green.
-	if settled && len(failing) == 0 && pr.ReviewDecision == "APPROVED" && pr.State == "OPEN" && !st.Ready[pr.HeadSHA] && mapped("ready") {
+	if settled && len(failing) == 0 && pr.Approved() && pr.State == "OPEN" && !st.Ready[pr.HeadSHA] && mapped("ready") {
 		st.Ready[pr.HeadSHA] = true
 		return Result{Outcome: "ready", Summary: fmt.Sprintf("PR #%d is approved and every check passed: %s", pr.Number, pr.URL)}, true
 	}

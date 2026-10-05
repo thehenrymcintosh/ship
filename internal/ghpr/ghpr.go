@@ -3,10 +3,12 @@
 package ghpr
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"regexp"
@@ -143,6 +145,7 @@ type Comment struct {
 	ID        string // "ic:…", "rv:…", "rc:…"
 	Kind      string // comment | review | inline
 	Author    string
+	Bot       bool // the author is an app or integration
 	Body      string
 	URL       string
 	Path      string
@@ -161,6 +164,41 @@ type PR struct {
 	IsDraft        bool
 	Checks         []Check
 	Comments       []Comment
+	Reviews        []Review // every review, oldest first
+}
+
+// Review is one submitted review's verdict.
+type Review struct {
+	Author      string
+	State       string // APPROVED, CHANGES_REQUESTED, COMMENTED, DISMISSED
+	SubmittedAt time.Time
+}
+
+// Approved reports whether the PR is approved. GitHub only sets a review
+// decision when branch protection requires reviews; without one, it's
+// approved when someone's latest verdict approves it and nobody's latest
+// verdict requests changes.
+func (pr *PR) Approved() bool {
+	if pr.ReviewDecision != "" {
+		return pr.ReviewDecision == "APPROVED"
+	}
+	verdict := map[string]string{}
+	for _, r := range pr.Reviews {
+		switch r.State {
+		case "APPROVED", "CHANGES_REQUESTED", "DISMISSED":
+			verdict[r.Author] = r.State
+		}
+	}
+	approved := false
+	for _, s := range verdict {
+		switch s {
+		case "CHANGES_REQUESTED":
+			return false
+		case "APPROVED":
+			approved = true
+		}
+	}
+	return approved
 }
 
 type viewJSON struct {
@@ -171,14 +209,7 @@ type viewJSON struct {
 	ReviewDecision    string  `json:"reviewDecision"`
 	IsDraft           bool    `json:"isDraft"`
 	StatusCheckRollup []Check `json:"statusCheckRollup"`
-	Comments          []struct {
-		ID        string    `json:"id"`
-		Author    Author    `json:"author"`
-		Body      string    `json:"body"`
-		URL       string    `json:"url"`
-		CreatedAt time.Time `json:"createdAt"`
-	} `json:"comments"`
-	Reviews []struct {
+	Reviews           []struct {
 		ID          string    `json:"id"`
 		Author      Author    `json:"author"`
 		Body        string    `json:"body"`
@@ -187,20 +218,51 @@ type viewJSON struct {
 	} `json:"reviews"`
 }
 
-type inlineJSON struct {
+// commentJSON is a conversation or inline comment from the REST API, which
+// (unlike gh pr view) says whether the author is a bot.
+type commentJSON struct {
 	ID        int64     `json:"id"`
 	Body      string    `json:"body"`
 	HTMLURL   string    `json:"html_url"`
 	Path      string    `json:"path"`
 	Line      int       `json:"line"`
 	OrigLine  int       `json:"original_line"`
-	User      Author    `json:"user"`
+	User      restUser  `json:"user"`
 	CreatedAt time.Time `json:"created_at"`
+}
+
+type restUser struct {
+	Login string `json:"login"`
+	Type  string `json:"type"` // User, Bot…
+}
+
+func (u restUser) bot() bool {
+	return u.Type == "Bot" || strings.HasSuffix(u.Login, "[bot]")
+}
+
+// apiList reads every page of a REST list endpoint; gh prints one JSON array
+// per page.
+func apiList[T any](ctx context.Context, dir string, env []string, path string) ([]T, error) {
+	out, err := run(ctx, dir, env, "api", "--paginate", path)
+	if err != nil {
+		return nil, err
+	}
+	var all []T
+	dec := json.NewDecoder(bytes.NewReader(out))
+	for {
+		var page []T
+		if err := dec.Decode(&page); err == io.EOF {
+			return all, nil
+		} else if err != nil {
+			return nil, fmt.Errorf("gh api %s: unexpected output: %v", path, err)
+		}
+		all = append(all, page...)
+	}
 }
 
 // View reads a PR (by number, URL or branch) with its checks and comments.
 func View(ctx context.Context, dir string, env []string, ref string) (*PR, error) {
-	out, err := run(ctx, dir, env, "pr", "view", ref, "--json", "number,url,state,headRefOid,reviewDecision,isDraft,statusCheckRollup,comments,reviews")
+	out, err := run(ctx, dir, env, "pr", "view", ref, "--json", "number,url,state,headRefOid,reviewDecision,isDraft,statusCheckRollup,reviews")
 	if err != nil {
 		return nil, err
 	}
@@ -209,28 +271,31 @@ func View(ctx context.Context, dir string, env []string, ref string) (*PR, error
 		return nil, fmt.Errorf("gh pr view: unexpected output: %v", err)
 	}
 	pr := &PR{Number: v.Number, URL: v.URL, State: v.State, HeadSHA: v.HeadRefOid, ReviewDecision: v.ReviewDecision, IsDraft: v.IsDraft, Checks: Latest(v.StatusCheckRollup)}
-	for _, c := range v.Comments {
-		pr.Comments = append(pr.Comments, Comment{ID: "ic:" + c.ID, Kind: "comment", Author: c.Author.Login, Body: c.Body, URL: c.URL, CreatedAt: c.CreatedAt})
-	}
 	for _, r := range v.Reviews {
+		pr.Reviews = append(pr.Reviews, Review{Author: r.Author.Login, State: r.State, SubmittedAt: r.SubmittedAt})
 		if strings.TrimSpace(r.Body) == "" && r.State != "CHANGES_REQUESTED" {
 			continue
 		}
 		pr.Comments = append(pr.Comments, Comment{ID: "rv:" + r.ID, Kind: "review", Author: r.Author.Login, Body: r.Body, URL: v.URL, State: r.State, CreatedAt: r.SubmittedAt})
 	}
-	var inline []inlineJSON
-	if out, err := run(ctx, dir, env, "api", "--paginate", fmt.Sprintf("repos/{owner}/{repo}/pulls/%d/comments", v.Number)); err == nil {
-		if json.Unmarshal(out, &inline) == nil {
-			for _, c := range inline {
-				line := c.Line
-				if line == 0 {
-					line = c.OrigLine
-				}
-				pr.Comments = append(pr.Comments, Comment{ID: fmt.Sprintf("rc:%d", c.ID), Kind: "inline", Author: c.User.Login, Body: c.Body, URL: c.HTMLURL, Path: c.Path, Line: line, CreatedAt: c.CreatedAt})
+	// Comments come from the REST API, which flags bot authors. A failure
+	// here only means they're picked up on a later poll.
+	if conv, err := apiList[commentJSON](ctx, dir, env, fmt.Sprintf("repos/{owner}/{repo}/issues/%d/comments?per_page=100", v.Number)); err == nil {
+		for _, c := range conv {
+			pr.Comments = append(pr.Comments, Comment{ID: fmt.Sprintf("ic:%d", c.ID), Kind: "comment", Author: c.User.Login, Bot: c.User.bot(), Body: c.Body, URL: c.HTMLURL, CreatedAt: c.CreatedAt})
+		}
+	}
+	if inline, err := apiList[commentJSON](ctx, dir, env, fmt.Sprintf("repos/{owner}/{repo}/pulls/%d/comments?per_page=100", v.Number)); err == nil {
+		for _, c := range inline {
+			line := c.Line
+			if line == 0 {
+				line = c.OrigLine
 			}
+			pr.Comments = append(pr.Comments, Comment{ID: fmt.Sprintf("rc:%d", c.ID), Kind: "inline", Author: c.User.Login, Bot: c.User.bot(), Body: c.Body, URL: c.HTMLURL, Path: c.Path, Line: line, CreatedAt: c.CreatedAt})
 		}
 	}
 	sort.SliceStable(pr.Comments, func(i, j int) bool { return pr.Comments[i].CreatedAt.Before(pr.Comments[j].CreatedAt) })
+	sort.SliceStable(pr.Reviews, func(i, j int) bool { return pr.Reviews[i].SubmittedAt.Before(pr.Reviews[j].SubmittedAt) })
 	return pr, nil
 }
 

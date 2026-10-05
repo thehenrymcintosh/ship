@@ -24,8 +24,10 @@ implement → review ⇄ fix → verify ⇄ fix → checks ⇄ fix → write PR 
 - **The PR is written for a reviewer who wasn't there**: what changed, how it
   was verified, the risks, and what the pipeline had to fix.
 - **The PR is watched natively.** Review comments are sent to a fixer in a
-  batch when you press **Address** on the run's page (`trigger: manual`;
-  switch to `auto` to send them after a quiet period); CI failures go to a
-  fixer straight away.
+  batch when you press **Address N now** on the run's page (`trigger:
+  manual`; switch to `auto` to send them after a quiet period); CI failures
+  go to a fixer straight away. If the fixer finds the failure isn't caused by
+  the change (a flaky test, infrastructure), you choose: keep watching the
+  PR, have it fixed anyway, or abandon.
 
 Set `test` to your test command after adding it.

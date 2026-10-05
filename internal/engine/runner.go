@@ -579,6 +579,7 @@ func (r *runner) visit(name string, st *pipeline.Step, resume *store.VisitSummar
 	for {
 		select {
 		case vr := <-resCh:
+			r.dropVisitCmds()
 			return r.finishVisit(v, typ, vr, abort, started)
 		case c := <-r.cmds:
 			if a := r.duringVisit(c, v); a != nil && abort == nil {
@@ -588,8 +589,22 @@ func (r *runner) visit(name string, st *pipeline.Step, resume *store.VisitSummar
 		case <-r.ctx.Done():
 			vcancel()
 			<-resCh
+			r.dropVisitCmds()
 			r.interrupted(v, typ)
 			return false
+		}
+	}
+}
+
+// dropVisitCmds rejects commands queued for a visit that has ended, so they
+// can't reach the next visit.
+func (r *runner) dropVisitCmds() {
+	for {
+		select {
+		case c := <-r.visitCmds:
+			c.Respond(conflict("the step ended before the command was taken"))
+		default:
+			return
 		}
 	}
 }
@@ -631,7 +646,9 @@ func (r *runner) scope(s *store.RunSnapshot, prev *store.VisitSummary, cameFrom 
 func (r *runner) duringVisit(c Command, v *steps.Visit) *abortReq {
 	switch c.Name {
 	case CmdPRTrigger:
-		if v.Step.Type() != pipeline.TypePR || !r.awaiting.Load() {
+		// A pr step always returns to awaiting between polls, so a trigger
+		// that arrives mid-poll is queued for it.
+		if v.Step.Type() != pipeline.TypePR {
 			reply(c, conflict("the run isn't watching a PR right now"))
 			return nil
 		}

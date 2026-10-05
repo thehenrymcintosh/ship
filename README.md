@@ -495,11 +495,13 @@ step does that without an agent, using the `gh` CLI:
   the step collects new conversation comments, reviews and inline comments,
   and sends them as one batch once nobody has commented for `settle`. With
   `trigger: manual` it waits for you instead: the run's page shows
-  **Address N comments now**, and `ship pr <run> --address` does the same
+  **Address N now**, and `ship pr <run> --address` does the same
   from the terminal (both also work in auto mode, to skip the wait).
   Comments starting with `ship:` are feedback on the pipeline, not
   instructions, so they're left out; so are replies the agents post (which
-  include `<!-- ship-agent -->`).
+  include `<!-- ship-agent -->`) and bots' conversation comments (coverage
+  reports, preview links). Bots' reviews and inline comments, such as an AI
+  reviewer's, still count.
 - **CI is judged when it's finished.** `ci_failed` fires once every check on
   the PR's latest commit has finished and one failed, once per commit. A check
   that was cancelled is re-run once first. No checks reported yet doesn't
@@ -507,7 +509,9 @@ step does that without an agent, using the `gh` CLI:
 - **The details go in the handover.** The fixing step receives each new
   comment (author, file and line, link) or each failing check with the end of
   its failed log.
-- `ready` fires when the PR is approved and every check passed; outcomes you
+- `ready` fires when the PR is approved (on repos that don't require
+  reviews: someone approved and nobody's latest review requests changes)
+  and every check passed; outcomes you
   don't map just keep it watching. `ship pr <run>` shows what it sees.
 
 ### Variables
