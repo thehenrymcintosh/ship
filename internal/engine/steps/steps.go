@@ -44,6 +44,9 @@ type Visit struct {
 	Snapshot     *store.RunSnapshot
 	BriefPath    string
 	Acceptance   string
+	// RunNotes are check-in notes for the rest of the run (and its
+	// parent's, for a slice), oldest first.
+	RunNotes []agent.RunNote
 
 	// Agent sessions.
 	SessionID  string // fresh session to assign
@@ -107,6 +110,7 @@ type Command struct {
 	Name   string // "answer" or "split_review"
 	Choice string
 	Note   string
+	For    string // who the note is for: store.NoteForRun, or "" for the next step
 	Action string // split review: approve | resplit | reload | stop
 	Reply  chan error
 }

@@ -518,6 +518,7 @@ func (d *Daemon) runGraph(w http.ResponseWriter, r *http.Request) {
 type CommandBody struct {
 	Choice string `json:"choice"`
 	Note   string `json:"note"`
+	For    string `json:"for"` // answer: who the note is for, "step" (default) or "run"
 	Action string `json:"action"`
 	Step   string `json:"step"`
 	Name   string `json:"name"`
@@ -547,7 +548,7 @@ func (d *Daemon) command(name string) http.HandlerFunc {
 				src = "cli"
 			}
 		}
-		c := engine.Command{Name: name, Choice: b.Choice, Note: b.Note, Action: b.Action, Step: b.Step, Var: b.Name, Value: b.Value, All: b.All, Source: src}
+		c := engine.Command{Name: name, Choice: b.Choice, Note: b.Note, For: b.For, Action: b.Action, Step: b.Step, Var: b.Name, Value: b.Value, All: b.All, Source: src}
 		if usd := strings.TrimPrefix(strings.TrimSpace(b.USD), "$"); usd != "" {
 			v, err := strconv.ParseFloat(usd, 64)
 			if err != nil || v <= 0 {

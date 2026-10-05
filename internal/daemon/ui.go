@@ -392,14 +392,17 @@ type RunView struct {
 	Executing  bool
 	Progress   string
 	ParentT    string
-	Bypass     bool
-	Version    string
-	Feedback   []history.Item
-	WatchingPR bool // a pr step is polling right now
-	Upgrade    *UpgradeView
-	Choices    []ChoiceView // of a pending ask
-	Budget     BudgetView
-	Window     *RunWindow
+	// ParentNotes are the parent run's notes for the rest of the run,
+	// which this slice's agents get too.
+	ParentNotes []store.RunNote
+	Bypass      bool
+	Version     string
+	Feedback    []history.Item
+	WatchingPR  bool // a pr step is polling right now
+	Upgrade     *UpgradeView
+	Choices     []ChoiceView // of a pending ask
+	Budget      BudgetView
+	Window      *RunWindow
 }
 
 // BudgetView is the run's budget, raised amounts included (0 = no limit).
@@ -494,6 +497,7 @@ func (d *Daemon) runView(id string) (*RunView, error) {
 	if s.Parent != nil {
 		if ps, err := d.eng.Snapshot(s.Parent.ID); err == nil {
 			v.ParentT = ps.Title
+			v.ParentNotes = ps.RunNotes
 		}
 	}
 	if !s.Status.Terminal() {

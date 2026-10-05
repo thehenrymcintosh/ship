@@ -146,7 +146,7 @@ func buildCall(v *Visit, outcomes []string, extra string) (*agentCall, *Result) 
 	c.preamble = agent.Preamble{
 		Pipeline: v.PipelineName, RunID: v.RunID, Step: v.StepName, VisitNumber: v.Number,
 		Worktree: v.Worktree, Branch: v.Snapshot.Branch, BriefPath: v.BriefPath, Acceptance: v.Acceptance,
-		Prev: v.Prev, Context: v.Step.Context, Rules: rules, Extra: extra,
+		Prev: v.Prev, RunNotes: v.RunNotes, Context: v.Step.Context, Rules: rules, Extra: extra,
 		Outcomes: infos, HumanOutcome: human,
 	}
 	return c, nil

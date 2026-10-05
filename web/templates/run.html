@@ -172,6 +172,16 @@
   {{if .Acceptance}}<h3 class="sub">Acceptance criteria</h3><ul class="accept">{{range .Acceptance}}<li>{{.}}</li>{{end}}</ul>{{end}}
   <details class="brief-body"><summary>Context and plan</summary><div class="md">{{.BriefHTML}}</div></details>
 </section>
+{{if or $s.RunNotes .ParentNotes}}
+<section class="card run-notes-card">
+  <header class="card-head"><h2>Notes for this run</h2></header>
+  <p class="muted small">Every later agent step gets these{{if $s.Parent}}, including the ones from the parent run{{end}}.</p>
+  <ol class="run-notes">
+    {{range .ParentNotes}}<li><span class="muted small">parent run · {{.Step}} · {{ago .At}}</span><div class="md">{{md .Note}}</div></li>{{end}}
+    {{range $s.RunNotes}}<li><span class="muted small">{{.Step}} · {{ago .At}}</span><div class="md">{{md .Note}}</div></li>{{end}}
+  </ol>
+</section>
+{{end}}
 {{if .VarNames}}
 <section class="card">
   <header class="card-head"><h2>Variables</h2></header>

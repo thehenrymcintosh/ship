@@ -83,6 +83,10 @@
     if (e.detail.target.id !== "run-action") return;
     actionState = { vals: {}, closed: {} };
     e.detail.target.querySelectorAll("textarea, input:not([type=hidden])").forEach(function (el) {
+      if (el.type === "radio") {
+        if (el.checked) actionState.vals["radio:" + el.name] = el.value;
+        return;
+      }
       var k = el.id || el.name;
       if (k && el.value) actionState.vals[k] = el.value;
     });
@@ -95,6 +99,11 @@
     var st = actionState;
     actionState = null;
     e.detail.target.querySelectorAll("textarea, input:not([type=hidden])").forEach(function (el) {
+      if (el.type === "radio") {
+        var picked = st.vals["radio:" + el.name];
+        if (picked) el.checked = el.value === picked;
+        return;
+      }
       var k = el.id || el.name;
       if (k && st.vals[k] && !el.value) el.value = st.vals[k];
     });

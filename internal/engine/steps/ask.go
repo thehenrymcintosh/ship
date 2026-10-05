@@ -48,7 +48,11 @@ func (Ask) Execute(ctx context.Context, v *Visit) (Result, error) {
 			cmd.Respond(err)
 			continue
 		}
-		if err := v.RT.Emit(store.EvAskAnswered, store.AskAnswered{Seq: v.Seq, Choice: cmd.Choice, Note: cmd.Note}); err != nil {
+		ans := store.AskAnswered{Seq: v.Seq, Choice: cmd.Choice, Note: cmd.Note}
+		if cmd.For == store.NoteForRun && strings.TrimSpace(cmd.Note) != "" {
+			ans.For = store.NoteForRun
+		}
+		if err := v.RT.Emit(store.EvAskAnswered, ans); err != nil {
 			cmd.Respond(err)
 			return Result{}, err
 		}

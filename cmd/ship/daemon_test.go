@@ -333,7 +333,7 @@ steps:
 	for _, want := range []string{
 		`class="finding lv-warn"`, `class="finding lv-danger needs-you"`, `data-finding-note="R2"`,
 		"1 for you to decide", `href="#f-` + id + `-R2"`, "→ fix", "finishes the run", "stops the run",
-		`class="answer ask-bar sticky"`, "every later step",
+		`class="answer ask-bar sticky"`, `name="for" value="run"`, "every later agent step",
 	} {
 		if !strings.Contains(p, want) {
 			t.Fatalf("missing %q in\n%s", want, p)
@@ -342,10 +342,13 @@ steps:
 	if strings.Contains(p, `data-finding-note="R1"`) {
 		t.Fatal("an auto-fix finding shouldn't ask for a call")
 	}
-	if err := h.c.Do("POST", "/api/runs/"+id+"/answer", daemon.CommandBody{Choice: "fix them", Note: "R2: log them"}, nil); err != nil {
+	if err := h.c.Do("POST", "/api/runs/"+id+"/answer", daemon.CommandBody{Choice: "fix them", Note: "R2: log them", For: "run"}, nil); err != nil {
 		t.Fatal(err)
 	}
-	if s := h.waitFor(id, func(s *store.RunSnapshot) bool { return s.Status.Terminal() }); s.Status != store.StatusDone {
-		t.Fatalf("%s", s.Status)
+	if s := h.waitFor(id, func(s *store.RunSnapshot) bool { return s.Status.Terminal() }); s.Status != store.StatusDone || len(s.RunNotes) != 1 {
+		t.Fatalf("%s %+v", s.Status, s.RunNotes)
+	}
+	if err := h.c.Do("GET", "/fragments/runs/"+id+"/side", nil, &page); err != nil || !strings.Contains(string(page), "Notes for this run") || !strings.Contains(string(page), "log them") {
+		t.Fatalf("side: %v\n%s", err, page)
 	}
 }

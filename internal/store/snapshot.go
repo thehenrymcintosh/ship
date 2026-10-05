@@ -3,6 +3,7 @@ package store
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/thehenrymcintosh/ship/internal/workspace"
@@ -72,6 +73,14 @@ type Ask struct {
 	Since    time.Time `json:"since"`
 }
 
+// RunNote is a check-in note meant for the rest of the run.
+type RunNote struct {
+	Seq  int       `json:"seq"`  // the check-in's visit
+	Step string    `json:"step"` // the check-in step
+	Note string    `json:"note"`
+	At   time.Time `json:"at"`
+}
+
 // VisitSummary is the snapshot's view of a visit.
 type VisitSummary struct {
 	Seq               int         `json:"seq"`
@@ -125,6 +134,7 @@ type RunSnapshot struct {
 	ExtraTokens       int64             `json:"extra_tokens,omitempty"`
 	Visits            []VisitSummary    `json:"visits,omitempty"`
 	PendingAsk        *Ask              `json:"pending_ask,omitempty"`
+	RunNotes          []RunNote         `json:"run_notes,omitempty"` // check-in notes for every later step
 	Slices            []Slice           `json:"slices,omitempty"`
 	ProposedSlices    []Slice           `json:"proposed_slices,omitempty"`
 	ProposedSeq       int               `json:"proposed_seq,omitempty"`
@@ -328,7 +338,18 @@ func Apply(s *RunSnapshot, e Event) error {
 		}
 		s.PendingAsk = &Ask{Seq: d.Seq, Kind: d.Kind, Question: d.Question, Choices: d.Choices, Input: d.Input, Show: d.Show, Var: d.Var, Since: ts}
 	case EvAskAnswered:
+		var d AskAnswered
+		if err := dec(&d); err != nil {
+			return err
+		}
 		s.PendingAsk = nil
+		if d.For == NoteForRun && strings.TrimSpace(d.Note) != "" {
+			n := RunNote{Seq: d.Seq, Note: strings.TrimSpace(d.Note), At: ts}
+			if v := s.Visit(d.Seq); v != nil {
+				n.Step = v.Step
+			}
+			s.RunNotes = append(s.RunNotes, n)
+		}
 	case EvWaitPolled:
 		var d WaitPolled
 		if err := dec(&d); err != nil {

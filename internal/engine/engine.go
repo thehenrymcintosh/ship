@@ -317,6 +317,7 @@ type Command struct {
 	Name   string
 	Choice string
 	Note   string
+	For    string // answer: who the note is for (store.NoteForStep or NoteForRun)
 	Action string
 	Step   string
 	Var    string

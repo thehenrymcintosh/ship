@@ -32,6 +32,14 @@ type PrevInfo struct {
 	Step, Outcome, HandoverPath, Handover string
 }
 
+// RunNote is a note from the person overseeing the run, for every step
+// after the check-in where they wrote it.
+type RunNote struct {
+	Step string // the check-in it was written at
+	Run  string // set when it was written on another run (a slice's parent)
+	Note string
+}
+
 // OutcomeInfo is one outcome and a description of where it leads.
 type OutcomeInfo struct {
 	Name, Target string
@@ -49,6 +57,7 @@ type Preamble struct {
 	BriefPath    string
 	Acceptance   string
 	Prev         *PrevInfo
+	RunNotes     []RunNote
 	Context      []string
 	Rules        string
 	Extra        string

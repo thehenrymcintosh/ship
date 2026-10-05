@@ -359,6 +359,14 @@ form.inline { display: inline-flex; gap: 0.4rem; align-items: center; flex-wrap:
   box-shadow: 0 -6px 16px rgb(0 0 0 / 0.08); max-height: 60vh; overflow-y: auto; }
 .ask-bar-q { margin: 0; font-weight: 600; font-size: 0.92rem; }
 .note-hint { display: block; margin-top: 0.15rem; }
+.note-for { display: flex; gap: 1rem; flex-wrap: wrap; font-size: 0.85rem; margin-top: 0.35rem; }
+.note-for label { display: inline-flex; align-items: center; gap: 0.3rem; cursor: pointer; }
+.note-hint .for-run { display: none; }
+form:has(.note-for input[value=run]:checked) .note-hint .for-run { display: inline; }
+form:has(.note-for input[value=run]:checked) .note-hint .for-step { display: none; }
+.run-notes { margin: 0; padding-left: 1.1rem; }
+.run-notes li { margin-bottom: 0.5rem; }
+.run-notes .md p { margin: 0.1rem 0; }
 .btn.choice { display: inline-flex; flex-direction: column; align-items: flex-start; line-height: 1.2; text-align: left; }
 .choice-to { font-size: 0.72rem; font-weight: 400; opacity: 0.8; }
 .needs-you-count { color: var(--st-asking); font-weight: 600; }

@@ -99,7 +99,11 @@ served only on `127.0.0.1` and signs your browser in with a local token.
     Review findings written as `R1 [warning, auto-fix] file:line: …` show as
     cards coloured by severity, and the ones the reviewer left to you
     (`ask-user`) are highlighted, each with its own box for your call; those
-    are added to your note.
+    are added to your note. The note is for the next step by default (it
+    becomes the check-in's handover, which that step reads); switch it to
+    **for the whole run** and every later agent step of the run, and of any
+    slices it splits into, gets it too. Those notes are listed under "Notes
+    for this run" on the run's page.
   - What the run has cost so far, in dollars and tokens, against its budget
     if it has one. When it stops at its budget, you can raise it and retry
     in place.
@@ -128,7 +132,7 @@ takes a run, any unique part of its id works (`3fa`, `rate-limit`).
 | `ship ls` | Active runs (`--all` includes finished ones; `--pipelines` lists pipelines) |
 | `ship status <run>` | Where a run is: current step, visits (with time, cost and tokens), pending question, worktree |
 | `ship logs <run> -f` | Follow the current step's output |
-| `ship answer <run> [choice] --note "…"` | Answer a question (prompts for the choice if you leave it out) |
+| `ship answer <run> [choice] --note "…" [--for run]` | Answer a question (prompts for the choice if you leave it out). The note goes to the next step; `--for run` sends it to every later agent step too |
 | `ship pause <run>` / `ship resume <run>` | Hold a run after its current step, and carry on later (`--all` includes its slices) |
 | `ship retry <run>`, `ship goto <run> <step>`, `ship cancel <run>` | Step in manually |
 | `ship budget <run> --usd 5 --tokens 1m [--retry]` | Raise a run's budget, and retry a run that stopped at it |
@@ -447,7 +451,7 @@ Each step has exactly one of these:
 |---|---|---|
 | `agent:` or `prompt:` | Runs Claude Code in the run's worktree. `agent:` is a skill line such as `/review mode=code`; `prompt:` is free text; you can use both. | The keys of `next`: the agent chooses one and explains why in its handover. With a single `next` target, the only outcome is `done`. |
 | `run:` | Runs a bash script in the worktree. | `pass` (exit 0) or `fail`. Map exit codes yourself with `outcomes: {0: pass, 2: flaky, default: fail}`. |
-| `ask:` | Pauses for a person. Uses `choices:` instead of `next:`. `input: none \| optional \| required` controls the note box. | The label of the button pressed. The note becomes the handover. |
+| `ask:` | Pauses for a person. Uses `choices:` instead of `next:`. `input: none \| optional \| required` controls the note box. | The label of the button pressed. The note becomes the handover; a note marked for the whole run also reaches every later agent step. |
 | `wait:` | Polls a command every `every` (default `1m`) until the last line it prints matches a key of `next`. `timeout` defaults to `24h`. | The keys of `next`, plus `timeout` if you map it. |
 | `pr:` | Watches a pull request, no agent involved (see [Watching pull requests](#watching-pull-requests)). | `feedback`, `ci_failed`, `ready`, `merged`, `closed`, `timeout`. |
 | `split:` | An agent splits the brief into slices, following a `rules:` file. `review: true` pauses for your approval. | `ok` (required) plus any others you add, such as `unclear`. |

@@ -118,7 +118,7 @@ func (r *runner) emit(typ string, data any) error {
 
 func (r *runner) emitUser(c Command) {
 	args := map[string]string{}
-	for k, v := range map[string]string{"choice": c.Choice, "note": c.Note, "action": c.Action, "step": c.Step, "var": c.Var, "value": c.Value} {
+	for k, v := range map[string]string{"choice": c.Choice, "note": c.Note, "for": c.For, "action": c.Action, "step": c.Step, "var": c.Var, "value": c.Value} {
 		if v != "" {
 			args[k] = v
 		}
@@ -389,6 +389,28 @@ func (r *runner) sessions(s *store.RunSnapshot, name string, st *pipeline.Step, 
 
 // sinceLastTurn tells a resumed agent what happened since its previous
 // visit: the steps that ran in between, and what changed in the worktree.
+// runNotes collects the check-in notes meant for the rest of the run: its
+// parent's (and theirs, for nested slices) first, then its own.
+func (r *runner) runNotes(s *store.RunSnapshot) []agent.RunNote {
+	var out []agent.RunNote
+	for _, n := range s.RunNotes {
+		out = append(out, agent.RunNote{Step: n.Step, Note: n.Note})
+	}
+	for p, depth := s.Parent, 0; p != nil && depth < 8; depth++ {
+		ps, err := r.e.o.Store.Load(p.ID)
+		if err != nil {
+			break
+		}
+		var theirs []agent.RunNote
+		for _, n := range ps.RunNotes {
+			theirs = append(theirs, agent.RunNote{Step: n.Step, Run: ps.ID, Note: n.Note})
+		}
+		out = append(theirs, out...)
+		p = ps.Parent
+	}
+	return out
+}
+
 func (r *runner) sinceLastTurn(s *store.RunSnapshot, last *store.VisitSummary, worktree string) string {
 	if last == nil {
 		return ""
@@ -529,6 +551,7 @@ func (r *runner) visit(name string, st *pipeline.Step, resume *store.VisitSummar
 		Dir: filepath.Join(r.dir, store.VisitsDir, dirName), CameFrom: cameFrom, Scope: scope, Env: fullEnv,
 		Timeout: r.pipe.Timeout(st), OutputTail: r.pipe.OutputTail(), Prev: prev, Snapshot: s,
 		BriefPath: filepath.Join(r.dir, store.BriefFile), Acceptance: r.brief.AcceptanceMarkdown(),
+		RunNotes:  r.runNotes(s),
 		SessionID: sessionID, ResumeID: resumeID, ResumeKind: resumeKind, Note: nv.note,
 		Thread: plan.thread, Since: r.sinceLastTurn(s, plan.last, worktree),
 		ForceCLI: forceCLI, Resumed: resume != nil, StartedAt: started,
@@ -679,7 +702,13 @@ func (r *runner) duringVisit(c Command, v *steps.Visit) *abortReq {
 			reply(c, conflict("the run isn't waiting for an answer"))
 			return nil
 		}
-		sc := steps.Command{Name: "answer", Choice: c.Choice, Note: c.Note, Action: c.Action, Reply: make(chan error, 1)}
+		switch c.For {
+		case "", store.NoteForStep, store.NoteForRun:
+		default:
+			reply(c, invalid("a note is for %q or %q, not %q", store.NoteForStep, store.NoteForRun, c.For))
+			return nil
+		}
+		sc := steps.Command{Name: "answer", Choice: c.Choice, Note: c.Note, For: c.For, Action: c.Action, Reply: make(chan error, 1)}
 		if c.Name == CmdSplitReview {
 			sc.Name = "split_review"
 		}

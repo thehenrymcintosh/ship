@@ -218,11 +218,18 @@ type AskPending struct {
 	Var      string   `json:"var,omitempty"`
 }
 
+// Note scopes: who a check-in note is for.
+const (
+	NoteForStep = "step" // the next step only, as the check-in's handover (the default)
+	NoteForRun  = "run"  // every later agent step of the run, and its slices
+)
+
 // AskAnswered closes a question.
 type AskAnswered struct {
 	Seq    int    `json:"seq"`
 	Choice string `json:"choice"`
 	Note   string `json:"note"`
+	For    string `json:"for,omitempty"` // NoteForRun, or "" for the next step
 }
 
 // WaitPolled records one poll.

@@ -45,7 +45,7 @@ func (a *app) postSnap(run, endpoint string, body map[string]any) (*store.RunSna
 }
 
 func (a *app) answerCmd() *cobra.Command {
-	var note string
+	var note, noteFor string
 	cmd := &cobra.Command{
 		Use:   "answer <run> [choice]",
 		Short: "Answer a pending check-in (interactive picker without a choice)",
@@ -96,10 +96,14 @@ func (a *app) answerCmd() *cobra.Command {
 					return a.post(args[0], "split-review", map[string]any{"action": choice, "note": note})
 				}
 			}
-			return a.post(args[0], "answer", map[string]any{"choice": choice, "note": note})
+			if noteFor != "step" && noteFor != "run" {
+				return fail(exitUser, "--for is step or run, not %q", noteFor)
+			}
+			return a.post(args[0], "answer", map[string]any{"choice": choice, "note": note, "for": noteFor})
 		},
 	}
-	cmd.Flags().StringVar(&note, "note", "", "free-text note (becomes the visit's summary)")
+	cmd.Flags().StringVar(&note, "note", "", "free-text note: the check-in's handover, which the next step reads")
+	cmd.Flags().StringVar(&noteFor, "for", "step", `who the note is for: "step" (the next step) or "run" (every later agent step of the run, and its slices)`)
 	return cmd
 }
 

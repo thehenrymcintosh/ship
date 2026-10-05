@@ -227,6 +227,12 @@ func (a *app) statusCmd() *cobra.Command {
 					fmt.Printf("  %s = %s\n", k, s.Vars[k])
 				}
 			}
+			if len(s.RunNotes) > 0 {
+				fmt.Println("\nnotes for this run (every later agent step gets them):")
+				for _, n := range s.RunNotes {
+					fmt.Printf("  %s %s\n", a.dim(n.Step+":"), strings.ReplaceAll(n.Note, "\n", "\n    "))
+				}
+			}
 			if len(s.Visits) > 0 {
 				fmt.Println("\nvisits:")
 				tw := tabwriter.NewWriter(os.Stdout, 0, 2, 2, ' ', 0)
@@ -259,7 +265,7 @@ func (a *app) statusCmd() *cobra.Command {
 				if len(pa.Choices) > 0 {
 					fmt.Printf("  choices: %s\n", strings.Join(pa.Choices, " · "))
 				}
-				fmt.Printf("  answer:  %s answer %s <choice> [--note …]\n", brand.Name, shortRef(s.ID))
+				fmt.Printf("  answer:  %s answer %s <choice> [--note … [--for run]]\n", brand.Name, shortRef(s.ID))
 			}
 			if len(s.Children) > 0 {
 				fmt.Println("\nchildren:")
