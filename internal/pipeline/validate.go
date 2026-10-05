@@ -102,6 +102,7 @@ var fieldsByType = map[string][]string{
 	TypeWait:   {"wait", "every"},
 	TypeSplit:  {"split", "prompt", "cli", "model", "effort", "permission_mode", "allowed_tools", "disallowed_tools", "extra_args", "session", "context", "rules", "max_slices", "review"},
 	TypeFanout: {"fanout", "mode", "stack", "advance_on", "max_parallel", "on_child_stop"},
+	TypePR:     {"pr", "every", "settle", "trigger"},
 }
 
 var commonFields = []string{"description", "next", "max_visits", "when_exhausted", "on_error", "timeout", "env"}
@@ -276,6 +277,16 @@ func (v *validator) checkStepShapes() {
 			if s.Next == nil || !s.Next.IsMap {
 				v.errf("E012", ptr, "wait step %q needs a next map of the outcomes its command can print", name)
 			}
+		case TypePR:
+			if s.Next == nil || !s.Next.IsMap {
+				v.errf("E012", ptr, "pr step %q needs a next map (outcomes: %s)", name, strings.Join(PROutcomes, ", "))
+				break
+			}
+			for _, k := range s.Next.Map.Keys() {
+				if k != OutcomeError && !contains(PROutcomes, k) {
+					v.errf("E012", Ptr("steps", name, "next", k), "pr steps don't produce %q (outcomes: %s)", k, strings.Join(PROutcomes, ", "))
+				}
+			}
 		case TypeRun:
 			for _, kv := range s.Outcomes {
 				if kv.Key == "default" {
@@ -391,6 +402,7 @@ func (v *validator) templateFields() []templateField {
 		addf(name, sp("ask"), s.Ask, false)
 		addf(name, sp("run"), s.Run, true)
 		addf(name, sp("wait"), s.Wait, true)
+		addf(name, sp("pr"), s.PR, false)
 		for k, val := range s.Env {
 			val := val
 			addf(name, sp("env", k), &val, false)

@@ -11,6 +11,8 @@ const (
 	DefaultMaxVisits      = 5
 	DefaultTimeout        = 30 * time.Minute
 	DefaultWaitTimeout    = 24 * time.Hour
+	DefaultPRTimeout      = 14 * 24 * time.Hour
+	DefaultSettle         = 10 * time.Minute
 	DefaultEvery          = time.Minute
 	DefaultOutputTail     = 200
 	DefaultMaxTransitions = 200
@@ -64,6 +66,8 @@ func (p *Pipeline) Timeout(s *Step) time.Duration {
 		return 0
 	case TypeWait:
 		return s.Timeout.D(DefaultWaitTimeout)
+	case TypePR:
+		return s.Timeout.D(DefaultPRTimeout)
 	}
 	if s.Timeout != nil {
 		return time.Duration(*s.Timeout)
@@ -167,6 +171,18 @@ func (s *Step) OnChildStopOrDefault() string {
 	return s.OnChildStop
 }
 
+// SettleD is how long a pr step waits after the newest comment before
+// sending a batch of feedback.
+func (s *Step) SettleD() time.Duration { return s.Settle.D(DefaultSettle) }
+
+// TriggerOrDefault is auto or manual.
+func (s *Step) TriggerOrDefault() string {
+	if s.Trigger == "" {
+		return "auto"
+	}
+	return s.Trigger
+}
+
 // InputOrDefault returns the ask input mode.
 func (s *Step) InputOrDefault() string {
 	if s.Input == "" {
@@ -200,7 +216,7 @@ func (s *Step) OutcomeNames() []string {
 		return []string{"pass", "fail"}
 	}
 	if s.Next == nil || !s.Next.IsMap {
-		if s.Type() == TypeWait {
+		if s.Type() == TypeWait || s.Type() == TypePR {
 			return nil
 		}
 		return []string{"done"}

@@ -82,6 +82,9 @@ func (Step) JSONSchemaExtend(s *jsonschema.Schema) {
 		"wait":    "Wait step: a command polled every `every` until its last line names an outcome.",
 		"split":   "Split step: an agent splits the brief into slices.",
 		"fanout":  "Fanout step: runs the named pipeline once per slice.",
+		"pr":      "PR step: watches the run's pull request (\"\" = the run's branch, or a PR number/URL) and routes on feedback, ci_failed, ready, merged, closed or timeout.",
+		"settle":  "PR step: how long after the newest review comment to send the batch of feedback (default 10m).",
+		"trigger": "PR step: auto sends feedback after settle; manual waits for you to trigger it from the UI or `ship pr <run> --address`.",
 		"choices": "Ask step: label → target. Labels become the outcome.",
 		"session": "Agent steps: fresh (default) starts a new conversation each visit; continue resumes this step's own conversation on revisits; any other name is a shared conversation: steps with the same session name continue one conversation, so later steps keep what earlier ones learned.",
 	}

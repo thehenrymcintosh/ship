@@ -28,7 +28,11 @@ const (
 	TypeWait   = "wait"
 	TypeSplit  = "split"
 	TypeFanout = "fanout"
+	TypePR     = "pr"
 )
+
+// PROutcomes are the outcomes a pr step can produce.
+var PROutcomes = []string{"feedback", "ci_failed", "ready", "merged", "closed", "timeout"}
 
 // Pipeline is one pipeline file.
 type Pipeline struct {
@@ -173,6 +177,11 @@ type Step struct {
 	MaxSlices int     `yaml:"max_slices,omitempty" jsonschema:"minimum=1"`
 	Review    bool    `yaml:"review,omitempty"`
 
+	// pr
+	PR      *string   `yaml:"pr,omitempty"`
+	Settle  *Duration `yaml:"settle,omitempty"`
+	Trigger string    `yaml:"trigger,omitempty" jsonschema:"enum=auto,enum=manual"`
+
 	// fanout
 	Fanout      *string `yaml:"fanout,omitempty"`
 	Mode        string  `yaml:"mode,omitempty" jsonschema:"enum=series,enum=parallel"`
@@ -205,6 +214,9 @@ func (s *Step) TypeKeys() []string {
 	}
 	if s.Fanout != nil {
 		keys = append(keys, TypeFanout)
+	}
+	if s.PR != nil {
+		keys = append(keys, TypePR)
 	}
 	return keys
 }

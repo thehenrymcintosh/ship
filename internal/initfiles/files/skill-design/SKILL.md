@@ -117,15 +117,29 @@ steps:                        # names: lowercase letters, digits, - and _
     next: { pass: open-pr, fail: implement }
 
   open-pr:
-    run: gh pr create --fill --head {{run.branch}} --base {{run.base}}
+    run: |
+      git push -u origin {{run.branch}}
+      gh pr create --fill --head {{run.branch}} --base {{run.base}}
     save: { pr_url: last_line }   # last_line | stdout | file:<path> | json:<dotted.path>
     next: { pass: in-review, fail: check-in }
 
   in-review:
-    wait: .ship/bin/pr-status {{vars.pr_url}}   # polled; its last output line picks the outcome
-    every: 5m
-    timeout: 14d
-    next: { merged: done, comments: implement }
+    pr: ""                    # watch the run's PR natively ("" = the run's branch; needs gh)
+    every: 2m
+    settle: 10m               # review comments go as one batch once nobody's commented for 10m
+    trigger: auto             # or manual: wait for "Address N comments" in the UI
+    next: { feedback: address-review, ci_failed: fix-ci, merged: done, closed: stop }
+
+  address-review:
+    prompt: |
+      Address the review feedback in your handover. Fix what's asked, push, and
+      reply on the PR only where a point needs an answer (include <!-- ship-agent -->).
+    session: builder
+    next: { done: in-review, stuck: check-in }
+
+  fix-ci:
+    prompt: Fix the CI failure in your handover, or explain why it isn't caused by this change. Push.
+    next: { done: in-review, stuck: check-in }
 
   check-in:
     ask: "{{brief.title}} stopped at {{came_from}}. What next?"
@@ -145,6 +159,7 @@ steps:                        # names: lowercase letters, digits, - and _
 | `run:` | Runs a bash script. | `pass` / `fail`, or map exit codes with `outcomes: {0: pass, 2: flaky, default: fail}` |
 | `ask:` | Pauses for a person. Uses `choices:` instead of `next:`. | The chosen label |
 | `wait:` | Polls a command every `every` (default 1m) until its last line matches a key of `next`. | Those keys; `timeout` if mapped |
+| `pr:` | Watches a pull request without an agent (needs `gh`): `""` for the run's branch, or a PR number/URL. Review comments are batched (`settle`, default 10m; `trigger: auto` or `manual`); CI is judged once every check finishes, once per commit, with the failed log in the handover. | `feedback`, `ci_failed`, `ready` (approved and green), `merged`, `closed`, `timeout`; unmapped ones keep watching |
 | `split:` | An agent splits the brief into slices (`rules:` file, `max_slices:`, `review: true` to approve them). Write `split: ""` plus a `prompt:`, or `split: /<skill>`. | `ok` (required) plus any others you add |
 | `fanout:` | Runs another pipeline once per slice. `mode: series` (`stack: true` bases each slice's branch on the previous one; `advance_on: <step>` starts the next slice when this one reaches that step) or `mode: parallel` (`max_parallel: 3`). `on_child_stop: halt \| continue`. | `done` (every slice finished) and `failed`, both required |
 
@@ -165,6 +180,13 @@ such as `SHIP_RUN_ID`, `SHIP_RUN_DIR`, `SHIP_BRANCH`, `SHIP_VAR_<NAME>` and
 `SHIP_HOME`.
 
 ## Design rules of thumb
+
+- **Pipelines that open a PR should watch it, not end.** After opening the PR,
+  go to a `pr:` step and route `feedback` and `ci_failed` to steps that fix,
+  push, and come back to the `pr:` step; only `merged` (or `closed`) ends the
+  run. Don't write scripts to poll GitHub. Ask the user whether review
+  comments should be addressed automatically after a quiet period
+  (`trigger: auto`, `settle:`) or when they say so (`trigger: manual`).
 
 - **Sessions.** `session: <name>` makes steps share one Claude conversation,
   so later steps keep what earlier ones learned instead of re-reading the

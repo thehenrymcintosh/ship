@@ -7,6 +7,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/spf13/cobra"
 
@@ -274,5 +275,59 @@ func (a *app) resumeCmd() *cobra.Command {
 		},
 	}
 	cmd.Flags().BoolVar(&all, "all", false, "also resume the run's paused slices")
+	return cmd
+}
+
+func (a *app) prCmd() *cobra.Command {
+	var address bool
+	cmd := &cobra.Command{
+		Use:   "pr <run>",
+		Short: "Show what a run's PR watch sees; --address sends pending review comments now",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if address {
+				return a.post(args[0], "pr/trigger", nil)
+			}
+			id, err := a.resolveRun(args[0])
+			if err != nil {
+				return err
+			}
+			s, err := a.loadRun(id)
+			if err != nil {
+				return err
+			}
+			pr := s.PR
+			if pr == nil {
+				return fail(exitNotFound, "run %s hasn't watched a PR (its pipeline needs a pr: step)", shortRef(id))
+			}
+			if a.json {
+				return printJSON(pr)
+			}
+			if pr.URL == "" {
+				fmt.Println(pr.Note)
+				return nil
+			}
+			fmt.Printf("PR #%d  %s  %s\n", pr.Number, strings.ToLower(pr.State), pr.URL)
+			fmt.Printf("checks: %d passed, %d failed, %d running\n", pr.ChecksPass, pr.ChecksFail, pr.ChecksPending)
+			for _, f := range pr.Failing {
+				fmt.Printf("  ✗ %s\n", f)
+			}
+			if pr.PendingComments > 0 {
+				when := ""
+				if pr.LastCommentAt != nil {
+					when = ", latest " + ago(*pr.LastCommentAt)
+				}
+				mode := fmt.Sprintf("sent once nobody has commented for %s", time.Duration(pr.SettleSeconds)*time.Second)
+				if pr.Trigger == "manual" {
+					mode = "waiting for you"
+				}
+				fmt.Printf("%d new review comment(s)%s: %s. Send now with `ship pr %s --address`.\n", pr.PendingComments, when, mode, shortRef(id))
+			} else {
+				fmt.Println("no new review comments")
+			}
+			return nil
+		},
+	}
+	cmd.Flags().BoolVar(&address, "address", false, "send the pending review comments to the pipeline now")
 	return cmd
 }

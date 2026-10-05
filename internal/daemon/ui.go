@@ -48,7 +48,8 @@ var funcs = template.FuncMap{
 		}
 		return fmt.Sprintf("%d %ss", n, s)
 	},
-	"inc": func(i int) int { return i + 1 },
+	"inc":    func(i int) int { return i + 1 },
+	"settle": func(secs int) string { return fmtDur(time.Duration(secs) * time.Second) },
 	"deref": func(t *time.Time) time.Time {
 		if t == nil {
 			return time.Time{}
@@ -344,6 +345,7 @@ type RunView struct {
 	Bypass     bool
 	Version    string
 	Feedback   []history.Item
+	WatchingPR bool // a pr step is polling right now
 }
 
 func (d *Daemon) runView(id string) (*RunView, error) {
@@ -404,6 +406,9 @@ func (d *Daemon) runView(id string) (*RunView, error) {
 		v.Version = fmt.Sprintf("v%d · %s", s.PipelineVersion, h)
 	}
 	v.Feedback, _ = engine.FeedbackForRun(s, d.home)
+	if s.PR != nil && lv != nil && lv.Seq == s.PR.Seq && lv.Running() {
+		v.WatchingPR = true
+	}
 
 	if a := s.PendingAsk; a != nil {
 		for _, show := range a.Show {

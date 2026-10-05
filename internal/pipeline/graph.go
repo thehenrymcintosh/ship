@@ -45,6 +45,8 @@ func TypeGlyph(t string) string {
 		return "⑂"
 	case TypeFanout:
 		return "☰"
+	case TypePR:
+		return "⇅"
 	case TargetDone:
 		return "✓"
 	case TargetStop:

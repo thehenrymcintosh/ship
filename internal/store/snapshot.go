@@ -136,6 +136,7 @@ type RunSnapshot struct {
 	FakeAgents        string            `json:"fake_agents,omitempty"`
 	ShipVersion       string            `json:"ship_version,omitempty"`
 	PauseRequested    bool              `json:"pause_requested,omitempty"`
+	PR                *PRStatus         `json:"pr,omitempty"`
 	PipelineVersion   int               `json:"pipeline_version,omitempty"`
 	PipelineHash      string            `json:"pipeline_hash,omitempty"`
 	HistoryDir        string            `json:"history_dir,omitempty"`
@@ -357,6 +358,12 @@ func Apply(s *RunSnapshot, e Event) error {
 				s.Children[i].Status = d.Status
 			}
 		}
+	case EvPRPolled:
+		var d PRStatus
+		if err := dec(&d); err != nil {
+			return err
+		}
+		s.PR = &d
 	case EvPauseRequested:
 		s.PauseRequested = true
 	case EvResumed:

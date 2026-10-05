@@ -311,3 +311,7 @@ form.inline { display: inline-flex; gap: 0.4rem; align-items: center; flex-wrap:
 .fb-row select { flex: 1; min-width: 0; }
 .fb-hint { margin: 0.6rem 0 0; }
 .ok-text { color: var(--ok); }
+
+/* PR watch */
+.pr-card .pr-row { display: flex; gap: 0.6rem; align-items: center; flex-wrap: wrap; margin-top: 0.4rem; }
+.pr-card h2 a { color: inherit; }

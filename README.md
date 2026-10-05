@@ -395,6 +395,7 @@ Each step has exactly one of these:
 | `run:` | Runs a bash script in the worktree. | `pass` (exit 0) or `fail`. Map exit codes yourself with `outcomes: {0: pass, 2: flaky, default: fail}`. |
 | `ask:` | Pauses for a person. Uses `choices:` instead of `next:`. `input: none \| optional \| required` controls the note box. | The label of the button pressed. The note becomes the handover. |
 | `wait:` | Polls a command every `every` (default `1m`) until the last line it prints matches a key of `next`. `timeout` defaults to `24h`. | The keys of `next`, plus `timeout` if you map it. |
+| `pr:` | Watches a pull request, no agent involved (see [Watching pull requests](#watching-pull-requests)). | `feedback`, `ci_failed`, `ready`, `merged`, `closed`, `timeout`. |
 | `split:` | An agent splits the brief into slices, following a `rules:` file. `review: true` pauses for your approval. | `ok` (required) plus any others you add, such as `unclear`. |
 | `fanout:` | Runs another pipeline once per slice: `mode: series` (`stack: true` bases each slice's branch on the previous one; `advance_on: <step>` starts the next slice when this one reaches that step) or `mode: parallel` (`max_parallel`). | `done` when every slice finished, otherwise `failed`. |
 
@@ -455,6 +456,43 @@ the implementer's conversation inherits its blind spots. `ship validate`
 warns (W107) when a step can send work back to a step it shares a session
 with. Long shared conversations also grow with every step, so sharing pays
 off for closely related steps rather than whole pipelines.
+
+### Watching pull requests
+
+A pipeline that opens a PR should keep watching it until it's merged. A `pr:`
+step does that without an agent, using the `gh` CLI:
+
+```yaml
+  in-review:
+    pr: ""             # the PR for the run's branch (or a PR number or URL)
+    every: 2m          # how often to look
+    settle: 10m        # see below
+    trigger: auto      # or manual
+    next:
+      feedback: address-review   # new review comments
+      ci_failed: fix-ci          # a check failed on the latest commit
+      merged: done
+      closed: stop
+```
+
+- **Review comments are batched.** Reviewers comment over minutes or hours, so
+  the step collects new conversation comments, reviews and inline comments,
+  and sends them as one batch once nobody has commented for `settle`. With
+  `trigger: manual` it waits for you instead: the run's page shows
+  **Address N comments now**, and `ship pr <run> --address` does the same
+  from the terminal (both also work in auto mode, to skip the wait).
+  Comments starting with `ship:` are feedback on the pipeline, not
+  instructions, so they're left out; so are replies the agents post (which
+  include `<!-- ship-agent -->`).
+- **CI is judged when it's finished.** `ci_failed` fires once every check on
+  the PR's latest commit has finished and one failed, once per commit. A check
+  that was cancelled is re-run once first. No checks reported yet doesn't
+  count as passing.
+- **The details go in the handover.** The fixing step receives each new
+  comment (author, file and line, link) or each failing check with the end of
+  its failed log.
+- `ready` fires when the PR is approved and every check passed; outcomes you
+  don't map just keep it watching. `ship pr <run>` shows what it sees.
 
 ### Variables
 

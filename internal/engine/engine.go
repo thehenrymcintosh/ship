@@ -302,6 +302,7 @@ const (
 	CmdParentHalted  = "parent_halted"
 	CmdPause         = "pause"
 	CmdResume        = "resume"
+	CmdPRTrigger     = "pr_trigger"
 )
 
 // Command is a manual control.

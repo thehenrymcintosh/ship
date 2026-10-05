@@ -339,6 +339,8 @@ func (r *runner) executor(typ string) steps.Executor {
 		return steps.Split{}
 	case pipeline.TypeFanout:
 		return &fanoutExec{r: r}
+	case pipeline.TypePR:
+		return steps.PR{}
 	}
 	return nil
 }
@@ -628,6 +630,31 @@ func (r *runner) scope(s *store.RunSnapshot, prev *store.VisitSummary, cameFrom 
 // non-nil abort when the visit must end (cancel, goto, retry).
 func (r *runner) duringVisit(c Command, v *steps.Visit) *abortReq {
 	switch c.Name {
+	case CmdPRTrigger:
+		if v.Step.Type() != pipeline.TypePR || !r.awaiting.Load() {
+			reply(c, conflict("the run isn't watching a PR right now"))
+			return nil
+		}
+		sc := steps.Command{Name: steps.PRTrigger, Reply: make(chan error, 1)}
+		select {
+		case r.visitCmds <- sc:
+		default:
+			reply(c, conflict("another command is being processed"))
+			return nil
+		}
+		r.emitUser(c)
+		go func() {
+			select {
+			case err := <-sc.Reply:
+				var inv *steps.InvalidError
+				if errors.As(err, &inv) {
+					err = invalid("%s", inv.Msg)
+				}
+				reply(c, err)
+			case <-time.After(time.Minute):
+				reply(c, conflict("the trigger wasn't taken"))
+			}
+		}()
 	case CmdAnswer, CmdSplitReview:
 		// The status turns to asking just before the executor starts
 		// awaiting; a pending ask for this visit is enough to queue it.
@@ -859,7 +886,7 @@ func (r *runner) park(reason string) {
 // and split reviews resume on restart; agent and run visits are parked.
 func (r *runner) interrupted(v *steps.Visit, typ string) {
 	s := r.snap()
-	if typ == pipeline.TypeAsk || typ == pipeline.TypeWait || typ == pipeline.TypeFanout {
+	if typ == pipeline.TypeAsk || typ == pipeline.TypeWait || typ == pipeline.TypeFanout || typ == pipeline.TypePR {
 		return
 	}
 	if s.PendingAsk != nil && s.PendingAsk.Seq == v.Seq {

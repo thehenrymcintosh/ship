@@ -47,6 +47,7 @@ func (d *Daemon) routes() http.Handler {
 	api("POST /api/runs/{id}/cancel", d.command(engine.CmdCancel))
 	api("POST /api/runs/{id}/pause", d.command(engine.CmdPause))
 	api("POST /api/runs/{id}/resume", d.command(engine.CmdResume))
+	api("POST /api/runs/{id}/pr/trigger", d.command(engine.CmdPRTrigger))
 	api("POST /api/runs/{id}/reacquire", d.command(engine.CmdReacquire))
 	api("POST /api/runs/{id}/open", d.openThing)
 	api("GET /api/runs/{id}/feedback", d.runFeedback)

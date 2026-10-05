@@ -2,9 +2,29 @@
 
 {{define "mini-pill"}}<span class="mini st-{{.Status}}" title="{{.ID}} · {{.Status}}{{if .StatusReason}} — {{.StatusReason}}{{end}}"></span>{{end}}
 
-{{/* run-action: the pending action panel (asks, split review, needs attention). Data: *RunView */}}
+{{/* run-action: the pending action panel (asks, split review, needs attention, PR watch). Data: *RunView */}}
 {{define "run-action"}}
 {{$s := .S}}
+{{with $s.PR}}{{if $.WatchingPR}}
+<section class="card pr-card">
+  <header class="action-head"><span class="badge">PR</span>
+    <h2>{{if .URL}}<a href="{{.URL}}" target="_blank" rel="noopener">#{{.Number}}</a> <span class="muted">{{.State}}</span>{{else}}{{.Note}}{{end}}</h2>
+    <span class="muted small">watching every poll</span></header>
+  {{if .URL}}
+  <div class="pr-row">
+    <span class="pr-checks"><span class="ok-text">✓ {{.ChecksPass}}</span> · <span class="{{if .ChecksFail}}warn-text{{end}}">✗ {{.ChecksFail}}</span> · <span class="muted">⋯ {{.ChecksPending}} running</span></span>
+    {{range .Failing}}<code class="small">{{.}}</code>{{end}}
+  </div>
+  <div class="pr-row">
+    {{if .PendingComments}}
+      <strong>{{plural .PendingComments "new review comment"}}</strong>{{with .LastCommentAt}}<span class="muted small">latest {{ago (deref .)}}</span>{{end}}
+      <span class="muted small">{{if eq .Trigger "manual"}}waiting for you to send them{{else}}sent once nobody has commented for {{settle .SettleSeconds}}{{end}}</span>
+      <button class="btn primary small" hx-post="/api/runs/{{$s.ID}}/pr/trigger" hx-swap="none">Address {{.PendingComments}} now</button>
+    {{else}}<span class="muted">No new review comments.</span>{{end}}
+  </div>
+  {{end}}
+</section>
+{{end}}{{end}}
 {{if and (eq $s.Status "asking") $s.PendingAsk}}{{$a := $s.PendingAsk}}
 <section class="card action ask-{{$a.Kind}}">
   {{if eq $a.Kind "split_review"}}

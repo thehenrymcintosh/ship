@@ -44,6 +44,7 @@ const (
 	EvPauseRequested    = "pause_requested"
 	EvResumed           = "resumed"
 	EvVersioned         = "pipeline_versioned"
+	EvPRPolled          = "pr_polled"
 )
 
 // Actors.
@@ -247,6 +248,26 @@ type PauseChange struct {
 type Versioned struct {
 	Version int    `json:"version"`
 	Hash    string `json:"hash"`
+}
+
+// PRStatus is the latest observation of the PR a pr step watches.
+type PRStatus struct {
+	Step            string     `json:"step"`
+	Seq             int        `json:"seq"`
+	URL             string     `json:"url,omitempty"`
+	Number          int        `json:"number,omitempty"`
+	State           string     `json:"state,omitempty"` // OPEN, CLOSED, MERGED; "" when there's no PR yet
+	HeadSHA         string     `json:"head_sha,omitempty"`
+	ReviewDecision  string     `json:"review_decision,omitempty"`
+	ChecksPass      int        `json:"checks_pass"`
+	ChecksFail      int        `json:"checks_fail"`
+	ChecksPending   int        `json:"checks_pending"`
+	Failing         []string   `json:"failing,omitempty"`
+	PendingComments int        `json:"pending_comments"` // new review feedback not yet sent on
+	LastCommentAt   *time.Time `json:"last_comment_at,omitempty"`
+	Trigger         string     `json:"trigger"`
+	SettleSeconds   int        `json:"settle_seconds"`
+	Note            string     `json:"note,omitempty"` // e.g. "no PR for branch x yet"
 }
 
 // RunFinished ends the run.
