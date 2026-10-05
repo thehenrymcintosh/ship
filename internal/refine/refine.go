@@ -132,13 +132,27 @@ func (c Context) resolve(p string, inputs map[string]bool) (string, error) {
 	}
 	for _, r := range roots {
 		if rel, err := filepath.Rel(r, abs); err == nil && !strings.HasPrefix(rel, "..") && rel != "." {
-			if strings.Contains(abs, string(filepath.Separator)+"history"+string(filepath.Separator)) {
+			if strings.Contains(abs, string(filepath.Separator)+"history"+string(filepath.Separator)) || c.inHistory(abs) {
 				break // never rewrite history
 			}
 			return abs, nil
 		}
 	}
 	return "", fmt.Errorf("%s isn't one of the pipeline's files or under %s/ or a skills dir", p, brand.Dir)
+}
+
+// inHistory reports whether abs is in the history's own dirs (in a
+// pipeline folder they sit beside pipeline.yml).
+func (c Context) inHistory(abs string) bool {
+	if c.Store == nil {
+		return false
+	}
+	for _, d := range history.Subdirs {
+		if rel, err := filepath.Rel(filepath.Join(c.Store.Dir, d), abs); err == nil && !strings.HasPrefix(rel, "..") {
+			return true
+		}
+	}
+	return false
 }
 
 // inputs collects the current version's files.

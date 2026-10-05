@@ -138,7 +138,7 @@ func (a *app) pipelineCmd() *cobra.Command {
 		Short: "Pipeline versions, feedback and stats: versions, feedback, refine, report, close, stats",
 	}
 	cmd.PersistentFlags().String("repo", "", "repo path (default: the git repo of the current dir)")
-	cmd.AddCommand(a.versionsCmd(), a.pipelineFeedbackCmd(), a.closeCmd(), a.refineCmd(), a.reportCmd(), a.statsCmd(), a.migrateCmd())
+	cmd.AddCommand(a.versionsCmd(), a.pipelineFeedbackCmd(), a.closeCmd(), a.refineCmd(), a.reportCmd(), a.statsCmd(), a.migrateCmd(), a.diffCmd(), a.restoreCmd())
 	return cmd
 }
 
@@ -188,7 +188,7 @@ func (a *app) versionsCmd() *cobra.Command {
 			fmt.Fprintln(tw, "VERSION\tDATE\tSOURCE\tFEEDBACK\tCHANGE")
 			for _, v := range vs {
 				label := v.Label()
-				if v.Version == cur.Version {
+				if v.Hash == cur.Hash {
 					label += " ←"
 				}
 				change := v.Summary

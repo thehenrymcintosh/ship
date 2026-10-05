@@ -38,12 +38,82 @@ type Part struct {
 	Path    string `json:"path,omitempty"` // where it was found ("" when missing)
 	Hash    string `json:"hash,omitempty"`
 	Missing bool   `json:"missing,omitempty"` // referenced but not found (e.g. a plugin skill)
+	// Copy is where a version keeps its frozen copy, relative to the
+	// version's dir ("" when it has none).
+	Copy string `json:"copy,omitempty"`
+	// Location is where the part lived, relative to a root: "repo:<rel>",
+	// "claude:<rel>" (~/.claude), "home:<rel>" (~/.ship) or
+	// "pipeline:<name>:<rel>" (a pipeline folder). "" when unknown.
+	Location string `json:"location,omitempty"`
 }
 
 // Fingerprint identifies a version.
 type Fingerprint struct {
 	Hash  string `json:"hash"`
 	Parts []Part `json:"parts"`
+	// Roots are the dirs Parts' paths were found under, by root name (see
+	// Part.Location).
+	Roots map[string]string `json:"-"`
+}
+
+// Root names.
+const (
+	RootRepo     = "repo"
+	RootClaude   = "claude"
+	RootHome     = "home"
+	RootPipeline = "pipeline:" // + pipeline name
+)
+
+// Locate returns path's location relative to the longest matching root.
+func Locate(roots map[string]string, path string) string {
+	best, bestRel := "", ""
+	for name, root := range roots {
+		if root == "" {
+			continue
+		}
+		rel, err := filepath.Rel(root, path)
+		if err != nil || rel == "." || strings.HasPrefix(rel, "..") {
+			continue
+		}
+		if best == "" || len(root) > len(roots[best]) {
+			best, bestRel = name, filepath.ToSlash(rel)
+		}
+	}
+	if best == "" {
+		return ""
+	}
+	return best + ":" + bestRel
+}
+
+// Resolve maps a location back to a path under roots, or "".
+func Resolve(roots map[string]string, loc string) string {
+	name, rel, ok := strings.Cut(loc, ":")
+	if !ok {
+		return ""
+	}
+	if name+":" == RootPipeline {
+		var pipe string
+		if pipe, rel, ok = strings.Cut(rel, ":"); !ok {
+			return ""
+		}
+		name = RootPipeline + pipe
+	}
+	root := roots[name]
+	if root == "" || rel == "" || strings.HasPrefix(rel, "../") {
+		return ""
+	}
+	return filepath.Join(root, filepath.FromSlash(rel))
+}
+
+// Roots returns the roots for in (see Fingerprint.Roots).
+func (in Inputs) Roots() map[string]string {
+	roots := map[string]string{RootRepo: in.Repo, RootClaude: in.ClaudeDir, RootHome: in.Home}
+	for _, f := range in.Pipelines {
+		if folder := in.folder(f); folder != "" {
+			roots[RootPipeline+f.Name] = folder
+		}
+	}
+	return roots
 }
 
 // Short is the abbreviated hash shown to people.
@@ -131,7 +201,7 @@ func Compute(in Inputs) Fingerprint {
 	for _, p := range parts {
 		fmt.Fprintf(h, "%s\x00%s\x00%s\x00%v\n", p.Kind, p.Name, p.Hash, p.Missing)
 	}
-	return Fingerprint{Hash: hex.EncodeToString(h.Sum(nil)), Parts: parts}
+	return Fingerprint{Hash: hex.EncodeToString(h.Sum(nil)), Parts: parts, Roots: in.Roots()}
 }
 
 // ResolveSkill finds a skill (a directory with SKILL.md) or a slash command

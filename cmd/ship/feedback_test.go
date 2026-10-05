@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -84,9 +85,18 @@ func TestFeedbackVersionsRefine(t *testing.T) {
 		t.Fatalf("#1 should be addressed:\n%s", out)
 	}
 	// Feedback id 42 doesn't exist, so it isn't recorded as addressed.
-	vb, _ := os.ReadFile(filepath.Join(h.repo, ".ship", "history", "docs", "versions.jsonl"))
-	if !strings.Contains(string(vb), `"addresses":[1]`) || !strings.Contains(string(vb), `"source":"refine"`) {
+	var vs []struct {
+		Source    string `json:"source"`
+		Addresses []int  `json:"addresses"`
+		Frozen    bool   `json:"frozen"`
+	}
+	vb := must("pipeline", "versions", "docs", "--json")
+	if json.Unmarshal([]byte(vb), &vs) != nil || len(vs) != 2 || vs[1].Source != "refine" || fmt.Sprint(vs[1].Addresses) != "[1]" || !vs[1].Frozen {
 		t.Fatalf("versions:\n%s", vb)
+	}
+	// Each version keeps a copy of the pipeline as it was.
+	if m, _ := filepath.Glob(filepath.Join(h.repo, ".ship", "history", "docs", "versions", "*", "files", "pipeline", "docs.yml")); len(m) != 2 {
+		t.Fatalf("copies: %v", m)
 	}
 
 	// A hand edit becomes the next version when it's next used.

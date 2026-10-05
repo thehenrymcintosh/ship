@@ -254,7 +254,9 @@ func (r *runner) versionPipeline() {
 	if s.Workspace != nil {
 		root = s.Workspace.Path
 	}
-	v, _, err := r.e.HistoryStore(RunHistoryDir(s, r.e.Home())).Register(history.Compute(history.Inputs{
+	hs := r.e.HistoryStore(RunHistoryDir(s, r.e.Home()))
+	hs.Author = GitAuthor(s.Repo)
+	v, _, err := hs.Register(history.Compute(history.Inputs{
 		Pipelines: closure, Repo: root, Home: r.e.Home(), ClaudeDir: r.e.o.ClaudeDir, Folders: runFolders(s, root),
 	}), history.SourceEdit, "", nil)
 	if err != nil {

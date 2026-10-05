@@ -60,12 +60,17 @@ func (e *Engine) Fingerprint(repo string, closure []*pipeline.File) history.Fing
 // RegisterVersion records the pipeline's current fingerprint as a version
 // (or finds the existing one).
 func (e *Engine) RegisterVersion(repo string, closure []*pipeline.File, dir, source, summary string, addresses []int) (history.Version, error) {
-	v, _, err := e.HistoryStore(dir).Register(e.Fingerprint(repo, closure), source, summary, addresses)
+	hs := e.HistoryStore(dir)
+	hs.Author = GitAuthor(repo)
+	v, _, err := hs.Register(e.Fingerprint(repo, closure), source, summary, addresses)
 	return v, err
 }
 
 // GitAuthor returns the repo's git user.name, for attributing feedback.
 func GitAuthor(repo string) string {
+	if repo == "" {
+		return ""
+	}
 	out, err := exec.Command("git", "-C", repo, "config", "user.name").Output()
 	if err != nil {
 		return ""
