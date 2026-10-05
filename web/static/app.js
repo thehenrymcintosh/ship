@@ -65,28 +65,38 @@
     if (typeof ELK === "undefined") { setTimeout(function () { renderGraph(box); }, 100); return; }
     fetch(box.dataset.src, { credentials: "same-origin" }).then(function (r) { return r.json(); }).then(function (g) {
       var elk = new ELK();
+      // Catch-all check-ins (where errors and give-ups go) would connect to
+      // every step; show them only when a run actually went there.
+      var shown = {};
+      var nodes = g.nodes.filter(function (n) {
+        var keep = !n.fallback || n.visits > 0 || n.current;
+        if (keep) shown[n.id] = true;
+        return keep;
+      });
+      var edges = g.edges.filter(function (e) {
+        return shown[e.from] && shown[e.to] && (e.taken || !e.fallback);
+      });
       var graph = {
         id: "root",
         layoutOptions: {
-          "elk.algorithm": "layered", "elk.direction": "DOWN",
-          "elk.layered.spacing.nodeNodeBetweenLayers": "36", "elk.spacing.nodeNode": "28",
+          // Left to right, like a CI workflow; loops route back around.
+          "elk.algorithm": "layered", "elk.direction": "RIGHT",
+          "elk.layered.spacing.nodeNodeBetweenLayers": "48", "elk.spacing.nodeNode": "22",
           "elk.spacing.edgeLabel": "3", "elk.edgeRouting": "ORTHOGONAL",
+          "elk.layered.cycleBreaking.strategy": "MODEL_ORDER",
+          "elk.layered.considerModelOrder.strategy": "NODES_AND_EDGES",
           "elk.layered.nodePlacement.strategy": "BRANDES_KOEPF"
         },
-        children: g.nodes.map(function (n) {
+        children: nodes.map(function (n) {
           var label = n.label + (n.visits ? "  ×" + n.visits : "");
           return { id: n.id, width: Math.max(64, textWidth(label, 12) + 38), height: 32, data: n };
         }),
-        // Error and exhausted routes go from (nearly) every step; drawing them
-        // all buries the real flow, so show them only once taken.
-        edges: g.edges.filter(function (e) {
-          return e.taken || (e.kind !== "error" && e.kind !== "exhausted");
-        }).map(function (e, i) {
+        edges: edges.map(function (e, i) {
           return { id: "e" + i, sources: [e.from], targets: [e.to], data: e,
             labels: e.label && e.label !== "done" ? [{ text: e.label, width: textWidth(e.label, 10.5) + 4, height: 13 }] : [] };
         })
       };
-      var hidden = g.edges.length - graph.edges.length;
+      var hidden = g.nodes.length - nodes.length;
       return elk.layout(graph).then(function (out) { draw(box, out, hidden); });
     }).catch(function (err) { box.innerHTML = '<p class="muted">Graph unavailable: ' + String(err).replace(/</g, "&lt;") + "</p>"; });
   }
@@ -131,7 +141,7 @@
     if (hidden) {
       var note = document.createElement("p");
       note.className = "graph-note muted";
-      note.textContent = hidden + " error/exhausted route" + (hidden === 1 ? "" : "s") + " hidden until taken · dashed lines are fallbacks and $came_from";
+      note.textContent = "Catch-all check-ins (reached on errors or when a step gives up) are hidden until a run goes there · dashed lines go back";
       box.appendChild(note);
     }
     applyFilter();

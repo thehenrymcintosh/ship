@@ -13,6 +13,9 @@ type GraphNode struct {
 	Description string `json:"description,omitempty"`
 	Visits      int    `json:"visits"`
 	Current     bool   `json:"current"`
+	// Fallback marks a catch-all check-in: an ask step that error or
+	// exhausted routes lead to. Graphs hide it unless a run went there.
+	Fallback bool `json:"fallback,omitempty"`
 }
 
 // GraphEdge is one edge of the pipeline graph.
@@ -22,6 +25,9 @@ type GraphEdge struct {
 	Label string `json:"label"`
 	Kind  string `json:"kind"` // outcome, error, exhausted, came_from
 	Taken bool   `json:"taken"`
+	// Fallback marks an implicit route: error/exhausted routing, or any
+	// edge into or out of a fallback check-in.
+	Fallback bool `json:"fallback,omitempty"`
 }
 
 // Graph is the pipeline as nodes and edges.
@@ -103,6 +109,36 @@ func (p *Pipeline) Graph() Graph {
 			g.Nodes = append(g.Nodes, GraphNode{ID: t, Type: t, Label: t})
 		}
 	}
+	// Catch-all check-ins: ask steps that only error or exhausted routes
+	// lead to. One a step's outcome also asks for stays in the flow.
+	fallback, explicit := map[string]bool{}, map[string]bool{}
+	for _, e := range static {
+		s := p.Steps[e.To]
+		if s == nil || s.Type() != TypeAsk || e.From == e.To {
+			continue
+		}
+		if e.Kind == "error" || e.Kind == "exhausted" {
+			fallback[e.To] = true
+		} else {
+			explicit[e.To] = true
+		}
+	}
+	for id := range explicit {
+		delete(fallback, id)
+	}
+	// done/stop count as fallback too when only fallback routes reach them.
+	reached := map[string]bool{}
+	for i := range g.Edges {
+		e := &g.Edges[i]
+		e.Fallback = e.Kind == "error" || e.Kind == "exhausted" || fallback[e.From] || fallback[e.To]
+		if !e.Fallback {
+			reached[e.To] = true
+		}
+	}
+	for i := range g.Nodes {
+		n := &g.Nodes[i]
+		n.Fallback = fallback[n.ID] || ((n.ID == TargetDone || n.ID == TargetStop) && !reached[n.ID])
+	}
 	return g
 }
 
@@ -110,12 +146,17 @@ func (p *Pipeline) Graph() Graph {
 func (p *Pipeline) Mermaid() string {
 	g := p.Graph()
 	var b strings.Builder
-	b.WriteString("flowchart TD\n")
+	b.WriteString("flowchart LR\n")
 	id := func(s string) string {
 		return "n_" + strings.NewReplacer("-", "_", "$", "_", " ", "_").Replace(s)
 	}
 	esc := func(s string) string { return strings.ReplaceAll(s, `"`, "#quot;") }
+	hidden := 0
 	for _, n := range g.Nodes {
+		if n.Fallback {
+			hidden++
+			continue
+		}
 		label := esc(strings.TrimSpace(TypeGlyph(n.Type) + " " + n.Label))
 		switch n.Type {
 		case TypeAsk:
@@ -132,11 +173,17 @@ func (p *Pipeline) Mermaid() string {
 	}
 	fmt.Fprintf(&b, "  start((start)) --> %s\n", id(p.Start))
 	for _, e := range g.Edges {
+		if e.Fallback {
+			continue
+		}
 		arrow := "-->"
 		if e.Kind != "outcome" {
 			arrow = "-.->"
 		}
 		fmt.Fprintf(&b, "  %s %s|%s| %s\n", id(e.From), arrow, esc(e.Label), id(e.To))
+	}
+	if hidden > 0 {
+		b.WriteString("  %% catch-all check-ins (reached on errors or when a step gives up) are left out\n")
 	}
 	return b.String()
 }

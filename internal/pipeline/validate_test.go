@@ -132,3 +132,39 @@ func TestSchemaIsCommitted(t *testing.T) {
 		t.Error("schema/pipeline.json is stale; run `make schema`")
 	}
 }
+
+func TestGraphHidesCatchAllCheckIns(t *testing.T) {
+	f, fs := Parse("implicit.yml", []byte(`version: 1
+start: build
+defaults:
+  on_error: check-in
+steps:
+  build:
+    prompt: Build it.
+    next: {done: test}
+  test:
+    run: make test
+    next: {pass: done, fail: build}
+  check-in:
+    ask: "Stopped at {{came_from}}. What next?"
+    next: {retry: $came_from, abandon: stop}
+`))
+	if f == nil {
+		t.Fatal(fs)
+	}
+	g := f.Pipeline.Graph()
+	for _, n := range g.Nodes {
+		if want := n.ID == "check-in" || n.ID == TargetStop; n.Fallback != want {
+			t.Errorf("node %s fallback=%v", n.ID, n.Fallback)
+		}
+	}
+	for _, e := range g.Edges {
+		if want := e.From == "check-in" || e.To == "check-in" || e.To == TargetStop; e.Fallback != want {
+			t.Errorf("edge %s→%s (%s) fallback=%v", e.From, e.To, e.Kind, e.Fallback)
+		}
+	}
+	m := f.Pipeline.Mermaid()
+	if !strings.HasPrefix(m, "flowchart LR") || strings.Contains(m, "check_in") || !strings.Contains(m, "n_test") {
+		t.Errorf("mermaid:\n%s", m)
+	}
+}
