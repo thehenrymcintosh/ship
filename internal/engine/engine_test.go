@@ -618,7 +618,7 @@ func TestWarnsAboutFilesTheRunWontSee(t *testing.T) {
 	writeFile(t, skill, "---\nname: my-skill\n---\nv1\n")
 	script := "a: [{outcome: done, summary: ok}]\n"
 	s := en.start("p", "", nil, script)
-	if len(s.Warnings) != 1 || !strings.Contains(s.Warnings[0], "skill .claude/skills/my-skill isn't committed") {
+	if len(s.Warnings) != 1 || !strings.Contains(s.Warnings[0], "skill .claude/skills/my-skill isn't committed on main") {
 		t.Fatalf("untracked: %v", s.Warnings)
 	}
 	en.waitStatus(s.ID, store.StatusDone)
@@ -630,5 +630,23 @@ func TestWarnsAboutFilesTheRunWontSee(t *testing.T) {
 	writeFile(t, skill, "---\nname: my-skill\n---\nv2\n")
 	if s := en.start("p", "", nil, script); len(s.Warnings) != 1 || !strings.Contains(s.Warnings[0], "differs from main") {
 		t.Fatalf("modified: %v", s.Warnings)
+	}
+}
+
+func TestNoWarningWhenTheRunsBranchHasTheFiles(t *testing.T) {
+	en := newEnv(t, map[string]string{"p": "version: 1\nstart: a\nworkspace: {branch: audit}\nsteps:\n  a: {agent: /my-skill, next: done}\n"})
+	// The skill is committed on the run's existing branch, not on main.
+	gitRun(t, en.repo, "checkout", "-q", "-b", "audit")
+	skill := filepath.Join(en.repo, ".claude", "skills", "my-skill", "SKILL.md")
+	os.MkdirAll(filepath.Dir(skill), 0o755)
+	writeFile(t, skill, "---\nname: my-skill\n---\nv1\n")
+	gitRun(t, en.repo, "add", "-A")
+	gitRun(t, en.repo, "commit", "-qm", "setup")
+	gitRun(t, en.repo, "checkout", "-q", "main")
+	os.MkdirAll(filepath.Dir(skill), 0o755)
+	writeFile(t, skill, "---\nname: my-skill\n---\nv1\n") // untracked copy on main
+	s := en.start("p", "", nil, "a: [{outcome: done, summary: ok}]\n")
+	if len(s.Warnings) != 0 {
+		t.Fatalf("warned although the branch has the skill: %v", s.Warnings)
 	}
 }

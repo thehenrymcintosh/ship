@@ -3,6 +3,7 @@ package engine
 import (
 	"context"
 	"fmt"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -191,13 +192,55 @@ func (e *Engine) UnsyncedFiles(ctx context.Context, repo, base string, closure [
 		if err != nil || strings.HasPrefix(rel, "..") {
 			continue // user-level files are read live, not from the worktree
 		}
-		if untracked, err := gitws.Git(ctx, repo, "ls-files", "--others", "--exclude-standard", "--", rel); err == nil && untracked != "" {
-			out = append(out, fmt.Sprintf("%s %s isn't committed, so this run won't see it (commit it to %s)", p.Kind, rel, base))
-			continue
-		}
-		if _, err := gitws.Git(ctx, repo, "diff", "--quiet", base, "--", rel); err != nil {
+		missing, differs := compareWithRef(ctx, repo, base, rel)
+		switch {
+		case missing:
+			out = append(out, fmt.Sprintf("%s %s isn't committed on %s, so this run won't see it (commit it there)", p.Kind, rel, base))
+		case differs:
 			out = append(out, fmt.Sprintf("%s %s differs from %s (uncommitted or not merged there), so this run uses %s's version", p.Kind, rel, base, base))
 		}
 	}
 	return out
+}
+
+// compareWithRef compares the checkout's copy of rel (a file or a folder)
+// with ref's: missing when ref has none of it, differs when any file's
+// content or the set of files isn't the same.
+func compareWithRef(ctx context.Context, repo, ref, rel string) (missing, differs bool) {
+	listing, err := gitws.Git(ctx, repo, "ls-tree", "-r", ref, "--", rel)
+	if err != nil {
+		return false, false // can't tell (e.g. ref isn't there yet): don't warn
+	}
+	want := map[string]string{} // path → blob hash
+	for _, line := range strings.Split(strings.TrimSpace(listing), "\n") {
+		meta, path, ok := strings.Cut(line, "\t")
+		if f := strings.Fields(meta); ok && len(f) == 3 {
+			want[path] = f[2]
+		}
+	}
+	if len(want) == 0 {
+		return true, false
+	}
+	var have []string
+	_ = filepath.WalkDir(filepath.Join(repo, rel), func(path string, d fs.DirEntry, err error) error {
+		if err == nil && d.Type().IsRegular() {
+			if r, err := filepath.Rel(repo, path); err == nil {
+				have = append(have, filepath.ToSlash(r))
+			}
+		}
+		return nil
+	})
+	if len(have) != len(want) {
+		return false, true
+	}
+	hashes, err := gitws.Git(ctx, repo, append([]string{"hash-object", "--"}, have...)...)
+	if err != nil {
+		return false, true
+	}
+	for i, h := range strings.Fields(hashes) {
+		if i >= len(have) || want[have[i]] != h {
+			return false, true
+		}
+	}
+	return false, false
 }

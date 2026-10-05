@@ -722,7 +722,13 @@ func (e *Engine) Start(ctx context.Context, req StartRequest) (*store.RunSnapsho
 	// once the worktree exists, from what the run's agents will actually use.
 	created.HistoryDir = HistoryDir(e.Loader(req.Repo), req.Repo, e.Home(), name)
 	if provider != "none" && provider != parentProvider {
-		created.Warnings = e.UnsyncedFiles(ctx, req.Repo, base, closure)
+		// The worktree checks out the run's branch if it exists already,
+		// otherwise a new one from the base: compare with what it'll have.
+		from := base
+		if _, err := gitws.Git(ctx, req.Repo, "rev-parse", "--verify", "--quiet", "refs/heads/"+branch); err == nil {
+			from = branch
+		}
+		created.Warnings = e.UnsyncedFiles(ctx, req.Repo, from, closure)
 	}
 	if req.child != nil {
 		created.Parent = &store.ParentRef{ID: req.child.parent.ID, Step: req.child.step}
