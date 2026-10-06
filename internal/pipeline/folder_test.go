@@ -71,18 +71,27 @@ func TestFolderPipelines(t *testing.T) {
 		t.Fatalf("W108: %v (all: %v)", w108, findings)
 	}
 
-	// The plugin manifest is written once, and kept when it's right.
+	// The plugin is built elsewhere, from the folder's skills, and
+	// rebuilt from scratch.
 	folder := filepath.Join(dir, "folder")
-	if wrote, err := EnsurePlugin(folder, "folder", "Greets"); !wrote || err != nil {
-		t.Fatal(wrote, err)
+	plugin := filepath.Join(t.TempDir(), "plugin")
+	writeT(t, filepath.Join(plugin, "skills", "gone", "SKILL.md"), "stale")
+	if err := BuildPlugin(plugin, folder, "folder", "Greets"); err != nil {
+		t.Fatal(err)
 	}
 	var m Manifest
-	b, _ := os.ReadFile(filepath.Join(folder, PluginManifest))
+	b, _ := os.ReadFile(filepath.Join(plugin, PluginManifest))
 	if json.Unmarshal(b, &m) != nil || m.Name != "folder" || m.Version == "" || m.Description != "Greets" {
 		t.Fatalf("%s", b)
 	}
-	if wrote, _ := EnsurePlugin(folder, "folder", "Greets"); wrote {
-		t.Fatal("rewrote a correct manifest")
+	if _, err := os.Stat(filepath.Join(plugin, "skills", "greet", "SKILL.md")); err != nil {
+		t.Fatal("skill not copied")
+	}
+	if _, err := os.Stat(filepath.Join(plugin, "skills", "gone")); err == nil {
+		t.Fatal("stale skill kept")
+	}
+	if _, err := os.Stat(filepath.Join(folder, PluginManifest)); err == nil {
+		t.Fatal("wrote into the folder")
 	}
 }
 

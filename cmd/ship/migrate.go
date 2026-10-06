@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -11,6 +12,7 @@ import (
 
 	"github.com/thehenrymcintosh/ship/internal/engine"
 	"github.com/thehenrymcintosh/ship/internal/pipeline"
+	gitws "github.com/thehenrymcintosh/ship/internal/workspace/git"
 )
 
 // cmdRepo is the --repo flag's repo, or the current dir's ("" outside one).
@@ -30,7 +32,8 @@ func (a *app) migrateCmd() *cobra.Command {
 		Long: `Move .ship/pipelines/<name>.yml to .ship/pipelines/<name>/pipeline.yml. The
 folder also holds the pipeline's history (versions, run stats, feedback),
 which moves over from .ship/history/<name>/, and can hold the pipeline's own
-skills in skills/<skill>/SKILL.md.
+skills in skills/<skill>/SKILL.md. Files git tracks are moved with git mv,
+so the moves are staged.
 
 --skills also moves the skills from .claude/skills that this pipeline calls
 and no other pipeline here does. Skills in ~/.claude/skills are left alone:
@@ -65,14 +68,15 @@ pipelines in other repos may use them.`,
 			if err := os.MkdirAll(folder, 0o755); err != nil {
 				return err
 			}
-			// The schema comment's relative path is one level deeper now.
-			src := strings.Replace(string(f.Source), "$schema=../schema/", "$schema=../../schema/", 1)
 			dest := filepath.Join(folder, pipeline.FolderFile)
-			if err := os.WriteFile(dest, []byte(src), 0o644); err != nil {
+			if err := moveFile(repo, path, dest); err != nil {
 				return err
 			}
-			if err := os.Remove(path); err != nil {
-				return err
+			// The schema comment's relative path is one level deeper now.
+			if src := strings.Replace(string(f.Source), "$schema=../schema/", "$schema=../../schema/", 1); src != string(f.Source) {
+				if err := os.WriteFile(dest, []byte(src), 0o644); err != nil {
+					return err
+				}
 			}
 			say("moved    %s → %s", a.show(repo, path), a.show(repo, dest))
 
@@ -84,7 +88,7 @@ pipelines in other repos may use them.`,
 						say("kept     %s (%s exists)", a.show(repo, from), a.show(repo, to))
 						continue
 					}
-					if err := os.Rename(from, to); err != nil {
+					if err := moveFile(repo, from, to); err != nil {
 						return err
 					}
 				}
@@ -103,21 +107,16 @@ pipelines in other repos may use them.`,
 						if err := os.MkdirAll(filepath.Dir(to), 0o755); err != nil {
 							return err
 						}
-						if err := os.Rename(from, to); err != nil {
+						if err := moveFile(repo, from, to); err != nil {
 							return err
 						}
 						say("moved    %s/ → %s/", a.show(repo, from), a.show(repo, to))
 					}
 				}
 			}
-			if wrote, err := pipeline.EnsurePlugin(folder, name, f.Pipeline.Description); err != nil {
-				return err
-			} else if wrote {
-				say("wrote    %s", a.show(repo, filepath.Join(folder, pipeline.PluginManifest)))
-			}
 			fmt.Printf("\n%s is now a pipeline folder. Its agents load the folder's skills (skills/<skill>/SKILL.md) as a plugin.\n", name)
 			if repo != "" {
-				fmt.Println("Commit the moves: runs check out your base branch, so they only see the folder once it's committed there.")
+				fmt.Println("Moves of files git tracks are staged (git mv). Commit them: runs check out your base branch, so they only see the folder once it's committed there.")
 			}
 			return nil
 		},
@@ -161,6 +160,22 @@ func (a *app) ownSkills(l *pipeline.Loader, repo, name string, f *pipeline.File)
 	}
 	sort.Strings(out)
 	return out
+}
+
+// moveFile moves a file or dir: with git mv when git tracks it (or
+// anything in it), so the move is staged, else a plain rename.
+func moveFile(repo, from, to string) error {
+	if repo != "" {
+		if rel, err := filepath.Rel(repo, from); err == nil && !strings.HasPrefix(rel, "..") {
+			ctx := context.Background()
+			if out, err := gitws.Git(ctx, repo, "ls-files", "--", rel); err == nil && out != "" {
+				toRel, _ := filepath.Rel(repo, to)
+				_, err := gitws.Git(ctx, repo, "mv", "--", rel, toRel)
+				return err
+			}
+		}
+	}
+	return os.Rename(from, to)
 }
 
 // show is a path as people see it: repo-relative, else with ~.

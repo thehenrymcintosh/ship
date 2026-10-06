@@ -33,14 +33,9 @@ func PipelineFolders(repo string, closure []*pipeline.File) map[string]string {
 	return out
 }
 
-// ensurePlugins writes each folder pipeline's plugin manifest if needed.
-func ensurePlugins(closure []*pipeline.File) {
-	for _, f := range closure {
-		if folder := pipeline.FolderOf(f.Path); folder != "" {
-			_, _ = pipeline.EnsurePlugin(folder, f.Name, f.Pipeline.Description)
-		}
-	}
-}
+// pluginDir is where, in a run's dir, a folder pipeline's skills are
+// assembled as a plugin for its agents.
+const pluginDir = "plugin"
 
 // runFolders resolves a run's pipeline folders as the run sees them: a
 // repo folder from root (its worktree), falling back to the main checkout

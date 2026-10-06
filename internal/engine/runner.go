@@ -580,8 +580,15 @@ func (r *runner) visit(name string, st *pipeline.Step, resume *store.VisitSummar
 	if root == "" {
 		root = s.Repo
 	}
-	if folder := runFolders(s, root)[s.Pipeline]; folder != "" {
-		v.PluginDirs = []string{folder}
+	if folder := runFolders(s, root)[s.Pipeline]; folder != "" && st.IsAgentLike() {
+		// The folder's skills as a plugin, built in the run's dir (never
+		// in the checkout) from the skills as the worktree has them now.
+		dir := filepath.Join(r.dir, pluginDir)
+		if perr := pipeline.BuildPlugin(dir, folder, s.Pipeline, r.pipe.Description); perr != nil {
+			r.e.o.Log.Warn("building the pipeline's plugin", "run", r.id, "err", perr)
+		} else {
+			v.PluginDirs = []string{dir}
+		}
 	}
 	if err != nil {
 		// Env rendering failed: report it as the visit's error.

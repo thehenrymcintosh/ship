@@ -48,8 +48,14 @@ func TestMigrateToFolder(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(h.repo, ".claude", "skills", "shared", "SKILL.md")); err != nil {
 		t.Fatal("a shared skill must stay")
 	}
-	if _, err := os.Stat(filepath.Join(folder, ".claude-plugin", "plugin.json")); err != nil {
-		t.Fatal("no plugin manifest")
+	if _, err := os.Stat(filepath.Join(folder, ".claude-plugin")); err == nil {
+		t.Fatal("the folder needs no plugin manifest")
+	}
+	// The pipeline file was tracked: its move is staged (and the schema
+	// path edit isn't). The skill and history weren't: they're just moved.
+	st, err := exec.Command("git", "-C", h.repo, "status", "--porcelain").Output()
+	if err != nil || !strings.Contains(string(st), "RM .ship/pipelines/docs.yml -> .ship/pipelines/docs/pipeline.yml") {
+		t.Fatalf("git status:\n%s", st)
 	}
 	if _, err := os.Stat(filepath.Join(h.repo, ".ship", "history", "docs")); err == nil {
 		t.Fatal("history left behind")

@@ -728,7 +728,6 @@ func (e *Engine) Start(ctx context.Context, req StartRequest) (*store.RunSnapsho
 		// The parent's copy has no folders of its own: keep the parent's.
 		created.PipelineFolders = req.child.parent.PipelineFolders
 	}
-	ensurePlugins(closure)
 	if provider != "none" && provider != parentProvider {
 		// The worktree checks out the run's branch if it exists already,
 		// otherwise a new one from the base: compare with what it'll have.

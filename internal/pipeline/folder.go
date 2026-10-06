@@ -2,57 +2,74 @@ package pipeline
 
 import (
 	"encoding/json"
+	"io/fs"
 	"os"
 	"path/filepath"
 )
 
-// A pipeline folder (<dir>/<name>/pipeline.yml) is also a Claude Code
-// plugin: its skills/<skill>/SKILL.md are the pipeline's own skills, and
-// ship passes the folder to every agent of the pipeline with --plugin-dir,
-// so `/skill` and `/<name>:skill` both reach them.
+// A pipeline folder (<dir>/<name>/pipeline.yml) holds the pipeline's own
+// skills in skills/<skill>/SKILL.md. ship gives them to every agent of the
+// pipeline as a Claude Code plugin named after the pipeline (--plugin-dir),
+// so `/skill` and `/<name>:skill` both reach them. The plugin is built in
+// the run's dir (see BuildPlugin), so the folder needs no manifest and the
+// checkout is never written to.
 const (
 	SkillsDir      = "skills"
 	PluginManifest = ".claude-plugin/plugin.json"
 )
 
 // pluginVersion is the manifest's version. ship's own versions (see the
-// history package) are the real record; this stays fixed so the manifest
-// doesn't change with every edit.
+// history package) are the real record.
 const pluginVersion = "1.0.0"
 
-// Manifest is the plugin.json ship maintains.
+// Manifest is the plugin.json ship writes.
 type Manifest struct {
 	Name        string `json:"name"`
 	Version     string `json:"version,omitempty"`
 	Description string `json:"description,omitempty"`
 }
 
-// EnsurePlugin writes the folder's plugin manifest when it's missing or
-// names another plugin, keeping any other fields. It reports whether it
-// wrote.
-func EnsurePlugin(folder, name, description string) (bool, error) {
-	path := filepath.Join(folder, filepath.FromSlash(PluginManifest))
-	raw := map[string]any{}
-	if b, err := os.ReadFile(path); err == nil {
-		if json.Unmarshal(b, &raw) == nil && raw["name"] == name {
-			return false, nil
-		}
+// BuildPlugin makes dest a Claude Code plugin of a pipeline folder's
+// skills: a manifest naming it after the pipeline, and a copy of the
+// folder's skills/ (replacing whatever dest held).
+func BuildPlugin(dest, folder, name, description string) error {
+	if err := os.RemoveAll(dest); err != nil {
+		return err
 	}
-	raw["name"] = name
-	if _, ok := raw["version"]; !ok {
-		raw["version"] = pluginVersion
-	}
-	if _, ok := raw["description"]; !ok && description != "" {
-		raw["description"] = description
-	}
-	b, err := json.MarshalIndent(raw, "", "  ")
+	b, err := json.MarshalIndent(Manifest{Name: name, Version: pluginVersion, Description: description}, "", "  ")
 	if err != nil {
-		return false, err
+		return err
 	}
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return false, err
+	manifest := filepath.Join(dest, filepath.FromSlash(PluginManifest))
+	if err := os.MkdirAll(filepath.Dir(manifest), 0o755); err != nil {
+		return err
 	}
-	return true, os.WriteFile(path, append(b, '\n'), 0o644)
+	if err := os.WriteFile(manifest, append(b, '\n'), 0o644); err != nil {
+		return err
+	}
+	src := filepath.Join(folder, SkillsDir)
+	if _, err := os.Stat(src); err != nil {
+		return nil
+	}
+	return filepath.WalkDir(src, func(p string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		rel, _ := filepath.Rel(src, p)
+		to := filepath.Join(dest, SkillsDir, rel)
+		if d.IsDir() {
+			return os.MkdirAll(to, 0o755)
+		}
+		info, err := d.Info()
+		if err != nil {
+			return err
+		}
+		data, err := os.ReadFile(p)
+		if err != nil {
+			return err
+		}
+		return os.WriteFile(to, data, info.Mode().Perm())
+	})
 }
 
 // FolderSkill returns the folder skill's directory if the folder has it

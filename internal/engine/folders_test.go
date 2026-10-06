@@ -2,6 +2,7 @@ package engine
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -32,13 +33,22 @@ func TestFolderPipelineRun(t *testing.T) {
 	if s.PipelineFolders["fp"] != ".ship/pipelines/fp" {
 		t.Fatalf("folders %v", s.PipelineFolders)
 	}
+	// The plugin is built in the run's dir from the worktree's skills; the
+	// checkout isn't touched.
 	b, _ := os.ReadFile(out)
 	got := strings.TrimSpace(string(b))
-	if !strings.HasSuffix(got, filepath.Join(".ship", "pipelines", "fp")) || strings.HasPrefix(got, en.repo+string(filepath.Separator)) {
-		t.Fatalf("plugin dir %q should be the worktree's copy of the folder", got)
+	runDir := en.e.o.Store.RunDir(snap.ID)
+	if got != filepath.Join(runDir, pluginDir) {
+		t.Fatalf("plugin dir %q, want it in the run dir %s", got, runDir)
 	}
-	if _, err := os.Stat(filepath.Join(folder, pipeline.PluginManifest)); err != nil {
-		t.Fatal("plugin manifest not written")
+	if _, err := os.Stat(filepath.Join(got, "skills", "greet", "SKILL.md")); err != nil {
+		t.Fatal("the folder's skills aren't in the plugin")
+	}
+	if b, _ := os.ReadFile(filepath.Join(got, pipeline.PluginManifest)); !strings.Contains(string(b), `"name": "fp"`) {
+		t.Fatalf("manifest: %s", b)
+	}
+	if st, _ := exec.Command("git", "-C", en.repo, "status", "--porcelain", "--", ".ship/pipelines").Output(); strings.Contains(string(st), "claude-plugin") {
+		t.Fatalf("wrote into the checkout:\n%s", st)
 	}
 	vs, err := history.Open(folder, t.TempDir()).Versions()
 	if err != nil || len(vs) != 1 {
