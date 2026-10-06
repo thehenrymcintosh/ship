@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
+	"strings"
 
 	"github.com/goccy/go-yaml"
 	"github.com/invopop/jsonschema"
@@ -25,6 +27,9 @@ type Config struct {
 	UI            UI                   `yaml:"ui"`
 	Retention     Retention            `yaml:"retention"`
 	Stats         Stats                `yaml:"stats"`
+	// DefaultPipeline is the pipeline `ship start` (and the ship skill)
+	// use when neither the command nor the brief names one.
+	DefaultPipeline string `yaml:"default_pipeline"`
 }
 
 // Workspace configures workspace providers.
@@ -155,6 +160,36 @@ func Load(home, repo string) (Config, error) {
 		c.MaxAgents = 1
 	}
 	return c, nil
+}
+
+// SetDefaultPipeline sets default_pipeline in a config file (name "" removes
+// it), keeping the rest of the file as it is.
+func SetDefaultPipeline(file, name string) error {
+	data, err := os.ReadFile(file)
+	if err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	var lines []string
+	if len(data) > 0 {
+		lines = strings.Split(strings.TrimRight(string(data), "\n"), "\n")
+	}
+	var out []string
+	for _, l := range lines {
+		if !strings.HasPrefix(l, "default_pipeline:") {
+			out = append(out, l)
+		}
+	}
+	if name != "" {
+		out = append(out, "default_pipeline: "+strconv.Quote(name))
+	}
+	if err := os.MkdirAll(filepath.Dir(file), 0o755); err != nil {
+		return err
+	}
+	text := strings.Join(out, "\n")
+	if text != "" {
+		text += "\n"
+	}
+	return os.WriteFile(file, []byte(text), 0o644)
 }
 
 func toMap(v any) (map[string]any, error) {

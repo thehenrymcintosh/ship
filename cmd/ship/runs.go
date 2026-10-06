@@ -14,6 +14,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/thehenrymcintosh/ship/internal/brand"
+	"github.com/thehenrymcintosh/ship/internal/config"
 	"github.com/thehenrymcintosh/ship/internal/engine"
 	"github.com/thehenrymcintosh/ship/internal/engine/steps"
 	"github.com/thehenrymcintosh/ship/internal/pipeline"
@@ -135,12 +136,14 @@ func (a *app) listPipelines(repoFlag string) error {
 		Source      string `json:"source"` // repo | global
 		Path        string `json:"path"`
 		Valid       bool   `json:"valid"`
+		Default     bool   `json:"default,omitempty"` // used when a start names none
 	}
 	var rows []row
 	opts := a.validateOpts(repo)
+	cfg, _ := config.Load(a.home, repo)
 	for _, n := range l.Names() {
 		f, fs := l.Validate(n, opts)
-		r := row{Name: n, Path: l.Path(n), Valid: !pipeline.HasErrors(fs), Source: "repo"}
+		r := row{Name: n, Path: l.Path(n), Valid: !pipeline.HasErrors(fs), Source: "repo", Default: n == cfg.DefaultPipeline}
 		if repo == "" || l.Dir(n) != engine.PipelinesDir(repo) {
 			r.Source = "global"
 		}
@@ -163,12 +166,76 @@ func (a *app) listPipelines(repoFlag string) error {
 	fmt.Fprintln(tw, "PIPELINE\tSOURCE\tDESCRIPTION")
 	for _, r := range rows {
 		name := r.Name
+		if r.Default {
+			name += a.color("32", " (default)")
+		}
 		if !r.Valid {
 			name += a.color("31", " (invalid)")
 		}
 		fmt.Fprintf(tw, "%s\t%s\t%s\n", name, r.Source, r.Description)
 	}
 	return tw.Flush()
+}
+
+// defaultPipelineCmd shows or sets the pipeline a start uses when it names
+// none.
+func (a *app) defaultPipelineCmd() *cobra.Command {
+	var global, clear bool
+	cmd := &cobra.Command{
+		Use:   "default [pipeline]",
+		Short: "Show or set the pipeline `start` uses when neither it nor the brief names one",
+		Long: `With a name, set default_pipeline in this repo's ` + brand.Dir + `/config.yml (or, with
+--global, ~/` + brand.Dir + `/config.yml). Without one, print the current default.
+--clear removes the setting.`,
+		Args: cobra.MaximumNArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			repo, err := cmdRepo(cmd)
+			if err != nil {
+				return err
+			}
+			if len(args) == 0 && !clear {
+				cfg, err := config.Load(a.home, repo)
+				if err != nil {
+					return err
+				}
+				if a.json {
+					return printJSON(map[string]string{"default_pipeline": cfg.DefaultPipeline})
+				}
+				if cfg.DefaultPipeline == "" {
+					fmt.Println("No default pipeline.")
+				} else {
+					fmt.Println(cfg.DefaultPipeline)
+				}
+				return nil
+			}
+			file := config.UserFile(a.home)
+			if !global {
+				if repo == "" {
+					return fail(exitUser, "not in a git repo (use --global for every repo)")
+				}
+				file = config.RepoFile(repo)
+			}
+			name := ""
+			if len(args) > 0 && !clear {
+				name = args[0]
+				if l := a.loader(repo); l.Path(name) == "" {
+					return fail(exitNotFound, "no pipeline %q here (have: %s)", name, strings.Join(l.Names(), ", "))
+				}
+			}
+			if err := config.SetDefaultPipeline(file, name); err != nil {
+				return err
+			}
+			if name == "" {
+				fmt.Printf("Cleared the default pipeline in %s\n", tildify(file))
+			} else {
+				fmt.Printf("Default pipeline is now %s (%s)\n", a.bold(name), tildify(file))
+			}
+			return nil
+		},
+	}
+	cmd.Flags().BoolVar(&global, "global", false, "set it for every repo (~/"+brand.Dir+"/config.yml)")
+	cmd.Flags().BoolVar(&clear, "clear", false, "remove the default")
+	return cmd
 }
 
 func (a *app) statusCmd() *cobra.Command {

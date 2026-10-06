@@ -160,4 +160,28 @@ func TestTemplatesAndAdd(t *testing.T) {
 	if cmd.Run(); cmd.ProcessState.ExitCode() != exitNotFound {
 		t.Fatalf("unknown template exit %d", cmd.ProcessState.ExitCode())
 	}
+
+	// A default pipeline is set per repo, listed, and must exist.
+	if out := runShip(t, repo, env, "pipeline", "default"); !strings.Contains(out, "No default") {
+		t.Fatalf("default before set: %s", out)
+	}
+	runShip(t, repo, env, "pipeline", "default", "rigorous")
+	if out := runShip(t, repo, env, "pipeline", "default"); strings.TrimSpace(out) != "rigorous" {
+		t.Fatalf("default after set: %s", out)
+	}
+	if b, _ := os.ReadFile(filepath.Join(repo, ".ship", "config.yml")); !strings.Contains(string(b), `default_pipeline: "rigorous"`) {
+		t.Fatalf("config: %s", b)
+	}
+	if out := runShip(t, repo, env, "ls", "--pipelines", "--json"); !strings.Contains(out, `"default": true`) {
+		t.Fatalf("ls should mark the default: %s", out)
+	}
+	cmd = exec.Command(shipBin, "pipeline", "default", "nope")
+	cmd.Dir, cmd.Env = repo, append(os.Environ(), env...)
+	if cmd.Run(); cmd.ProcessState.ExitCode() != exitNotFound {
+		t.Fatalf("unknown default exit %d", cmd.ProcessState.ExitCode())
+	}
+	runShip(t, repo, env, "pipeline", "default", "--clear")
+	if out := runShip(t, repo, env, "pipeline", "default"); !strings.Contains(out, "No default") {
+		t.Fatalf("default after clear: %s", out)
+	}
 }

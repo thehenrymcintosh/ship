@@ -38,8 +38,8 @@ func (a *app) startCmd() *cobra.Command {
 		Short: "Start a run from a brief",
 		Long: `Start a run of a pipeline from a brief (markdown with YAML front matter).
 
-The pipeline is the argument, else the brief's "pipeline:", else the only
-pipeline available. Pipelines come from the repo's ` + brand.Dir + `/pipelines, then the
+The pipeline is the argument, else the brief's "pipeline:", else the default
+(` + "`" + brand.Name + ` pipeline default` + "`" + `), else the only pipeline available. Pipelines come from the repo's ` + brand.Dir + `/pipelines, then the
 global ~/` + brand.Dir + `/pipelines.`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -77,7 +77,8 @@ global ~/` + brand.Dir + `/pipelines.`,
 				name = args[0]
 			}
 			l := a.loader(repo)
-			if name, err = engine.ResolvePipeline(l, name, b); err != nil {
+			cfg, _ := config.Load(a.home, repo)
+			if name, err = engine.ResolvePipeline(l, name, b, cfg.DefaultPipeline); err != nil {
 				return fail(exitUser, "%v", err)
 			}
 			// Prompt for missing from_brief vars when a human is at the terminal.
@@ -115,7 +116,6 @@ global ~/` + brand.Dir + `/pipelines.`,
 			for _, w := range res.Warnings {
 				fmt.Fprintln(os.Stderr, a.color("33", "warning: "+w))
 			}
-			cfg, _ := config.Load(a.home, repo)
 			if !noOpen && cfg.UI.OpenOnStart {
 				openBrowser(c.UIURL("/runs/" + res.ID))
 			}

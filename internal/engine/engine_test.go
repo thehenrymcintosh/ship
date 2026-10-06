@@ -399,6 +399,18 @@ steps:
 	s = en.waitStatus(s.ID, store.StatusDone)
 	// Only one `none` run per repo at a time is enforced for active runs.
 	_ = s
+
+	// With several pipelines, a start naming none uses the default.
+	_, err = en.e.Start(context.Background(), StartRequest{Repo: en.repo, Brief: []byte("---\ntitle: x\nvars: {ticket: API-2}\n---\n")})
+	if err == nil || !strings.Contains(err.Error(), "several pipelines") {
+		t.Fatalf("want several pipelines, got %v", err)
+	}
+	en.cfg.DefaultPipeline = "v"
+	s, err = en.e.Start(context.Background(), StartRequest{Repo: en.repo, Brief: []byte("---\ntitle: x\nvars: {ticket: API-2}\n---\n")})
+	if err != nil || s.Pipeline != "v" {
+		t.Fatalf("default pipeline: %v %+v", err, s)
+	}
+	en.waitStatus(s.ID, store.StatusDone)
 }
 
 func TestMaxTransitions(t *testing.T) {

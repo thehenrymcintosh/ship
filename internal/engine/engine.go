@@ -504,13 +504,17 @@ func NewRunID(title string, t time.Time) string {
 	return t.Format("20060102-150405") + "-" + brief.Slug(title, 30) + "-" + randHex(2)
 }
 
-// ResolvePipeline picks the pipeline name for a start ( step 2).
-func ResolvePipeline(l *pipeline.Loader, arg string, b *brief.Brief) (string, error) {
+// ResolvePipeline picks the pipeline name for a start: the argument, the
+// brief's, the configured default, else the only pipeline there is.
+func ResolvePipeline(l *pipeline.Loader, arg string, b *brief.Brief, def string) (string, error) {
 	if arg != "" {
 		return arg, nil
 	}
 	if b != nil && b.Pipeline != "" {
 		return b.Pipeline, nil
+	}
+	if def != "" {
+		return def, nil
 	}
 	names := l.Names()
 	switch len(names) {
@@ -519,7 +523,7 @@ func ResolvePipeline(l *pipeline.Loader, arg string, b *brief.Brief) (string, er
 	case 1:
 		return names[0], nil
 	}
-	return "", invalid("several pipelines exist; name one: %s", strings.Join(names, ", "))
+	return "", invalid("several pipelines exist; name one (or set a default with `%s pipeline default <name>`): %s", brand.Name, strings.Join(names, ", "))
 }
 
 // PipelinesDir is <repo>/.ship/pipelines.
@@ -572,7 +576,7 @@ func (e *Engine) Start(ctx context.Context, req StartRequest) (*store.RunSnapsho
 	}
 	name := req.Pipeline
 	if req.child == nil {
-		if name, err = ResolvePipeline(loader, name, b); err != nil {
+		if name, err = ResolvePipeline(loader, name, b, cfg.DefaultPipeline); err != nil {
 			return nil, err
 		}
 	}
