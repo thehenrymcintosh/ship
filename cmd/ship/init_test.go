@@ -28,7 +28,7 @@ func TestInitInstallsHandoffSkill(t *testing.T) {
 		t.Fatal(string(out))
 	}
 	env := []string{"SHIP_HOME=" + filepath.Join(root, "home"), "CLAUDE_CONFIG_DIR=" + filepath.Join(root, "claude")}
-	skill := filepath.Join(".claude", "skills", "ship-handoff", "SKILL.md")
+	skill := filepath.Join(".claude", "skills", "ship", "SKILL.md")
 	// The repo root and .ship/ are both JetBrains projects; the root already
 	// has a jsonSchemas.xml with another mapping that must survive.
 	os.MkdirAll(filepath.Join(repo, ".idea"), 0o755)
@@ -45,13 +45,25 @@ func TestInitInstallsHandoffSkill(t *testing.T) {
 </project>
 `), 0o644)
 
+	// An unedited copy of the skill under its old name is retired.
+	old := filepath.Join(repo, ".claude", "skills", "ship-handoff", "SKILL.md")
+	os.MkdirAll(filepath.Dir(old), 0o755)
+	oldSkill, err := os.ReadFile("../../internal/initfiles/testdata/ship-handoff.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	os.WriteFile(old, oldSkill, 0o644)
+
 	out := runShip(t, repo, env, "init")
 	b, err := os.ReadFile(filepath.Join(repo, skill))
-	if err != nil || !strings.Contains(string(b), "name: ship-handoff") {
+	if err != nil || !strings.Contains(string(b), "name: ship\n") {
 		t.Fatalf("repo skill not installed by default: %v\n%s", err, out)
 	}
-	if !strings.Contains(out, "hand this to ship") {
+	if !strings.Contains(out, `say "ship this"`) {
 		t.Errorf("init should mention the handoff:\n%s", out)
+	}
+	if _, err := os.Stat(filepath.Dir(old)); err == nil || !strings.Contains(out, "removed") {
+		t.Errorf("the old ship-handoff skill should be removed:\n%s", out)
 	}
 	if _, err := os.Stat(filepath.Join(repo, ".claude", "skills", "ship-feedback", "SKILL.md")); err != nil {
 		t.Fatalf("feedback skill missing: %v", err)
@@ -92,7 +104,7 @@ func TestInitInstallsHandoffSkill(t *testing.T) {
 
 	// --global installs it for the user.
 	runShip(t, root, env, "init", "--global")
-	if _, err := os.Stat(filepath.Join(root, "claude", "skills", "ship-handoff", "SKILL.md")); err != nil {
+	if _, err := os.Stat(filepath.Join(root, "claude", "skills", "ship", "SKILL.md")); err != nil {
 		t.Fatalf("global skill missing: %v", err)
 	}
 	if fi, err := os.Stat(filepath.Join(root, "home", "pipelines")); err != nil || !fi.IsDir() {

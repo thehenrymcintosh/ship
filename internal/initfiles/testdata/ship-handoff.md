@@ -1,13 +1,12 @@
 ---
-name: ship
-description: Hand a planned piece of work over to a ship pipeline. Use when the user says to ship something ("ship this", "ship it", "ship a fix for…", "ship the plan"), or to kick off, hand over, or send the plan to the pipeline.
+name: ship-handoff
+description: Hand a planned piece of work over to a ship pipeline. Use when the user says to kick off, hand over, ship, or send the plan to the pipeline.
 ---
 
 # Hand over to ship
 
-1. Run `ship ls --pipelines` to see available pipelines. If the user named one, use it.
-   Otherwise, if one is marked (default), use it without asking. Otherwise, if more than one
-   could fit, ask which one. If there are none, stop and tell the user to create one first:
+1. Run `ship ls --pipelines` to see available pipelines. If more than one could fit and the user
+   didn't say, ask which one. If there are none, stop and tell the user to create one first:
    either run `/ship-design` (it designs a pipeline with them in plain language) or pick a
    template with `ship templates` and `ship add <template>`.
 2. Write a brief from this conversation in exactly this format:

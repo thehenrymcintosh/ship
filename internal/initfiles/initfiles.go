@@ -71,7 +71,13 @@ const (
 	Updated   = "updated"   // replaced an older (or, with force, edited) copy
 	Unchanged = "unchanged" // already current
 	Edited    = "edited"    // kept: someone changed it
+	// For a skill since renamed:
+	Removed    = "removed"     // an unedited copy, deleted
+	MovedAside = "moved aside" // an edited copy, renamed so Claude Code no longer loads it
 )
+
+// renamed are the skills' old names (skill dirs), each retired by Sync.
+var renamed = []string{brand.OldSkillName}
 
 // Result is what Sync did with one skill.
 type Result struct {
@@ -79,10 +85,15 @@ type Result struct {
 	Action string
 }
 
-// Installed reports whether any of the skills is in dir.
+// Installed reports whether any of the skills (under a current or old
+// name) is in dir.
 func Installed(dir string) bool {
+	paths := append([]string{}, renamed...)
 	for _, f := range Skills() {
-		if _, err := os.Stat(filepath.Join(dir, f.Path)); err == nil {
+		paths = append(paths, f.Path)
+	}
+	for _, p := range paths {
+		if _, err := os.Stat(filepath.Join(dir, p)); err == nil {
 			return true
 		}
 	}
@@ -119,5 +130,40 @@ func Sync(dir string, force bool) ([]Result, error) {
 		}
 		out = append(out, Result{Path: path, Action: action})
 	}
+	for _, name := range renamed {
+		r, err := retire(filepath.Join(dir, name), force)
+		if err != nil {
+			return out, err
+		}
+		if r != nil {
+			out = append(out, *r)
+		}
+	}
 	return out, nil
+}
+
+// retire takes a renamed skill's old copy out of use, so Claude Code doesn't
+// offer it alongside the new one: an unedited copy is deleted, an edited one
+// renamed to SKILL.md.old (kept for its edits).
+func retire(dir string, force bool) (*Result, error) {
+	path := filepath.Join(dir, "SKILL.md")
+	cur, err := os.ReadFile(path)
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	if force || shipped(cur) {
+		if err := os.Remove(path); err != nil {
+			return nil, err
+		}
+		_ = os.Remove(dir) // only if nothing else is in it
+		return &Result{Path: path, Action: Removed}, nil
+	}
+	old := path + ".old"
+	if err := os.Rename(path, old); err != nil {
+		return nil, err
+	}
+	return &Result{Path: old, Action: MovedAside}, nil
 }

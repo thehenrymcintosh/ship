@@ -50,7 +50,7 @@ ship init
 ```
 
 This creates `.ship/` (where pipelines live) and installs three Claude Code
-skills: `/ship-design`, `ship-handoff` and `ship-feedback`.
+skills: `/ship-design`, `/ship` and `ship-feedback`.
 
 **2. Design a pipeline with Claude.** In Claude Code, run `/ship-design` and
 say what you want in plain words:
@@ -65,9 +65,12 @@ then writes the pipeline as a folder, `.ship/pipelines/<name>/`, with
 when you invoke it.
 
 **3. Plan a change, then hand it over.** Talk the change through with Claude
-as usual. When you're happy with the plan, say **"hand this to ship"**. The
-`ship-handoff` skill writes a brief (the context, the plan and acceptance
-criteria) and starts a run. The web UI opens on it.
+as usual. When you're happy with the plan, say **"ship this"** (or "ship
+it", or run `/ship`). The `ship` skill writes a brief (the context, the plan
+and acceptance criteria) and starts a run on your default pipeline, or asks
+which one if you haven't set a default (`ship pipeline default <name>`). The
+web UI opens on it. (Older versions called this skill `ship-handoff`;
+`ship init` and `ship update` replace it.)
 
 **4. Watch, and step in when asked.** The run works in its own worktree. When
 it needs you, for example an agent is stuck or the slices of a big change need
@@ -155,6 +158,7 @@ takes a run, any unique part of its id works (`3fa`, `rate-limit`).
 | `ship pipeline versions <pipeline>` | A pipeline's versions and what changed in each |
 | `ship pipeline diff <pipeline> v1 v2` / `restore <pipeline> v1` | Compare versions, or go back to one |
 | `ship pipeline migrate <pipeline>` | Turn a single-file pipeline into a folder |
+| `ship pipeline default [pipeline]` | Show or set the pipeline `ship start` uses when neither it nor the brief names one (`--global` for every repo, `--clear` to remove) |
 | `ship templates` / `ship add <name>` | List and add pipeline templates |
 | `ship init` / `ship update` | Set up a repo / update ship |
 
@@ -475,12 +479,12 @@ files are left in place; once converted, you can delete them.
 ## Briefs
 
 A run starts from a brief: markdown with a little YAML at the top. The
-handoff skill writes these for you; you can also write one yourself.
+`/ship` skill writes these for you; you can also write one yourself.
 
 ```markdown
 ---
 title: Rate limit the public API          # required
-pipeline: pr                              # which pipeline (optional if there's only one)
+pipeline: pr                              # which pipeline (optional with a default, or only one)
 vars: { ticket: API-123 }                 # values for the pipeline's variables
 acceptance:
   - Requests over the limit get 429 with Retry-After

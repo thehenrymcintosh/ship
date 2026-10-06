@@ -27,8 +27,8 @@ schemas, and map the schemas for VS Code (.vscode/settings.json) and
 JetBrains IDEs (.idea/jsonSchemas.xml, wherever a .idea project exists).
 
 It also installs three Claude Code skills in .claude/skills: /` + brand.DesignSkillName + `, which
-you invoke to design a pipeline in plain language; ` + brand.SkillName + `, so you can
-say "hand this to ` + brand.Name + `" at the end of a planning chat to start a run; and
+you invoke to design a pipeline in plain language; /` + brand.SkillName + `, so you can
+say "` + brand.Name + ` this" at the end of a planning chat to start a run; and
 ` + brand.FeedbackSkillName + `, which records your critiques of a run's work for refining the
 pipeline later.
 
@@ -124,7 +124,7 @@ kept unless --force.`,
 			}
 			fmt.Printf("  • or start from a template: `%s templates`, then `%s add <template>`\n", brand.Name, brand.Name)
 			if !noSkill {
-				fmt.Printf("Then, after planning a change with Claude, say \"hand this to %s\" to start a run.\n", brand.Name)
+				fmt.Printf("Then, after planning a change with Claude, say \"%s this\" (or run /%s) to start a run.\n", brand.Name, brand.SkillName)
 			}
 			return nil
 		},
@@ -151,6 +151,10 @@ func syncSkills(dir string, force bool, label func(string) string, verbose bool)
 			fmt.Printf("  updated  %s\n", label(r.Path))
 		case initfiles.Edited:
 			fmt.Printf("  kept     %s (you've edited it; --force replaces it)\n", label(r.Path))
+		case initfiles.Removed:
+			fmt.Printf("  removed  %s (renamed to /%s)\n", label(r.Path), brand.SkillName)
+		case initfiles.MovedAside:
+			fmt.Printf("  moved    %s aside (you'd edited it; the skill is now /%s, so carry your edits over)\n", label(r.Path), brand.SkillName)
 		case initfiles.Unchanged:
 			if verbose {
 				fmt.Printf("  kept     %s (current)\n", label(r.Path))

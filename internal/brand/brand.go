@@ -23,8 +23,11 @@ const (
 	SchemaID = "https://" + Name + ".local/schema/pipeline.json"
 	// ConfigSchemaID is the $id of the generated config schema.
 	ConfigSchemaID = "https://" + Name + ".local/schema/config.json"
-	// SkillName is the handoff skill directory name.
-	SkillName = Name + "-handoff"
+	// SkillName is the handoff skill directory name (invoked as /ship).
+	SkillName = Name
+	// OldSkillName is what the handoff skill was called before; init and
+	// refresh-skills retire it.
+	OldSkillName = Name + "-handoff"
 	// Repo is the GitHub repo releases are published to (owner/name).
 	Repo = "thehenrymcintosh/" + Name
 	// DesignSkillName is the user-invoked pipeline design skill.
