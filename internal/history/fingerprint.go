@@ -38,8 +38,9 @@ type Part struct {
 	Path    string `json:"path,omitempty"` // where it was found ("" when missing)
 	Hash    string `json:"hash,omitempty"`
 	Missing bool   `json:"missing,omitempty"` // referenced but not found (e.g. a plugin skill)
-	// Copy is where a version keeps its frozen copy, relative to the
-	// version's dir ("" when it has none).
+	// Copy is set when the version keeps its copy of the part in its own
+	// files/ dir (relative to the version's dir), as early 0.7 builds did.
+	// Versions now keep copies in the history's objects/ (see Store).
 	Copy string `json:"copy,omitempty"`
 	// Location is where the part lived, relative to a root: "repo:<rel>",
 	// "claude:<rel>" (~/.claude), "home:<rel>" (~/.ship) or
@@ -269,26 +270,69 @@ func hashBytes(b []byte) string {
 	return hex.EncodeToString(s[:])
 }
 
-// hashDir hashes every file in a directory (paths and contents).
+// hashDir hashes every file in a directory (paths and contents): the hash
+// of its tree listing.
 func hashDir(dir string) string {
-	h := sha256.New()
-	var files []string
+	listing, _ := readTree(dir, false)
+	return hashBytes(listing)
+}
+
+// readTree lists a dir's files, skipping dotfiles and dot-dirs: a line
+// "<slash path>\x00<sha256 of content>\n" per file, sorted by path. The
+// dir's hash is the listing's hash, so a version stores the listing as an
+// object like any file. With keep, contents maps each file's hash to its
+// content.
+func readTree(dir string, keep bool) (listing []byte, contents map[string][]byte) {
+	var rels []string
 	_ = filepath.WalkDir(dir, func(p string, d fs.DirEntry, err error) error {
-		if err == nil && !d.IsDir() && !strings.HasPrefix(d.Name(), ".") {
-			files = append(files, p)
+		if err != nil || p == dir {
+			return nil
+		}
+		if strings.HasPrefix(d.Name(), ".") {
+			if d.IsDir() {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if !d.IsDir() {
+			rel, _ := filepath.Rel(dir, p)
+			rels = append(rels, filepath.ToSlash(rel))
 		}
 		return nil
 	})
-	sort.Strings(files)
-	for _, f := range files {
-		b, err := os.ReadFile(f)
+	sort.Strings(rels)
+	if keep {
+		contents = map[string][]byte{}
+	}
+	var b strings.Builder
+	for _, rel := range rels {
+		data, err := os.ReadFile(filepath.Join(dir, filepath.FromSlash(rel)))
 		if err != nil {
 			continue
 		}
-		rel, _ := filepath.Rel(dir, f)
-		fmt.Fprintf(h, "%s\x00%s\n", filepath.ToSlash(rel), hashBytes(b))
+		h := hashBytes(data)
+		if keep {
+			contents[h] = data
+		}
+		fmt.Fprintf(&b, "%s\x00%s\n", rel, h)
 	}
-	return hex.EncodeToString(h.Sum(nil))
+	return []byte(b.String()), contents
+}
+
+// parseTree reads a listing written by readTree: path → content hash.
+func parseTree(listing []byte) (map[string]string, error) {
+	out := map[string]string{}
+	for _, line := range strings.Split(strings.TrimSuffix(string(listing), "\n"), "\n") {
+		if line == "" {
+			continue
+		}
+		rel, h, ok := strings.Cut(line, "\x00")
+		if !ok || len(h) != 64 || rel == "" || strings.HasPrefix(rel, "/") || strings.Contains("/"+rel+"/", "/../") {
+			return nil, fmt.Errorf("not a tree listing")
+		}
+		out[rel] = h
+	}
+	return out, nil
 }
 
 // Changed lists parts that differ between two fingerprints, as

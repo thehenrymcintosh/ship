@@ -135,7 +135,7 @@ type File struct {
 }
 
 // historyDirs are a pipeline folder's history (see history.Subdirs).
-var historyDirs = map[string]bool{"versions": true, "runs": true, "feedback": true, "proposals": true, "reports": true}
+var historyDirs = map[string]bool{"versions": true, "objects": true, "runs": true, "feedback": true, "proposals": true, "reports": true}
 
 // Files lists what the template installs. Files outside pipelines/, bin/,
 // rules/ and skills/ (template.yml, READMEs) aren't installed.
@@ -198,20 +198,6 @@ func (t *Template) Pipelines() []string {
 			out = append(out, strings.TrimSuffix(strings.TrimSuffix(base, ".yml"), ".yaml"))
 		case len(parts) == 3 && (parts[2] == "pipeline.yml" || parts[2] == "pipeline.yaml"):
 			out = append(out, parts[1])
-		}
-	}
-	return out
-}
-
-// Folders returns the pipeline folders the template installs, relative to
-// the ship dir (e.g. "pipelines/rigorous").
-func (t *Template) Folders() []string {
-	files, _ := t.Files()
-	var out []string
-	for _, f := range files {
-		parts := strings.Split(f.Rel, "/")
-		if f.Kind == KindPipeline && len(parts) == 3 && (parts[2] == "pipeline.yml" || parts[2] == "pipeline.yaml") {
-			out = append(out, parts[0]+"/"+parts[1])
 		}
 	}
 	return out

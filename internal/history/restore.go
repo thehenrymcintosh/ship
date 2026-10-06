@@ -1,19 +1,34 @@
 package history
 
 import (
+	"bytes"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
-// Materialize copies a version's saved files to dest, laid out as
-// <kind>/<name> (see CopyRel), for diffing.
+// Materialize writes a version's saved copies to dest, laid out as
+// <kind>/<name> (see CopyRel), for diffing. Parts without a copy are left
+// out.
 func Materialize(v Version, dest string) error {
-	src := filepath.Join(v.Dir, filesDir)
-	if _, err := os.Stat(src); err != nil {
-		return os.MkdirAll(dest, 0o755)
+	if err := os.MkdirAll(dest, 0o755); err != nil {
+		return err
 	}
-	return copyPart(src, dest)
+	for _, p := range v.Parts {
+		if p.Missing {
+			continue
+		}
+		files, err := v.Contents(p)
+		if err != nil {
+			continue
+		}
+		if err := writeContents(files, filepath.Join(dest, filepath.FromSlash(CopyRel(p))), isDirPart(p)); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // MaterializeParts copies parts as they are now (from their Paths) to
@@ -34,11 +49,11 @@ func MaterializeParts(parts []Part, dest string) error {
 
 // RestoreStep is one file or skill folder a restore writes.
 type RestoreStep struct {
-	Part Part
-	From string // the version's copy
-	To   string // where it goes now
-	Dir  bool   // a skill folder: replaced as a whole
-	Same bool   // already identical: nothing to write
+	Part  Part
+	To    string // where it goes now
+	Dir   bool   // a skill folder: replaced as a whole
+	Same  bool   // already identical: nothing to write
+	files map[string][]byte
 }
 
 // PlanRestore works out where each of v's parts goes: where that part
@@ -55,7 +70,8 @@ func PlanRestore(v Version, current Fingerprint, pipelineDest func(name string) 
 		if p.Missing {
 			continue
 		}
-		if p.Copy == "" {
+		files, err := v.Contents(p)
+		if err != nil {
 			skipped = append(skipped, fmt.Sprintf("%s %s: no saved copy (recorded before ship kept copies)", p.Kind, p.Name))
 			continue
 		}
@@ -71,13 +87,7 @@ func PlanRestore(v Version, current Fingerprint, pipelineDest func(name string) 
 			skipped = append(skipped, fmt.Sprintf("%s %s: don't know where it goes now", p.Kind, p.Name))
 			continue
 		}
-		from := filepath.Join(v.Dir, filepath.FromSlash(p.Copy))
-		st, err := os.Stat(from)
-		if err != nil {
-			skipped = append(skipped, fmt.Sprintf("%s %s: %v", p.Kind, p.Name, err))
-			continue
-		}
-		steps = append(steps, RestoreStep{Part: p, From: from, To: to, Dir: st.IsDir(), Same: currentHash(to) == p.Hash})
+		steps = append(steps, RestoreStep{Part: p, To: to, Dir: isDirPart(p), Same: currentHash(to) == p.Hash, files: files})
 	}
 	return steps, skipped
 }
@@ -87,10 +97,52 @@ func (r RestoreStep) Apply() error {
 	if r.Same {
 		return nil
 	}
-	if r.Dir {
-		if err := os.RemoveAll(r.To); err != nil {
+	return writeContents(r.files, r.To, r.Dir)
+}
+
+// writeContents writes a part's files (see Version.Contents) to dest: a
+// file, or for a dir, its files, removing any others (but not dotfiles,
+// which aren't part of a version). Files keep their mode when they exist;
+// new ones are executable when they start with #!.
+func writeContents(files map[string][]byte, dest string, dir bool) error {
+	if !dir {
+		return writeKeepingMode(dest, files[""])
+	}
+	for rel, b := range files {
+		if err := writeKeepingMode(filepath.Join(dest, filepath.FromSlash(rel)), b); err != nil {
 			return err
 		}
 	}
-	return copyPart(r.From, r.To)
+	return filepath.WalkDir(dest, func(p string, d fs.DirEntry, err error) error {
+		if err != nil || p == dest {
+			return err
+		}
+		if strings.HasPrefix(d.Name(), ".") {
+			if d.IsDir() {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if d.IsDir() {
+			return nil
+		}
+		rel, _ := filepath.Rel(dest, p)
+		if _, ok := files[filepath.ToSlash(rel)]; !ok {
+			return os.Remove(p)
+		}
+		return nil
+	})
+}
+
+func writeKeepingMode(path string, b []byte) error {
+	mode := fs.FileMode(0o644)
+	if st, err := os.Stat(path); err == nil {
+		mode = st.Mode().Perm()
+	} else if bytes.HasPrefix(b, []byte("#!")) {
+		mode = 0o755
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return err
+	}
+	return os.WriteFile(path, b, mode)
 }

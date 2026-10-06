@@ -24,18 +24,26 @@ import (
 // and never changed, so people committing the same pipeline's history from
 // different machines never edit the same file:
 //
-//	versions/<hash12>/version.json     what the version is (the same wherever it's recorded)
-//	versions/<hash12>/files/…          a frozen copy of every part
+//	versions/<hash12>/version.json     what the version is: each part's kind, name and content hash
 //	versions/<hash12>/seen/<id>.json   who recorded it, when and why
+//	objects/<sha256>                   the content of every file a version used, stored once
 //	feedback/<key>.json                one piece of feedback
 //	feedback/<key>.closed-<id>.json    that feedback marked as dealt with
 //	runs/<run-id>.json                 a finished run's stats
 //	proposals/, reports/               refine and report output
 //
-// versions.jsonl and feedback.jsonl from older ships are converted when
-// the history is opened (they're left in place, and can be deleted).
+// objects/ is content-addressed: a file's object is named by the hash of
+// its content, and a skill folder's hash is the hash of its listing (each
+// file's path and content hash; see readTree), stored as an object too. So
+// a version that changes one skill file adds that file and the skill's
+// listing, and unchanged files are never stored twice.
+//
+// versions.jsonl and feedback.jsonl from older ships are read as they are,
+// and written out as record files the next time something is recorded
+// here (they're left in place, and can be deleted after that).
 const (
 	VersionsDir  = "versions"
+	ObjectsDir   = "objects"
 	FeedbackDir  = "feedback"
 	RunsDir      = "runs"
 	ProposalsDir = "proposals"
@@ -43,7 +51,8 @@ const (
 
 	versionFileName = "version.json"
 	seenDir         = "seen"
-	filesDir        = "files"
+	filesDir        = "files" // per-version copies, as early 0.7 builds kept them
+	legacySeen      = "legacy.json"
 
 	legacyVersions = "versions.jsonl"
 	legacyFeedback = "feedback.jsonl"
@@ -51,7 +60,7 @@ const (
 
 // Subdirs are the history's own dirs (inside a pipeline folder, they sit
 // beside pipeline.yml and skills/).
-var Subdirs = []string{VersionsDir, FeedbackDir, RunsDir, ProposalsDir, ReportsDir}
+var Subdirs = []string{VersionsDir, ObjectsDir, FeedbackDir, RunsDir, ProposalsDir, ReportsDir}
 
 // Version sources.
 const (
@@ -79,6 +88,7 @@ type Version struct {
 	// version can be restored.
 	Frozen bool   `json:"frozen"`
 	Dir    string `json:"-"`
+	store  string // the history dir, for its objects
 }
 
 // Label is "v3 (a1f9c2d0)".
@@ -144,7 +154,8 @@ type Item struct {
 	CloseNote   string `json:"close_note,omitempty"`
 }
 
-// Store is one pipeline's history dir.
+// Store is one pipeline's history dir. Reading never writes; Register,
+// Add, Close and WriteRun do.
 type Store struct {
 	Dir     string // a pipeline folder, or <repo>/.ship/history/<pipeline>
 	LockDir string // where to keep the lock file (outside the repo)
@@ -192,18 +203,24 @@ func Hash12(h string) string {
 
 // writeOnce writes v as JSON to path unless it exists.
 func writeOnce(path string, v any) error {
+	b, err := json.MarshalIndent(v, "", "  ")
+	if err != nil {
+		return err
+	}
+	return writeBytesOnce(path, append(b, '\n'))
+}
+
+// writeBytesOnce writes b to path unless it exists, never leaving it
+// half-written.
+func writeBytesOnce(path string, b []byte) error {
 	if _, err := os.Stat(path); err == nil {
 		return nil
 	}
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return err
 	}
-	b, err := json.MarshalIndent(v, "", "  ")
-	if err != nil {
-		return err
-	}
 	tmp := path + ".tmp"
-	if err := os.WriteFile(tmp, append(b, '\n'), 0o644); err != nil {
+	if err := os.WriteFile(tmp, b, 0o644); err != nil {
 		return err
 	}
 	return os.Rename(tmp, path)
@@ -223,7 +240,8 @@ func readJSON[T any](path string) (T, error) {
 
 // --- versions ----------------------------------------------------------------
 
-// CopyRel is where a version keeps a part's copy, under its files/ dir.
+// CopyRel is where a part goes when a version's copies are laid out for
+// diffing (and where early 0.7 builds kept it, under the version's files/).
 func CopyRel(p Part) string {
 	clean := func(s string) string {
 		var out []string
@@ -248,26 +266,156 @@ func CopyRel(p Part) string {
 	return p.Kind + "/" + clean(p.Name)
 }
 
-// Versions returns every version, in the order first seen.
-func (s *Store) Versions() ([]Version, error) {
-	if err := s.migrate(false); err != nil {
-		return nil, err
-	}
-	fb, err := s.feedbackRecords()
+// isDirPart reports whether a part is a folder (a skill) rather than a file.
+func isDirPart(p Part) bool { return p.Kind == KindSkill }
+
+func (s *Store) objectPath(hash string) string { return filepath.Join(s.Dir, ObjectsDir, hash) }
+
+// putObject stores b in objects/ under its hash (once).
+func (s *Store) putObject(b []byte) error { return writeBytesOnce(s.objectPath(hashBytes(b)), b) }
+
+// readObject reads an object, checking it's what its name says.
+func (s *Store) readObject(hash string) ([]byte, error) {
+	b, err := os.ReadFile(s.objectPath(hash))
 	if err != nil {
 		return nil, err
 	}
-	return s.versions(fb)
+	if hashBytes(b) != hash {
+		return nil, fmt.Errorf("object %s doesn't match its hash", short(hash))
+	}
+	return b, nil
 }
 
-func (s *Store) versions(fb []Feedback) ([]Version, error) {
+// freeze saves a part's content as objects, if it still has the hash it
+// was fingerprinted with (otherwise the version just has no copy of it).
+func (s *Store) freeze(p Part) error {
+	if p.Missing || p.Path == "" {
+		return nil
+	}
+	if isDirPart(p) {
+		listing, contents := readTree(p.Path, true)
+		if hashBytes(listing) != p.Hash {
+			return nil
+		}
+		for _, b := range contents {
+			if err := s.putObject(b); err != nil {
+				return err
+			}
+		}
+		return s.putObject(listing)
+	}
+	b, err := os.ReadFile(p.Path)
+	if err != nil || hashBytes(b) != p.Hash {
+		return nil
+	}
+	return s.putObject(b)
+}
+
+// hasObjects reports whether every file of a part is saved in objects/.
+func (s *Store) hasObjects(p Part) bool {
+	if !isDirPart(p) {
+		_, err := os.Stat(s.objectPath(p.Hash))
+		return err == nil
+	}
+	listing, err := os.ReadFile(s.objectPath(p.Hash))
+	if err != nil {
+		return false
+	}
+	tree, err := parseTree(listing)
+	if err != nil {
+		return false
+	}
+	for _, h := range tree {
+		if _, err := os.Stat(s.objectPath(h)); err != nil {
+			return false
+		}
+	}
+	return true
+}
+
+// Contents returns v's saved copy of a part, by path within the part (""
+// for a part that's a single file).
+func (v Version) Contents(p Part) (map[string][]byte, error) {
+	if p.Copy != "" {
+		src := filepath.Join(v.Dir, filepath.FromSlash(p.Copy))
+		if !isDirPart(p) {
+			b, err := os.ReadFile(src)
+			return map[string][]byte{"": b}, err
+		}
+		out := map[string][]byte{}
+		err := filepath.WalkDir(src, func(path string, d fs.DirEntry, err error) error {
+			if err != nil || d.IsDir() {
+				return err
+			}
+			b, err := os.ReadFile(path)
+			if err != nil {
+				return err
+			}
+			rel, _ := filepath.Rel(src, path)
+			out[filepath.ToSlash(rel)] = b
+			return nil
+		})
+		return out, err
+	}
+	s := &Store{Dir: v.store}
+	b, err := s.readObject(p.Hash)
+	if err != nil {
+		return nil, err
+	}
+	if !isDirPart(p) {
+		return map[string][]byte{"": b}, nil
+	}
+	tree, err := parseTree(b)
+	if err != nil {
+		return nil, err
+	}
+	out := map[string][]byte{}
+	for rel, h := range tree {
+		if out[rel], err = s.readObject(h); err != nil {
+			return nil, fmt.Errorf("%s: %w", rel, err)
+		}
+	}
+	return out, nil
+}
+
+// versionEntry is a version's records, before they're worked out.
+type versionEntry struct {
+	dir  string
+	vf   versionFile
+	seen []seenFile
+	// legacySeen: the sighting converted from versions.jsonl is on disk.
+	legacySeen bool
+}
+
+// Versions returns every version, in the order first seen.
+func (s *Store) Versions() ([]Version, error) {
+	_, vs, err := s.records()
+	return vs, err
+}
+
+// records reads every feedback record and version, including those only
+// in versions.jsonl and feedback.jsonl so far. It never writes.
+func (s *Store) records() ([]Feedback, []Version, error) {
+	lg, err := s.readLegacy()
+	if err != nil {
+		return nil, nil, err
+	}
+	fb, err := s.feedbackRecords(lg)
+	if err != nil {
+		return nil, nil, err
+	}
+	vs, err := s.versions(fb, lg)
+	return fb, vs, err
+}
+
+func (s *Store) versions(fb []Feedback, lg legacyRecords) ([]Version, error) {
 	root := filepath.Join(s.Dir, VersionsDir)
-	entries, err := os.ReadDir(root)
+	dirs, err := os.ReadDir(root)
 	if err != nil && !os.IsNotExist(err) {
 		return nil, err
 	}
-	var out []Version
-	for _, e := range entries {
+	entries := map[string]*versionEntry{}
+	for _, e := range dirs {
 		if !e.IsDir() || strings.HasPrefix(e.Name(), ".") {
 			continue
 		}
@@ -276,55 +424,30 @@ func (s *Store) versions(fb []Feedback) ([]Version, error) {
 		if err != nil {
 			continue // half-copied or foreign: skip
 		}
-		v := Version{Hash: vf.Hash, Parts: vf.Parts, Dir: dir, Frozen: true}
+		ve := &versionEntry{dir: dir, vf: vf}
 		seen, _ := filepath.Glob(filepath.Join(dir, seenDir, "*.json"))
 		sort.Strings(seen)
-		var first *seenFile
-		keys := map[string]bool{}
 		for _, p := range seen {
-			sf, err := readJSON[seenFile](p)
-			if err != nil {
-				continue
-			}
-			if first == nil || sf.At.Before(first.At) {
-				f := sf
-				first = &f
-			}
-			if sf.Summary != "" && (v.Summary == "" || sf.Source == SourceRefine) {
-				v.Summary = sf.Summary
-			}
-			for _, k := range sf.Addresses {
-				if !keys[k] {
-					keys[k] = true
-					v.AddressKeys = append(v.AddressKeys, k)
-				}
-			}
-			if sf.Source == SourceRefine {
-				v.Source = SourceRefine
+			if sf, err := readJSON[seenFile](p); err == nil {
+				ve.seen = append(ve.seen, sf)
+				ve.legacySeen = ve.legacySeen || filepath.Base(p) == legacySeen
 			}
 		}
-		if first != nil {
-			v.At, v.Parent, v.Author = first.At, first.Parent, first.Author
-			if v.Source == "" {
-				v.Source = first.Source
-			}
+		entries[e.Name()] = ve
+	}
+	for _, lr := range lg.versions {
+		ve := entries[lr.dir]
+		if ve == nil {
+			ve = &versionEntry{dir: filepath.Join(root, lr.dir), vf: lr.vf}
+			entries[lr.dir] = ve
 		}
-		for i := range v.Parts {
-			p := &v.Parts[i]
-			if first != nil {
-				p.Location = first.Locations[p.Kind+" "+p.Name]
-			}
-			if p.Missing {
-				continue
-			}
-			rel := CopyRel(*p)
-			if _, err := os.Stat(filepath.Join(dir, filesDir, filepath.FromSlash(rel))); err == nil {
-				p.Copy = filesDir + "/" + rel
-			} else {
-				v.Frozen = false
-			}
+		if !ve.legacySeen {
+			ve.seen, ve.legacySeen = append(ve.seen, lr.sf), true
 		}
-		out = append(out, v)
+	}
+	var out []Version
+	for _, ve := range entries {
+		out = append(out, s.version(ve))
 	}
 	sort.SliceStable(out, func(i, j int) bool {
 		if !out[i].At.Equal(out[j].At) {
@@ -353,6 +476,53 @@ func (s *Store) versions(fb []Feedback) ([]Version, error) {
 		sort.Ints(v.Addresses)
 	}
 	return out, nil
+}
+
+// version works out a version from its records.
+func (s *Store) version(ve *versionEntry) Version {
+	v := Version{Hash: ve.vf.Hash, Parts: append([]Part(nil), ve.vf.Parts...), Dir: ve.dir, Frozen: true, store: s.Dir}
+	var first *seenFile
+	keys := map[string]bool{}
+	for _, sf := range ve.seen {
+		if first == nil || sf.At.Before(first.At) {
+			f := sf
+			first = &f
+		}
+		if sf.Summary != "" && (v.Summary == "" || sf.Source == SourceRefine) {
+			v.Summary = sf.Summary
+		}
+		for _, k := range sf.Addresses {
+			if !keys[k] {
+				keys[k] = true
+				v.AddressKeys = append(v.AddressKeys, k)
+			}
+		}
+		if sf.Source == SourceRefine {
+			v.Source = SourceRefine
+		}
+	}
+	if first != nil {
+		v.At, v.Parent, v.Author = first.At, first.Parent, first.Author
+		if v.Source == "" {
+			v.Source = first.Source
+		}
+	}
+	for i := range v.Parts {
+		p := &v.Parts[i]
+		if first != nil {
+			p.Location = first.Locations[p.Kind+" "+p.Name]
+		}
+		if p.Missing {
+			continue
+		}
+		rel := CopyRel(*p)
+		if _, err := os.Stat(filepath.Join(ve.dir, filesDir, filepath.FromSlash(rel))); err == nil {
+			p.Copy = filesDir + "/" + rel
+		} else if !s.hasObjects(*p) {
+			v.Frozen = false
+		}
+	}
+	return v
 }
 
 // Latest returns the newest version, or nil.
@@ -403,21 +573,18 @@ func FindIn(vs []Version, ref string) (*Version, error) {
 // Register records fp as a version unless it's been seen, in which case
 // that version is returned. source, summary and addresses (feedback ids)
 // describe it; for a version already seen, a summary or addresses are
-// recorded as another sighting. A new version keeps a copy of every part.
+// recorded as another sighting. A new version saves every part's content
+// in objects/.
 func (s *Store) Register(fp Fingerprint, source, summary string, addresses []int) (Version, bool, error) {
 	unlock, err := s.lock()
 	if err != nil {
 		return Version{}, false, err
 	}
 	defer unlock()
-	if err := s.migrate(true); err != nil {
+	if err := s.migrate(); err != nil {
 		return Version{}, false, err
 	}
-	fb, err := s.feedbackRecords()
-	if err != nil {
-		return Version{}, false, err
-	}
-	vs, err := s.versions(fb)
+	fb, vs, err := s.records()
 	if err != nil {
 		return Version{}, false, err
 	}
@@ -458,7 +625,7 @@ func (s *Store) Register(fp Fingerprint, source, summary string, addresses []int
 			return Version{}, false, err
 		}
 	}
-	if vs, err = s.versions(fb); err != nil {
+	if _, vs, err = s.records(); err != nil {
 		return Version{}, false, err
 	}
 	for _, v := range vs {
@@ -469,20 +636,19 @@ func (s *Store) Register(fp Fingerprint, source, summary string, addresses []int
 	return Version{}, false, fmt.Errorf("version %s wasn't recorded", short(fp.Hash))
 }
 
-// writeVersion assembles a version in a temporary dir and moves it into
-// place, so a version dir is never half-written.
+// writeVersion saves the parts' content, then assembles the version's
+// records in a temporary dir and moves it into place, so a version dir is
+// never half-written.
 func (s *Store) writeVersion(dir string, fp Fingerprint, sf seenFile) error {
-	tmp := filepath.Join(filepath.Dir(dir), ".tmp-"+NewID(time.Now()))
-	defer os.RemoveAll(tmp)
 	vf := versionFile{Hash: fp.Hash}
 	for _, p := range fp.Parts {
-		if !p.Missing && p.Path != "" {
-			if err := copyPart(p.Path, filepath.Join(tmp, filesDir, filepath.FromSlash(CopyRel(p)))); err != nil {
-				return fmt.Errorf("saving a copy of %s %s: %w", p.Kind, p.Name, err)
-			}
+		if err := s.freeze(p); err != nil {
+			return fmt.Errorf("saving a copy of %s %s: %w", p.Kind, p.Name, err)
 		}
 		vf.Parts = append(vf.Parts, Part{Kind: p.Kind, Name: p.Name, Hash: p.Hash, Missing: p.Missing})
 	}
+	tmp := filepath.Join(filepath.Dir(dir), ".tmp-"+NewID(time.Now()))
+	defer os.RemoveAll(tmp)
 	if err := writeOnce(filepath.Join(tmp, versionFileName), vf); err != nil {
 		return err
 	}
@@ -499,8 +665,8 @@ func (s *Store) writeVersion(dir string, fp Fingerprint, sf seenFile) error {
 	return nil
 }
 
-// copyPart copies a file, or a dir's files (skipping dotfiles, as the
-// fingerprint does), to dest.
+// copyPart copies a file, or a dir's files (skipping dotfiles and
+// dot-dirs, as the fingerprint does), to dest.
 func copyPart(src, dest string) error {
 	st, err := os.Stat(src)
 	if err != nil {
@@ -544,25 +710,38 @@ func copyFile(src, dest string, mode fs.FileMode) error {
 
 // --- feedback ----------------------------------------------------------------
 
-// feedbackRecords reads every feedback and close record.
-func (s *Store) feedbackRecords() ([]Feedback, error) {
+// recordOf sets a feedback record's type and key from its file name.
+func recordOf(base string, f Feedback) Feedback {
+	if key, _, ok := strings.Cut(base, ".closed-"); ok {
+		f.Type, f.Key = TypeClose, key
+	} else {
+		f.Type, f.Key = TypeFeedback, base
+	}
+	return f
+}
+
+// feedbackRecords reads every feedback and close record, with those only
+// in feedback.jsonl so far (lg).
+func (s *Store) feedbackRecords(lg legacyRecords) ([]Feedback, error) {
 	paths, err := filepath.Glob(filepath.Join(s.Dir, FeedbackDir, "*.json"))
 	if err != nil {
 		return nil, err
 	}
 	var out []Feedback
+	have := map[string]bool{}
 	for _, p := range paths {
 		f, err := readJSON[Feedback](p)
 		if err != nil {
 			return nil, err
 		}
 		base := strings.TrimSuffix(filepath.Base(p), ".json")
-		if key, _, ok := strings.Cut(base, ".closed-"); ok {
-			f.Type, f.Key = TypeClose, key
-		} else {
-			f.Type, f.Key = TypeFeedback, base
+		have[base] = true
+		out = append(out, recordOf(base, f))
+	}
+	for _, base := range lg.feedbackOrder {
+		if !have[base] {
+			out = append(out, recordOf(base, lg.feedback[base]))
 		}
-		out = append(out, f)
 	}
 	return out, nil
 }
@@ -599,10 +778,10 @@ func (s *Store) Add(f Feedback) (Feedback, bool, error) {
 		return f, false, err
 	}
 	defer unlock()
-	if err := s.migrate(true); err != nil {
+	if err := s.migrate(); err != nil {
 		return f, false, err
 	}
-	recs, err := s.feedbackRecords()
+	recs, err := s.feedbackRecords(legacyRecords{})
 	if err != nil {
 		return f, false, err
 	}
@@ -639,6 +818,9 @@ func (s *Store) Close(id int, note string) error {
 				return err
 			}
 			defer unlock()
+			if err := s.migrate(); err != nil {
+				return err
+			}
 			now := time.Now().UTC()
 			return writeOnce(filepath.Join(s.Dir, FeedbackDir, it.Key+".closed-"+NewID(now)+".json"), Feedback{Type: TypeClose, At: now, Note: note})
 		}
@@ -648,14 +830,7 @@ func (s *Store) Close(id int, note string) error {
 
 // Items returns all feedback with its status, oldest first.
 func (s *Store) Items() ([]Item, error) {
-	if err := s.migrate(false); err != nil {
-		return nil, err
-	}
-	recs, err := s.feedbackRecords()
-	if err != nil {
-		return nil, err
-	}
-	vs, err := s.versions(recs)
+	recs, vs, err := s.records()
 	if err != nil {
 		return nil, err
 	}
@@ -736,27 +911,37 @@ type legacyVersion struct {
 	Parts     []Part    `json:"parts"`
 }
 
-// migrate converts versions.jsonl and feedback.jsonl into record files.
-// It's idempotent (each record has a fixed file name and content), so
-// lines appended later by an older ship are picked up next time, and two
-// machines converting the same lines write identical files.
-func (s *Store) migrate(locked bool) error {
-	lv, lf := filepath.Join(s.Dir, legacyVersions), filepath.Join(s.Dir, legacyFeedback)
-	_, e1 := os.Stat(lv)
-	_, e2 := os.Stat(lf)
-	if e1 != nil && e2 != nil {
-		return nil
-	}
-	if !locked {
-		unlock, err := s.lock()
-		if err != nil {
-			return err
-		}
-		defer unlock()
-	}
-	recs, err := readLines[Feedback](lf)
+// legacyRecords are versions.jsonl and feedback.jsonl as the record files
+// they convert to. Each has a fixed file name and content, so converting
+// is idempotent (lines appended later by an older ship are picked up next
+// time), and two machines converting the same lines write identical files.
+type legacyRecords struct {
+	feedback      map[string]Feedback // by file name under feedback/, without .json
+	feedbackOrder []string
+	versions      []legacyRecord
+}
+
+// legacyRecord is a line of versions.jsonl as a version.
+type legacyRecord struct {
+	dir   string // under versions/
+	vf    versionFile
+	sf    seenFile
+	parts []Part // as recorded, with the paths they were found at
+}
+
+// readLegacy reads versions.jsonl and feedback.jsonl, if there are any.
+func (s *Store) readLegacy() (legacyRecords, error) {
+	var lg legacyRecords
+	recs, err := readLines[Feedback](filepath.Join(s.Dir, legacyFeedback))
 	if err != nil {
-		return err
+		return lg, err
+	}
+	lg.feedback = map[string]Feedback{}
+	add := func(base string, f Feedback) {
+		if _, ok := lg.feedback[base]; !ok {
+			lg.feedbackOrder = append(lg.feedbackOrder, base)
+		}
+		lg.feedback[base] = f
 	}
 	keyOf := map[int]string{}
 	for _, r := range recs {
@@ -766,52 +951,64 @@ func (s *Store) migrate(locked bool) error {
 		key := r.At.UTC().Format("20060102T150405Z") + "-legacy" + strconv.Itoa(r.ID)
 		keyOf[r.ID] = key
 		r.Type, r.Key, r.ID = TypeFeedback, "", 0
-		if err := writeOnce(filepath.Join(s.Dir, FeedbackDir, key+".json"), r); err != nil {
-			return err
-		}
+		add(key, r)
 	}
 	for _, r := range recs {
 		if r.Type != TypeClose {
 			continue
 		}
 		if key, ok := keyOf[r.ID]; ok {
-			c := Feedback{Type: TypeClose, At: r.At, Note: r.Note}
-			if err := writeOnce(filepath.Join(s.Dir, FeedbackDir, key+".closed-legacy.json"), c); err != nil {
-				return err
-			}
+			add(key+".closed-legacy", Feedback{Type: TypeClose, At: r.At, Note: r.Note})
 		}
 	}
-	vs, err := readLines[legacyVersion](lv)
+	vs, err := readLines[legacyVersion](filepath.Join(s.Dir, legacyVersions))
 	if err != nil {
-		return err
+		return lg, err
 	}
 	prev := ""
 	for _, v := range vs {
-		dir := filepath.Join(s.Dir, VersionsDir, Hash12(v.Hash))
-		vf := versionFile{Hash: v.Hash}
+		lr := legacyRecord{dir: Hash12(v.Hash), vf: versionFile{Hash: v.Hash}, parts: v.Parts}
 		for _, p := range v.Parts {
-			vf.Parts = append(vf.Parts, Part{Kind: p.Kind, Name: p.Name, Hash: p.Hash, Missing: p.Missing})
-			// Keep a copy when the file is still as it was then.
-			if !p.Missing && p.Path != "" && currentHash(p.Path) == p.Hash {
-				dest := filepath.Join(dir, filesDir, filepath.FromSlash(CopyRel(p)))
-				if _, err := os.Stat(dest); err != nil {
-					_ = copyPart(p.Path, dest)
-				}
-			}
+			lr.vf.Parts = append(lr.vf.Parts, Part{Kind: p.Kind, Name: p.Name, Hash: p.Hash, Missing: p.Missing})
 		}
-		if err := writeOnce(filepath.Join(dir, versionFileName), vf); err != nil {
-			return err
-		}
-		sf := seenFile{At: v.At, Source: v.Source, Summary: v.Summary, Parent: prev}
+		lr.sf = seenFile{At: v.At, Source: v.Source, Summary: v.Summary, Parent: prev}
 		for _, id := range v.Addresses {
 			if k, ok := keyOf[id]; ok {
-				sf.Addresses = append(sf.Addresses, k)
+				lr.sf.Addresses = append(lr.sf.Addresses, k)
 			}
 		}
-		if err := writeOnce(filepath.Join(dir, seenDir, "legacy.json"), sf); err != nil {
+		lg.versions = append(lg.versions, lr)
+		prev = v.Hash
+	}
+	return lg, nil
+}
+
+// migrate writes out versions.jsonl and feedback.jsonl as record files,
+// saving a copy of each part that's still as it was then. The caller holds
+// the lock.
+func (s *Store) migrate() error {
+	lg, err := s.readLegacy()
+	if err != nil {
+		return err
+	}
+	for _, base := range lg.feedbackOrder {
+		if err := writeOnce(filepath.Join(s.Dir, FeedbackDir, base+".json"), lg.feedback[base]); err != nil {
 			return err
 		}
-		prev = v.Hash
+	}
+	for _, lr := range lg.versions {
+		dir := filepath.Join(s.Dir, VersionsDir, lr.dir)
+		for _, p := range lr.parts {
+			if err := s.freeze(p); err != nil {
+				return err
+			}
+		}
+		if err := writeOnce(filepath.Join(dir, versionFileName), lr.vf); err != nil {
+			return err
+		}
+		if err := writeOnce(filepath.Join(dir, seenDir, legacySeen), lr.sf); err != nil {
+			return err
+		}
 	}
 	return nil
 }

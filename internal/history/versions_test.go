@@ -15,15 +15,28 @@ func TestVersionsFrozenAndRestored(t *testing.T) {
 	if err != nil || !v1.Frozen {
 		t.Fatalf("%+v %v", v1, err)
 	}
-	if b, err := os.ReadFile(filepath.Join(v1.Dir, "files", "skill", "ship-implement", "reference.md")); err != nil || string(b) != "ref" {
+	// Copies are content-addressed: each file once, under its hash.
+	if b, err := os.ReadFile(filepath.Join(s.Dir, "objects", hashBytes([]byte("ref")))); err != nil || string(b) != "ref" {
 		t.Fatalf("skill copy: %q %v", b, err)
 	}
-	// Edit a skill and the rules: v2.
+	objects := func() int {
+		es, _ := os.ReadDir(filepath.Join(s.Dir, "objects"))
+		return len(es)
+	}
+	before := objects()
+	// Edit a skill file and the rules: v2 stores the two new files and the
+	// skill's new listing, and nothing else again.
 	write(t, filepath.Join(repo, ".claude", "skills", "ship-implement", "reference.md"), "ref v2")
 	write(t, filepath.Join(repo, ".ship", "rules", "style.md"), "style v2")
 	v2, created, _ := s.Register(Compute(in), SourceEdit, "", nil)
-	if !created || v2.Version != 2 || v2.Parent != v1.Hash {
+	if !created || v2.Version != 2 || v2.Parent != v1.Hash || !v2.Frozen {
 		t.Fatalf("%+v", v2)
+	}
+	if got := objects() - before; got != 3 {
+		t.Fatalf("v2 added %d objects, want 3", got)
+	}
+	if _, err := os.Stat(filepath.Join(v1.Dir, "files")); err == nil {
+		t.Fatal("versions shouldn't keep their own copies")
 	}
 	// version.json holds nothing machine-specific.
 	b, _ := os.ReadFile(filepath.Join(v1.Dir, "version.json"))
@@ -120,27 +133,87 @@ func TestLegacyHistoryMigrates(t *testing.T) {
 			`{"type":"feedback","id":2,"at":"2026-01-01T11:00:00Z","version":1,"text":"slow"}`+"\n"+
 			`{"type":"close","id":2,"at":"2026-01-01T12:00:00Z","note":"fine"}`+"\n")
 	s := Open(dir, t.TempDir())
-	vs, err := s.Versions()
-	if err != nil || len(vs) != 2 || vs[1].Summary != "tighter" || vs[1].Source != SourceRefine || vs[1].Parent != fp.Hash {
-		t.Fatalf("%+v %v", vs, err)
+	// Reading takes the old files as they are, and writes nothing; the
+	// next thing recorded converts them, and reads the same.
+	for round := 0; round < 2; round++ {
+		vs, err := s.Versions()
+		if err != nil || len(vs) != 2 || vs[1].Summary != "tighter" || vs[1].Source != SourceRefine || vs[1].Parent != fp.Hash {
+			t.Fatalf("%+v %v", vs, err)
+		}
+		items, _ := s.Items()
+		if len(items) < 2 || items[0].Status != "addressed" || items[0].AddressedIn != 2 || items[1].Status != "closed" {
+			t.Fatalf("%+v", items)
+		}
+		if round > 0 {
+			break
+		}
+		if es, _ := os.ReadDir(dir); len(es) != 2 {
+			t.Fatalf("reading wrote files: %v", es)
+		}
+		// New feedback numbers on.
+		if f, _, _ := s.Add(Feedback{Text: "new"}); f.ID != 3 {
+			t.Fatal(f.ID)
+		}
 	}
-	if !vs[0].Frozen {
-		t.Fatal("unchanged parts should have been copied")
-	}
-	items, _ := s.Items()
-	if len(items) != 2 || items[0].Status != "addressed" || items[0].AddressedIn != 2 || items[1].Status != "closed" {
-		t.Fatalf("%+v", items)
-	}
-	// New feedback numbers on.
-	f, _, _ := s.Add(Feedback{Text: "new"})
-	if f.ID != 3 {
-		t.Fatal(f.ID)
+	if vs, _ := s.Versions(); !vs[0].Frozen {
+		t.Fatal("unchanged parts should have been copied when converting")
 	}
 	// Converting again changes nothing.
-	before, _ := filepath.Glob(filepath.Join(dir, "*", "*"))
-	s.Versions()
-	after, _ := filepath.Glob(filepath.Join(dir, "*", "*"))
-	if len(before) != len(after) {
-		t.Fatal("migration isn't idempotent")
+	files := func() (n int) {
+		for _, sub := range []string{"versions", "objects"} {
+			filepath.Walk(filepath.Join(dir, sub), func(_ string, info os.FileInfo, err error) error {
+				if err == nil && !info.IsDir() {
+					n++
+				}
+				return nil
+			})
+		}
+		return n
+	}
+	before := files()
+	if err := s.Close(3, "done"); err != nil {
+		t.Fatal(err)
+	}
+	if after := files(); after != before {
+		t.Fatalf("migration isn't idempotent: %d files, then %d", before, after)
+	}
+}
+
+// Versions recorded by early 0.7 builds keep a copy of each part in their
+// own files/ dir: they still restore and diff.
+func TestVersionFilesDirStillRead(t *testing.T) {
+	in, repo := setup(t)
+	s := Open(filepath.Join(repo, ".ship", "history", "p"), t.TempDir())
+	v1, _, _ := s.Register(Compute(in), SourceEdit, "", nil)
+	// Turn v1 into the old layout: copies under files/, no objects.
+	for _, p := range Compute(in).Parts {
+		if !p.Missing {
+			if err := copyPart(p.Path, filepath.Join(v1.Dir, "files", filepath.FromSlash(CopyRel(p)))); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	os.RemoveAll(filepath.Join(s.Dir, "objects"))
+	v, _ := s.Find("v1")
+	if !v.Frozen {
+		t.Fatalf("%+v", v)
+	}
+	write(t, filepath.Join(repo, ".claude", "skills", "ship-implement", "SKILL.md"), "changed")
+	write(t, filepath.Join(repo, ".claude", "skills", "ship-implement", "extra.md"), "added")
+	steps, skipped := PlanRestore(*v, Compute(in), nil)
+	for _, st := range steps {
+		if err := st.Apply(); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if len(skipped) != 0 || Compute(in).Hash != v1.Hash {
+		t.Fatalf("not restored from files/: %v", skipped)
+	}
+	out := t.TempDir()
+	if err := Materialize(*v, out); err != nil {
+		t.Fatal(err)
+	}
+	if b, _ := os.ReadFile(filepath.Join(out, "skill", "ship-implement", "reference.md")); string(b) != "ref" {
+		t.Fatalf("materialized %q", b)
 	}
 }

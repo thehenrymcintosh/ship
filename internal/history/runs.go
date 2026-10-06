@@ -387,7 +387,8 @@ func (s *Store) Runs() ([]RunStats, error) {
 	if len(out) == 0 {
 		return out, nil
 	}
-	fb, _ := s.feedbackRecords()
+	lg, _ := s.readLegacy()
+	fb, _ := s.feedbackRecords(lg)
 	byRun := map[string]*RunStats{}
 	for i := range out {
 		byRun[out[i].Run] = &out[i]
