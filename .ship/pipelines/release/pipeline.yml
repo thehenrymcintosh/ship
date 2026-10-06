@@ -1,0 +1,57 @@
+# yaml-language-server: $schema=../../schema/pipeline.json
+version: 1
+description: Implement the brief, review and tidy it, then publish a release
+start: implement
+
+defaults:
+  max_visits: 3            # rounds before it checks in with you
+  when_exhausted: check-in
+  on_error: check-in
+
+steps:
+  implement:
+    description: Implement the plan in the brief
+    session: implement     # one conversation across all its visits
+    prompt: |
+      Implement the plan in the brief. Follow the repo's conventions, add or
+      update focused tests, and keep the change as small as the brief allows.
+      On a later visit, address the review's findings in its handover.
+      Before finishing, run `make lint` and `go test -count=1 ./...` and fix
+      what fails. Commit with clear messages and leave the tree clean.
+      Choose stuck if the brief can't be implemented as written (say why).
+    next: { done: review, stuck: check-in }
+
+  review:
+    description: Review the change, fix small things, and choose the release
+    session: review        # one conversation across all its visits
+    prompt: |
+      Review the whole change against the brief and its acceptance criteria:
+      `git log --oneline {{run.base}}..HEAD` and `git diff {{run.base}}...HEAD`.
+      Fix small things yourself (typos, docs, a missing test, a small bug),
+      commit them, and re-run `make lint` and `go test -count=1 ./...`.
+      Send anything bigger back with changes, listing each finding with
+      file:line, what's wrong and the fix you expect.
+      When it's ready to ship, choose the release:
+      - major: breaks existing pipelines, config, commands or stored data
+      - minor: adds features
+      - patch: only fixes
+    next: { changes: implement, major: release, minor: release, patch: release, stuck: check-in }
+
+  release:
+    description: Merge into main and publish the release
+    timeout: 30m
+    run: |
+      set -e
+      main=$(cd "$(git rev-parse --git-common-dir)/.." && pwd)
+      git fetch -q origin main
+      git rebase -q origin/main
+      git -C "$main" merge --ff-only -q {{run.branch}}
+      cd "$main"
+      scripts/release.sh {{prev.outcome}}
+      echo "Restart the daemon onto the new version with: ship serve --restart"
+    next: { pass: done, fail: check-in }
+
+  check-in:
+    ask: "\"{{brief.title}}\" stopped at {{came_from}}. What next?"
+    show: [prev.handover]
+    choices: { retry: $came_from, implement: implement, abandon: stop }
