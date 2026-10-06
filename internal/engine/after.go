@@ -37,6 +37,9 @@ func (r *runner) waitAfter() bool {
 			case err != nil:
 				r.askAfter(on + ", which this run waits on, can't be found. Start this run anyway?")
 			case other.Status == store.StatusDone:
+				if r.noneBusy() != "" {
+					break // starts once the main checkout is free (the tick re-checks)
+				}
 				r.releaseAfter("done")
 				return true
 			case other.Status.Terminal():
@@ -52,6 +55,10 @@ func (r *runner) waitAfter() bool {
 			s := r.snap()
 			switch c.Name {
 			case CmdStartNow:
+				if other := r.noneBusy(); other != "" {
+					reply(c, conflict("run %s already uses the main checkout (workspace provider none allows one at a time)", other))
+					continue
+				}
 				r.emitUser(c)
 				r.releaseAfter("start_now")
 				reply(c, nil)
@@ -63,6 +70,10 @@ func (r *runner) waitAfter() bool {
 				}
 				switch c.Choice {
 				case store.AfterStartAnyway:
+					if other := r.noneBusy(); other != "" {
+						reply(c, conflict("run %s already uses the main checkout (workspace provider none allows one at a time)", other))
+						continue
+					}
 					r.emitUser(c)
 					r.releaseAfter(store.AfterStartAnyway)
 					reply(c, nil)
@@ -94,6 +105,15 @@ func (r *runner) waitAfter() bool {
 			}
 		}
 	}
+}
+
+// noneBusy names another run using the main checkout, when this run
+// (workspace provider none) can't start yet because of it.
+func (r *runner) noneBusy() string {
+	if s := r.snap(); s.Provider == "none" {
+		return r.e.activeNoneRun(s.Repo)
+	}
+	return ""
 }
 
 // askAfter asks whether to start a run whose run to wait on didn't finish done.

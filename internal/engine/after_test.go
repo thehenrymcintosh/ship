@@ -291,3 +291,24 @@ func TestStartSliceEarlyIgnoresSeriesOrder(t *testing.T) {
 		t.Fatalf("after the run ended: %v", err)
 	}
 }
+
+// With workspace provider none, a waiting run doesn't start while another
+// run uses the main checkout.
+func TestAfterStartNowWaitsForTheMainCheckout(t *testing.T) {
+	en := newEnv(t, map[string]string{"p": strings.Replace(afterPipeline, "start:", "workspace: {provider: none}\nstart:", 1)})
+	first := en.start("p", "", nil, "")
+	en.waitStatus(first.ID, store.StatusAsking)
+	next := en.startAfter(first.ID, false)
+	if err := en.e.Do(next.ID, Command{Name: CmdStartNow}); KindOf(err) != KindConflict {
+		t.Fatalf("start now while the checkout is in use: %v", err)
+	}
+	next, _ = en.e.Snapshot(next.ID)
+	checkWaiting(t, next, first.ID)
+	if err := en.e.Do(first.ID, Command{Name: CmdAnswer, Choice: "go"}); err != nil {
+		t.Fatal(err)
+	}
+	en.waitStatus(first.ID, store.StatusDone)
+	en.waitFor(next.ID, "its own check-in", func(s *store.RunSnapshot) bool {
+		return s.PendingAsk != nil && s.PendingAsk.Kind == store.AskKindAsk
+	})
+}
