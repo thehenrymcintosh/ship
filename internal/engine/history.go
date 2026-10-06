@@ -166,6 +166,18 @@ func (e *Engine) PipelineHistory(repo, name string) (*history.Store, []*pipeline
 	return e.HistoryStore(dir), closure, v, nil
 }
 
+// OpenPipelineHistory resolves a pipeline's history without recording
+// anything (for read-only commands); fp is the pipeline as its files are
+// now, which may not be a recorded version.
+func (e *Engine) OpenPipelineHistory(repo, name string) (*history.Store, history.Fingerprint, error) {
+	l := e.Loader(repo)
+	closure, err := l.Closure(name)
+	if err != nil {
+		return nil, history.Fingerprint{}, err
+	}
+	return e.HistoryStore(HistoryDir(l, repo, e.Home(), name)), e.Fingerprint(repo, closure), nil
+}
+
 // MainCheckout maps a path to its repo's main checkout.
 func MainCheckout(path string) (string, error) {
 	repo, err := gitws.MainCheckout(context.Background(), path)

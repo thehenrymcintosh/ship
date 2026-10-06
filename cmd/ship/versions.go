@@ -24,7 +24,7 @@ scripts it uses. With one version, compare it with the files as they are now.
 Versions are v1, v2… (see ` + "`" + brand.Name + ` pipeline versions` + "`" + `) or a hash prefix.`,
 		Args: cobra.RangeArgs(2, 3),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			e, repo, hs, _, err := a.pipelineCtx(cmd, args[0])
+			_, _, hs, now, err := a.pipelineRead(cmd, args[0])
 			if err != nil {
 				return err
 			}
@@ -35,11 +35,7 @@ Versions are v1, v2… (see ` + "`" + brand.Name + ` pipeline versions` + "`" + 
 			defer os.RemoveAll(tmp)
 			side := func(ref string) (string, error) {
 				if ref == "" {
-					closure, err := e.Loader(repo).Closure(args[0])
-					if err != nil {
-						return "", err
-					}
-					return "now", history.MaterializeParts(e.Fingerprint(repo, closure).Parts, filepath.Join(tmp, "now"))
+					return "now", history.MaterializeParts(now.Parts, filepath.Join(tmp, "now"))
 				}
 				v, err := hs.Find(ref)
 				if err != nil {

@@ -60,6 +60,7 @@ func (d *Daemon) routes() http.Handler {
 	api("GET /api/repos", d.repos)
 	api("GET /api/pipelines", d.pipelines)
 	api("GET /api/pipelines/{name}/graph", d.pipelineGraph)
+	api("POST /api/pipelines/{name}/backfill", d.backfillStats)
 	api("GET /api/events", d.events)
 	api("POST /api/shutdown", d.shutdown)
 	api("POST /api/clean", d.clean)

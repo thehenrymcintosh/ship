@@ -54,12 +54,19 @@ func TestRunStatsRecorded(t *testing.T) {
 		t.Fatalf("check: %+v", c)
 	}
 	// Written once; a backfill doesn't add another.
-	if n, _ := en.e.BackfillStats(en.repo, "p"); n != 0 {
+	if n, _ := en.e.BackfillStats(hs.Dir, "p"); n != 0 || en.e.UnrecordedRuns(hs.Dir, "p") != 0 {
 		t.Fatal("backfill rewrote a recorded run")
 	}
-	// Without the file, backfill recreates it from the event log.
+	// Without the file, it's counted (without writing), and backfill
+	// recreates it from the event log.
 	os.Remove(filepath.Join(hs.Dir, "runs", s.ID+".json"))
-	if n, _ := en.e.BackfillStats(en.repo, "p"); n != 1 {
+	if en.e.UnrecordedRuns(hs.Dir, "p") != 1 || hs.HasRun(s.ID) {
+		t.Fatal("unrecorded run not counted, or counting wrote it")
+	}
+	if en.e.UnrecordedRuns(filepath.Join(en.repo, "elsewhere"), "p") != 0 {
+		t.Fatal("counted a run whose history is elsewhere")
+	}
+	if n, _ := en.e.BackfillStats(hs.Dir, "p"); n != 1 || !hs.HasRun(s.ID) {
 		t.Fatal("backfill didn't record the run")
 	}
 	// Dry runs aren't recorded by default.

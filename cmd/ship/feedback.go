@@ -142,18 +142,16 @@ func (a *app) pipelineCmd() *cobra.Command {
 	return cmd
 }
 
-// pipelineCtx resolves a pipeline and registers its current version.
+// pipelineCtx resolves a pipeline and registers its current version (for
+// commands that record something).
 func (a *app) pipelineCtx(cmd *cobra.Command, name string) (*engine.Engine, string, *history.Store, history.Version, error) {
 	e, err := a.engine()
 	if err != nil {
 		return nil, "", nil, history.Version{}, err
 	}
-	repoFlag, _ := cmd.Flags().GetString("repo")
-	repo := ""
-	if repoFlag != "" || currentRepo() != "" {
-		if repo, err = repoRoot(repoFlag); err != nil {
-			return nil, "", nil, history.Version{}, err
-		}
+	repo, err := cmdRepo(cmd)
+	if err != nil {
+		return nil, "", nil, history.Version{}, err
 	}
 	hs, _, v, err := e.PipelineHistory(repo, name)
 	if err != nil {
@@ -162,13 +160,31 @@ func (a *app) pipelineCtx(cmd *cobra.Command, name string) (*engine.Engine, stri
 	return e, repo, hs, v, nil
 }
 
+// pipelineRead resolves a pipeline without writing anything (for
+// read-only commands); now is the pipeline as its files are now.
+func (a *app) pipelineRead(cmd *cobra.Command, name string) (*engine.Engine, string, *history.Store, history.Fingerprint, error) {
+	e, err := a.engine()
+	if err != nil {
+		return nil, "", nil, history.Fingerprint{}, err
+	}
+	repo, err := cmdRepo(cmd)
+	if err != nil {
+		return nil, "", nil, history.Fingerprint{}, err
+	}
+	hs, now, err := e.OpenPipelineHistory(repo, name)
+	if err != nil {
+		return nil, "", nil, history.Fingerprint{}, fail(exitNotFound, "%v", err)
+	}
+	return e, repo, hs, now, nil
+}
+
 func (a *app) versionsCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "versions <pipeline>",
 		Short: "List a pipeline's versions and the feedback on each",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			_, _, hs, cur, err := a.pipelineCtx(cmd, args[0])
+			_, _, hs, cur, err := a.pipelineRead(cmd, args[0])
 			if err != nil {
 				return err
 			}
@@ -186,10 +202,12 @@ func (a *app) versionsCmd() *cobra.Command {
 			}
 			tw := tabwriter.NewWriter(os.Stdout, 0, 2, 2, ' ', 0)
 			fmt.Fprintln(tw, "VERSION\tDATE\tSOURCE\tFEEDBACK\tCHANGE")
+			recorded := false
 			for _, v := range vs {
 				label := v.Label()
 				if v.Hash == cur.Hash {
 					label += " ←"
+					recorded = true
 				}
 				change := v.Summary
 				if change == "" {
@@ -197,7 +215,13 @@ func (a *app) versionsCmd() *cobra.Command {
 				}
 				fmt.Fprintf(tw, "%s\t%s\t%s\t%d\t%s\n", label, v.At.Local().Format("2006-01-02"), v.Source, count[v.Version], truncate(change, 80))
 			}
-			return tw.Flush()
+			if err := tw.Flush(); err != nil {
+				return err
+			}
+			if !recorded {
+				fmt.Println(a.dim(fmt.Sprintf("The files as they are now (%s) aren't a recorded version yet; the next run records them.", cur.Short())))
+			}
+			return nil
 		},
 	}
 }
@@ -209,7 +233,7 @@ func (a *app) pipelineFeedbackCmd() *cobra.Command {
 		Short: "List open feedback on a pipeline (--all for addressed and closed too)",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			_, _, hs, _, err := a.pipelineCtx(cmd, args[0])
+			_, _, hs, _, err := a.pipelineRead(cmd, args[0])
 			if err != nil {
 				return err
 			}

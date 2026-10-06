@@ -1,8 +1,10 @@
 package main
 
 import (
+	"fmt"
 	"net/url"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -38,7 +40,7 @@ func TestPipelinePage(t *testing.T) {
 	}
 	p := string(page)
 	for _, want := range []string{
-		"Overview", "8 recorded runs", "Hands-on", "On its own",
+		"Overview", "8 recorded runs", "Hands-on", "Fully autonomous",
 		`<svg class="hist"`, `<svg class="spark"`, `<svg class="box"`,
 		"Versions", "pipeline docs changed", "pipeline restore docs v1",
 		"Compare versions", `<option value="v1" selected>`, `<option value="v2" selected>`,
@@ -67,4 +69,48 @@ func TestPipelinePage(t *testing.T) {
 	if err := h.c.Do("GET", "/pipelines/nope", nil, &page); err == nil {
 		t.Fatal("unknown pipeline should 404")
 	}
+
+	// Neither the page nor `ship pipeline stats` writes anything: runs
+	// without a record are offered as a backfill, done only when asked.
+	recs, _ := filepath.Glob(filepath.Join(h.repo, ".ship", "history", "docs", "runs", "*.json"))
+	os.Remove(recs[0])
+	os.Remove(recs[1])
+	before := treeState(t, h.repo)
+	if err := h.c.Do("GET", "/pipelines/docs?repo="+url.QueryEscape(h.repo), nil, &page); err != nil || !strings.Contains(string(page), "Backfill from 2 past runs") {
+		t.Fatalf("no backfill offered: %v", err)
+	}
+	cmd := exec.Command(shipBin, "--home", h.home, "pipeline", "stats", "docs")
+	cmd.Dir = h.repo
+	if out, err := cmd.CombinedOutput(); err != nil || !strings.Contains(string(out), "2 finished runs on this machine have no record yet") {
+		t.Fatalf("stats: %v\n%s", err, out)
+	}
+	if after := treeState(t, h.repo); after != before {
+		t.Fatalf("reading wrote files:\nbefore:\n%s\nafter:\n%s", before, after)
+	}
+	var res struct{ Recorded int }
+	if err := h.c.Do("POST", "/api/pipelines/docs/backfill", map[string]string{"repo": h.repo}, &res); err != nil || res.Recorded != 2 {
+		t.Fatalf("backfill: %+v %v", res, err)
+	}
+	if m, _ := filepath.Glob(filepath.Join(h.repo, ".ship", "history", "docs", "runs", "*.json")); len(m) != 8 {
+		t.Fatalf("run records after backfill: %v", m)
+	}
+}
+
+// treeState lists every file under dir (outside .git) with its size and
+// modification time.
+func treeState(t *testing.T, dir string) string {
+	t.Helper()
+	var b strings.Builder
+	filepath.Walk(dir, func(p string, info os.FileInfo, err error) error {
+		if err != nil {
+			return nil
+		}
+		if info.IsDir() && info.Name() == ".git" {
+			return filepath.SkipDir
+		}
+		rel, _ := filepath.Rel(dir, p)
+		fmt.Fprintf(&b, "%s %d %d\n", rel, info.Size(), info.ModTime().UnixNano())
+		return nil
+	})
+	return b.String()
 }

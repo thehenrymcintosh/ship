@@ -51,6 +51,13 @@
       ask.reset();
       (ask.closest(".action") || document).querySelectorAll("[data-finding-note]").forEach(function (t) { t.value = ""; });
     }
+    if (e.detail.elt.hasAttribute && e.detail.elt.hasAttribute("data-backfill") && e.detail.successful) {
+      try {
+        var rec = JSON.parse(e.detail.xhr.responseText).recorded || 0;
+        toast("Recorded " + rec + " past run" + (rec === 1 ? "" : "s"), true);
+      } catch (err) {}
+      setTimeout(function () { location.reload(); }, 600);
+    }
     if (e.detail.elt.hasAttribute && e.detail.elt.hasAttribute("data-prune") && e.detail.successful) {
       try {
         var res = JSON.parse(e.detail.xhr.responseText), n = (res.pruned || []).length, kept = (res.skipped || []).length;

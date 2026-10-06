@@ -1,6 +1,8 @@
 package main
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -94,20 +96,30 @@ func TestFeedbackVersionsRefine(t *testing.T) {
 	if json.Unmarshal([]byte(vb), &vs) != nil || len(vs) != 2 || vs[1].Source != "refine" || fmt.Sprint(vs[1].Addresses) != "[1]" || !vs[1].Frozen {
 		t.Fatalf("versions:\n%s", vb)
 	}
-	// Each version keeps a copy of the pipeline as it was.
-	if m, _ := filepath.Glob(filepath.Join(h.repo, ".ship", "history", "docs", "versions", "*", "files", "pipeline", "docs.yml")); len(m) != 2 {
-		t.Fatalf("copies: %v", m)
+	// Each version keeps a copy of the pipeline as it was, stored under
+	// its content's hash.
+	for _, p := range []string{reviewPipe, newPipe} {
+		sum := sha256.Sum256([]byte(p))
+		if _, err := os.Stat(filepath.Join(h.repo, ".ship", "history", "docs", "objects", hex.EncodeToString(sum[:]))); err != nil {
+			t.Fatalf("no copy of %q", p)
+		}
 	}
 
-	// A hand edit becomes the next version when it's next used.
+	// A hand edit becomes the next version when it's next used; listing
+	// the versions only reads.
 	os.WriteFile(filepath.Join(h.repo, ".ship", "pipelines", "docs.yml"), []byte(newPipe+"# tweak\n"), 0o644)
+	out = must("pipeline", "versions", "docs")
+	if strings.Contains(out, "v3") || !strings.Contains(out, "aren't a recorded version yet") {
+		t.Fatalf("versions:\n%s", out)
+	}
+
+	// Close #2 by hand (recording the edit as v3); then nothing is open,
+	// so refine has nothing to do.
+	must("pipeline", "close", "docs", "#2", "--note", "added a review step myself")
 	out = must("pipeline", "versions", "docs")
 	if !strings.Contains(out, "v3") || !strings.Contains(out, "edit") || !strings.Contains(out, "pipeline docs changed") {
 		t.Fatalf("versions:\n%s", out)
 	}
-
-	// Close #2 by hand; then nothing is open, so refine has nothing to do.
-	must("pipeline", "close", "docs", "#2", "--note", "added a review step myself")
 	if out := must("pipeline", "refine", "docs", "--fake-agents", fake); !strings.Contains(out, "nothing to refine") {
 		t.Fatal(out)
 	}
@@ -209,7 +221,7 @@ review:
 		t.Fatalf("averages %+v %+v", w, r)
 	}
 	out = run("pipeline", "stats", "docs")
-	if !strings.Contains(out, "last 2 runs") || !strings.Contains(out, "Hands-on: 0 per run") || !strings.Contains(out, "100% ran without anyone") || !strings.Contains(out, "CACHE READ") || !strings.Contains(out, "40k") || !strings.Contains(out, "1.5") {
+	if !strings.Contains(out, "last 2 runs") || !strings.Contains(out, "Hands-on: 0 per run") || !strings.Contains(out, "100% were fully autonomous") || !strings.Contains(out, "CACHE READ") || !strings.Contains(out, "40k") || !strings.Contains(out, "1.5") {
 		t.Fatalf("stats:\n%s", out)
 	}
 }

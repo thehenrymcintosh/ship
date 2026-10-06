@@ -29,7 +29,7 @@ type PipelinePage struct {
 	HasGraph          bool
 	Findings          []pipeline.Finding
 	Current           string // label of the version as the files are now
-	Backfilled        int
+	Unrecorded        int    // finished runs on this machine with no record yet
 
 	Scope   string // "done": time and cost from runs that finished done; "all": every finished run
 	MinRuns int
@@ -54,7 +54,7 @@ type Overview struct {
 	CheckIns             float64
 	Interventions        float64
 	WaitMS               int64   // median time waiting for a person
-	Autonomous           float64 // share of runs nobody touched before the PR
+	Autonomous           float64 // share of runs with no check-ins or interventions before the PR
 	PRRuns               int
 	PRRounds             float64
 	Feedback             int
@@ -170,13 +170,10 @@ func (d *Daemon) pagePipeline(w http.ResponseWriter, r *http.Request) {
 	label, _ := d.eng.PipelineStatus(repo, name)
 	v.Current = label
 
+	// Viewing the page never writes: runs without records are offered as
+	// a backfill instead.
 	runs, _ := hs.Runs()
-	if len(runs) == 0 {
-		if n, err := d.eng.BackfillStats(repo, name); err == nil && n > 0 {
-			v.Backfilled = n
-			runs, _ = hs.Runs()
-		}
-	}
+	v.Unrecorded = d.eng.UnrecordedRuns(dir, name)
 	versions, _ := hs.Versions()
 	items, _ := hs.Items()
 	v.Feedback = items
@@ -211,6 +208,30 @@ func (d *Daemon) pagePipeline(w http.ResponseWriter, r *http.Request) {
 	v.Steps = stepRows(f.Pipeline, runs, v.Scope)
 	v.Compare = compareVersions(f.Pipeline, v.Trend, byVersion, q.Get("a"), q.Get("b"), v.Scope, v.MinRuns)
 	d.render(w, "pipeline", "layout", d.layout(name, "pipeline", v))
+}
+
+// backfillStats is POST /api/pipelines/{name}/backfill: record the stats
+// of finished runs on this machine that have none yet.
+func (d *Daemon) backfillStats(w http.ResponseWriter, r *http.Request) {
+	var b struct {
+		Repo string `json:"repo"`
+	}
+	if err := decode(r, &b); err != nil {
+		writeErr(w, 400, "bad_request", err.Error())
+		return
+	}
+	name := r.PathValue("name")
+	l := d.eng.Loader(b.Repo)
+	if l.Path(name) == "" {
+		writeErr(w, 404, "not_found", "no pipeline "+name)
+		return
+	}
+	n, err := d.eng.BackfillStats(engine.HistoryDir(l, b.Repo, d.eng.Home(), name), name)
+	if err != nil {
+		writeEngineErr(w, err)
+		return
+	}
+	writeJSON(w, 200, map[string]int{"recorded": n})
 }
 
 // tildePath shows a path under the home dir as ~/….
@@ -550,7 +571,7 @@ func compareVersions(p *pipeline.Pipeline, withRuns []VersionRow, byVersion map[
 	cv.Metrics = append(cv.Metrics, add(stats.CompareContinuous("Waiting for a person", wa, wb, true, minN), fmtMS, true, wa, wb))
 	sA, _ = rate("", ra, auto)
 	sB, _ = rate("", rb, auto)
-	cv.Metrics = append(cv.Metrics, add(stats.CompareRates("Ran without a person", sA, nA, sB, nB, false, minN), pctf, false, nil, nil))
+	cv.Metrics = append(cv.Metrics, add(stats.CompareRates("Fully autonomous", sA, nA, sB, nB, false, minN), pctf, false, nil, nil))
 	var pa, pb []float64
 	for _, r := range ra {
 		if r.PR != nil {

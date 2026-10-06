@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/thehenrymcintosh/ship/internal/store"
 )
 
 func TestDiffAndRestore(t *testing.T) {
@@ -36,8 +38,16 @@ func TestDiffAndRestore(t *testing.T) {
 		}
 		return out
 	}
-	must("pipeline", "versions", "p") // records v1
+	// Runs record v1, then (after the skill changes) v2.
+	run := func() {
+		t.Helper()
+		id := h.startRun("p", "impl: [{outcome: done, summary: ok}]\n")
+		h.waitFor(id, func(s *store.RunSnapshot) bool { return s.Status == store.StatusDone })
+	}
+	run()
 	os.WriteFile(skill, []byte("---\nname: impl\n---\nImplement quickly.\n"), 0o644)
+	git("commit", "-qam", "quick")
+	run()
 	if out := must("pipeline", "versions", "p"); !strings.Contains(out, "v2") || !strings.Contains(out, "skill impl changed") {
 		t.Fatal(out)
 	}
@@ -49,11 +59,12 @@ func TestDiffAndRestore(t *testing.T) {
 		t.Fatal(out)
 	}
 
-	// The edit isn't committed: restore refuses.
+	// An uncommitted edit: restore refuses.
+	os.WriteFile(skill, []byte("---\nname: impl\n---\nImplement quickly!\n"), 0o644)
 	if out, err := ship("pipeline", "restore", "p", "v1"); err == nil || !strings.Contains(out, "uncommitted changes") {
 		t.Fatalf("%v\n%s", err, out)
 	}
-	git("commit", "-qam", "quick")
+	git("checkout", "--", ".")
 	out = must("pipeline", "restore", "p", "v1")
 	if !strings.Contains(out, "restored skill impl") || !strings.Contains(out, "back to v1") {
 		t.Fatal(out)

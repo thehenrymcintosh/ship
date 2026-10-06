@@ -10,6 +10,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/thehenrymcintosh/ship/internal/brand"
 	"github.com/thehenrymcintosh/ship/internal/engine/steps"
 	"github.com/thehenrymcintosh/ship/internal/history"
 	"github.com/thehenrymcintosh/ship/internal/store"
@@ -23,6 +24,9 @@ type pipelineStats struct {
 	// Per step: the share of runs where it needed a person.
 	NeedsPerson map[string]float64 `json:"needs_person"`
 	Human       humanSummary       `json:"human"`
+	// Unrecorded counts finished runs on this machine with no record yet
+	// (see --backfill).
+	Unrecorded int `json:"unrecorded,omitempty"`
 }
 
 // humanSummary is how hands-on the runs were, per run.
@@ -79,31 +83,37 @@ func (a *app) statsCmd() *cobra.Command {
 run, time, cost and tokens (input, output, cache writes and cache reads), and
 how often it needed a person. Above the table: how hands-on the runs were
 (check-ins answered, interventions such as retries, time spent waiting for
-you, PR review rounds); the less, the better the pipeline is doing.
+you, PR review rounds); the less, the better the pipeline is doing. A run
+is fully autonomous when nobody answered a check-in or stepped in before
+its PR; PR review rounds are counted separately.
 
 The numbers come from the run records in the pipeline's history
 (runs/<run-id>.json, committed with the pipeline), so they include runs from
-everyone who uses it. Runs that finished on this machine before records were
-kept are added the first time (or with --backfill). Only runs that finished
-done count, unless you pass --all. The pipeline page in the web UI compares
-versions.`,
+everyone who uses it. This command only reads them. Runs that finished on
+this machine before records were kept are added with --backfill. Only runs
+that finished done count, unless you pass --all. The pipeline page in the
+web UI compares versions.`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			e, repo, hs, _, err := a.pipelineCtx(cmd, args[0])
+			e, _, hs, _, err := a.pipelineRead(cmd, args[0])
 			if err != nil {
 				return err
+			}
+			unrecorded := 0
+			if backfill {
+				n, err := e.BackfillStats(hs.Dir, args[0])
+				if err != nil {
+					return err
+				}
+				if !a.json {
+					fmt.Println(a.dim(fmt.Sprintf("Recorded %d earlier %s from this machine.", n, plural(n, "run"))))
+				}
+			} else {
+				unrecorded = e.UnrecordedRuns(hs.Dir, args[0])
 			}
 			recorded, err := hs.Runs()
 			if err != nil {
 				return err
-			}
-			if backfill || len(recorded) == 0 {
-				if n, err := e.BackfillStats(repo, args[0]); err == nil && n > 0 {
-					fmt.Println(a.dim(fmt.Sprintf("Recorded %d earlier %s from this machine.", n, plural(n, "run"))))
-					if recorded, err = hs.Runs(); err != nil {
-						return err
-					}
-				}
 			}
 			var runs []history.RunStats
 			for _, r := range recorded {
@@ -115,7 +125,7 @@ versions.`,
 			if last > 0 && len(runs) > last {
 				runs = runs[:last]
 			}
-			out := pipelineStats{Pipeline: args[0], Runs: []string{}, Steps: history.AverageSteps(runs), NeedsPerson: map[string]float64{}, Human: summarizeHuman(runs)}
+			out := pipelineStats{Pipeline: args[0], Runs: []string{}, Steps: history.AverageSteps(runs), NeedsPerson: map[string]float64{}, Human: summarizeHuman(runs), Unrecorded: unrecorded}
 			for _, s := range runs {
 				out.Runs = append(out.Runs, s.Run)
 				for _, st := range s.Steps {
@@ -130,6 +140,14 @@ versions.`,
 			if a.json {
 				return printJSON(out)
 			}
+			if unrecorded > 0 {
+				have := "have"
+				if unrecorded == 1 {
+					have = "has"
+				}
+				fmt.Println(a.dim(fmt.Sprintf("%d finished %s on this machine %s no record yet: `%s pipeline stats %s --backfill` adds them.",
+					unrecorded, plural(unrecorded, "run"), have, brand.Name, args[0])))
+			}
 			if len(runs) == 0 {
 				which := "done"
 				if all {
@@ -140,7 +158,7 @@ versions.`,
 			}
 			fmt.Printf("%s: averages per run over the last %d %s\n\n", a.bold(args[0]), len(runs), plural(len(runs), "run"))
 			h := out.Human
-			fmt.Printf("Hands-on: %s per run (%s check-ins, %s interventions), %s waiting for a person; %.0f%% ran without anyone before the PR.\n",
+			fmt.Printf("Hands-on: %s per run (%s check-ins, %s interventions), %s waiting for a person; %.0f%% were fully autonomous (no check-ins or interventions before the PR).\n",
 				num(h.HandsOn), num(h.CheckIns), num(h.Interventions), dur(h.WaitMS), h.Autonomous*100)
 			if h.PRRounds > 0 || h.Feedback > 0 {
 				fmt.Printf("PR review rounds: %s per run with a PR; feedback: %s per run.\n", num(h.PRRounds), num(h.Feedback))

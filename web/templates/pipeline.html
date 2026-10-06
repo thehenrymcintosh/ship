@@ -4,7 +4,9 @@
   <p class="muted small">{{$v.Current}} · history in <code>{{$v.Where}}</code></p>
 </div>
 {{if $v.Description}}<p>{{$v.Description}}</p>{{end}}
-{{if $v.Backfilled}}<p class="muted small">Added {{$v.Backfilled}} earlier runs from this machine's run logs.</p>{{end}}
+{{if $v.Unrecorded}}<div class="muted small backfill">{{$v.Unrecorded}} finished {{if eq $v.Unrecorded 1}}run{{else}}runs{{end}} on this machine {{if eq $v.Unrecorded 1}}has{{else}}have{{end}} no record in the history yet.
+  <form class="inline" data-backfill hx-post="/api/pipelines/{{$v.Name}}/backfill" hx-swap="none">{{if $v.Repo}}<input type="hidden" name="repo" value="{{$v.Repo}}">{{end}}
+  <button class="btn small" title="Same as {{brand}} pipeline stats {{$v.Name}} --backfill">Backfill from {{$v.Unrecorded}} past {{if eq $v.Unrecorded 1}}run{{else}}runs{{end}}</button></form></div>{{end}}
 {{if $v.Findings}}<ul class="findings">{{range $v.Findings}}<li class="sev-{{.Severity}}"><code>{{.Code}}</code> <span class="muted">{{basename .File}}:{{.Line}}</span> {{.Message}}</li>{{end}}</ul>{{end}}
 
 <nav class="pp-nav muted small" aria-label="Sections">
@@ -25,12 +27,12 @@
     <div class="tile"><span class="tile-k">Typical run</span><span class="tile-v">{{or (dur .MedianMS) "-"}}</span><span class="tile-s">median time</span></div>
     <div class="tile"><span class="tile-k">Typical cost</span><span class="tile-v">{{or (money .MedianCost) "-"}}</span><span class="tile-s">median per run</span></div>
     <div class="tile"><span class="tile-k">Hands-on</span><span class="tile-v">{{num .HandsOn}}</span><span class="tile-s">times a person acted per run ({{num .CheckIns}} check-ins, {{num .Interventions}} interventions)</span></div>
-    <div class="tile"><span class="tile-k">On its own</span><span class="tile-v">{{pct .Autonomous}}</span><span class="tile-s">of runs needed nobody before the PR</span></div>
+    <div class="tile"><span class="tile-k">Fully autonomous</span><span class="tile-v">{{pct .Autonomous}}</span><span class="tile-s">of runs had no check-ins or interventions before the PR</span></div>
     <div class="tile"><span class="tile-k">Waiting for you</span><span class="tile-v">{{or (dur .WaitMS) "0"}}</span><span class="tile-s">median per run</span></div>
     {{if .PRRuns}}<div class="tile"><span class="tile-k">PR rounds</span><span class="tile-v">{{num .PRRounds}}</span><span class="tile-s">review batches and CI failures per PR</span></div>{{end}}
     <div class="tile"><span class="tile-k">Feedback</span><span class="tile-v">{{.Feedback}}</span><span class="tile-s">pieces on these runs</span></div>
   </div>
-  <p class="muted small">The less a person has to step in, and the fewer PR review rounds, the better the pipeline is doing.</p>
+  <p class="muted small">The less a person has to step in, and the fewer PR review rounds, the better the pipeline is doing. Fully autonomous counts only what happened before the PR (pausing and resuming don't count); review rounds on the PR are a separate measure.</p>
   <div class="hist-pair">
     <figure><figcaption>Run time</figcaption>{{.DurationHist}}</figure>
     <figure><figcaption>Run cost</figcaption>{{.CostHist}}</figure>
