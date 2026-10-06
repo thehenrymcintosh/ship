@@ -281,7 +281,7 @@ func (a *app) pruneCmd() *cobra.Command {
 	var force, dry bool
 	cmd := &cobra.Command{
 		Use:   "prune",
-		Short: "Delete the records of finished runs older than 30 days",
+		Short: "Delete the records of old finished runs (retention.keep_runs_days, default 30)",
 		Long: `Delete what ship keeps about finished runs (event logs, transcripts,
 handovers) once they finished longer ago than --older-than. Slices go with
 their run. Active runs are never touched, and runs that still have a
