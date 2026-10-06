@@ -543,14 +543,17 @@ func (s *Store) Find(ref string) (*Version, error) {
 	return FindIn(vs, ref)
 }
 
-// FindIn resolves a version reference among vs (see Store.Find).
+// FindIn resolves a version reference among vs (see Store.Find). vs may be
+// a subset of the versions: "v3" is the one numbered 3, wherever it is.
 func FindIn(vs []Version, ref string) (*Version, error) {
 	r := strings.TrimPrefix(strings.ToLower(strings.TrimSpace(ref)), "v")
 	if n, err := strconv.Atoi(r); err == nil && len(r) < 4 {
-		if n >= 1 && n <= len(vs) {
-			return &vs[n-1], nil
+		for i := range vs {
+			if vs[i].Version == n {
+				return &vs[i], nil
+			}
 		}
-		return nil, fmt.Errorf("no version v%d (there are %d)", n, len(vs))
+		return nil, fmt.Errorf("no version v%d", n)
 	}
 	r = strings.TrimSpace(strings.ToLower(ref))
 	var found *Version

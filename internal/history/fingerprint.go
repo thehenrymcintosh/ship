@@ -11,8 +11,8 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
-	"io/fs"
 	"os"
+	"path"
 	"path/filepath"
 	"regexp"
 	"sort"
@@ -281,25 +281,36 @@ func hashDir(dir string) string {
 // "<slash path>\x00<sha256 of content>\n" per file, sorted by path. The
 // dir's hash is the listing's hash, so a version stores the listing as an
 // object like any file. With keep, contents maps each file's hash to its
-// content.
+// content. Symlinks are followed, as the pipeline's plugin follows them
+// (a link back up the tree is skipped).
 func readTree(dir string, keep bool) (listing []byte, contents map[string][]byte) {
 	var rels []string
-	_ = filepath.WalkDir(dir, func(p string, d fs.DirEntry, err error) error {
-		if err != nil || p == dir {
-			return nil
+	open := map[string]bool{}
+	var walk func(p, rel string)
+	walk = func(p, rel string) {
+		real, err := filepath.EvalSymlinks(p)
+		if err != nil || open[real] {
+			return
 		}
-		if strings.HasPrefix(d.Name(), ".") {
-			if d.IsDir() {
-				return filepath.SkipDir
+		entries, err := os.ReadDir(p)
+		if err != nil {
+			return
+		}
+		open[real] = true
+		defer delete(open, real)
+		for _, e := range entries {
+			if strings.HasPrefix(e.Name(), ".") {
+				continue
 			}
-			return nil
+			child, childRel := filepath.Join(p, e.Name()), path.Join(rel, e.Name())
+			if info, err := os.Stat(child); err == nil && info.IsDir() {
+				walk(child, childRel)
+			} else {
+				rels = append(rels, childRel) // unreadable ones are left out below
+			}
 		}
-		if !d.IsDir() {
-			rel, _ := filepath.Rel(dir, p)
-			rels = append(rels, filepath.ToSlash(rel))
-		}
-		return nil
-	})
+	}
+	walk(dir, "")
 	sort.Strings(rels)
 	if keep {
 		contents = map[string][]byte{}

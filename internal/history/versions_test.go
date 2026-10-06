@@ -78,6 +78,14 @@ func TestVersionsFrozenAndRestored(t *testing.T) {
 	if v, err := s.Find(v1.Hash[:6]); err != nil || v.Hash != v1.Hash {
 		t.Fatal(v, err)
 	}
+	// Among a subset (the pipeline page's versions with runs), "v2" is
+	// still the version numbered 2, not the second in the list.
+	if v, err := FindIn([]Version{v2}, "v2"); err != nil || v.Hash != v2.Hash {
+		t.Fatal(v, err)
+	}
+	if _, err := FindIn([]Version{v2}, "v1"); err == nil {
+		t.Fatal("v1 isn't in the subset")
+	}
 }
 
 // Two people recording history for the same pipeline on different machines

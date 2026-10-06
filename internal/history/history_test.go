@@ -83,6 +83,32 @@ func TestFingerprintParts(t *testing.T) {
 	}
 }
 
+// A skill behind symlinks hashes as what it points at, as the plugin
+// copies it; a link back up the tree is skipped.
+func TestHashDirFollowsSymlinks(t *testing.T) {
+	dir := t.TempDir()
+	write(t, filepath.Join(dir, "real", "SKILL.md"), "skill")
+	write(t, filepath.Join(dir, "real", "refs", "a.md"), "a")
+	write(t, filepath.Join(dir, "shared", "a.md"), "a")
+	write(t, filepath.Join(dir, "linked", "SKILL.md"), "skill")
+	for link, target := range map[string]string{
+		"linked/refs": filepath.Join(dir, "shared"),
+		"linked/loop": filepath.Join(dir, "linked"),
+		"skill":       filepath.Join(dir, "linked"),
+	} {
+		if err := os.Symlink(target, filepath.Join(dir, filepath.FromSlash(link))); err != nil {
+			t.Fatal(err)
+		}
+	}
+	want := hashDir(filepath.Join(dir, "real"))
+	if got := hashDir(filepath.Join(dir, "linked")); got != want {
+		t.Fatalf("linked subdir: %s want %s", got, want)
+	}
+	if got := hashDir(filepath.Join(dir, "skill")); got != want {
+		t.Fatalf("linked skill: %s want %s", got, want)
+	}
+}
+
 func TestVersionsAndFeedback(t *testing.T) {
 	in, repo := setup(t)
 	s := Open(filepath.Join(repo, ".ship", "history", "p"), t.TempDir())
