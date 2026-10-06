@@ -56,21 +56,43 @@ func (e *Engine) Graph(id string) (pipeline.Graph, error) {
 			n.Current = true
 		}
 	}
-	taken := map[[2]string]bool{}
 	evs, _, _ := store.ReadEvents(e.o.Store.RunDir(id))
+	markTaken(&g, evs)
+	return g, nil
+}
+
+// markTaken marks the edges the run's transitions took. A step can reach
+// the same next step by several outcomes (major, minor, patch…), so an edge
+// matches on its label too: the outcome (error for error routes), or
+// exhausted. A transition no edge is labelled for (a manual goto, say) marks
+// every edge between its steps.
+func markTaken(g *pipeline.Graph, evs []store.Event) {
 	for _, ev := range evs {
 		if ev.Type != store.EvTransition {
 			continue
 		}
 		var t store.Transition
-		if json.Unmarshal(ev.Data, &t) == nil {
-			taken[[2]string{t.From, t.To}] = true
+		if json.Unmarshal(ev.Data, &t) != nil {
+			continue
+		}
+		label := t.Outcome
+		if t.Reason == store.ReasonExhausted {
+			label = "exhausted"
+		}
+		matched := false
+		for i := range g.Edges {
+			if ed := &g.Edges[i]; ed.From == t.From && ed.To == t.To && ed.Label == label {
+				ed.Taken, matched = true, true
+			}
+		}
+		if !matched {
+			for i := range g.Edges {
+				if ed := &g.Edges[i]; ed.From == t.From && ed.To == t.To {
+					ed.Taken = true
+				}
+			}
 		}
 	}
-	for i := range g.Edges {
-		g.Edges[i].Taken = taken[[2]string{g.Edges[i].From, g.Edges[i].To}]
-	}
-	return g, nil
 }
 
 // InboxItem is one run waiting for a human.
