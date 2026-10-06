@@ -50,6 +50,8 @@ func (d *Daemon) routes() http.Handler {
 	api("POST /api/runs/{id}/pr/trigger", d.command(engine.CmdPRTrigger))
 	api("POST /api/runs/{id}/reacquire", d.command(engine.CmdReacquire))
 	api("POST /api/runs/{id}/upgrade", d.upgrade)
+	api("GET /api/runs/{id}/card", d.getCard)
+	api("POST /api/runs/{id}/fix", d.fix)
 	api("POST /api/runs/{id}/budget", d.command(engine.CmdRaiseBudget))
 	api("POST /api/runs/{id}/start-now", d.command(engine.CmdStartNow))
 	api("GET /api/runs/{id}/slices", d.runSlices)

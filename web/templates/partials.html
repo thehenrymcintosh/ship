@@ -40,10 +40,59 @@
   {{end}}
 </section>
 {{end}}{{end}}
-{{if and (eq $s.Status "asking") $s.PendingAsk}}{{$a := $s.PendingAsk}}
-<section class="card action ask-{{$a.Kind}}">
-  {{if eq $a.Kind "split_review"}}
-    <header class="action-head"><span class="badge check-in">Check-in</span><h2>{{$a.Question}}</h2><span class="muted">{{ago $a.Since}}</span></header>
+{{if .Card}}{{template "checkin-card" .}}
+{{else if $s.WaitingOn}}
+<section class="card action">
+  <header class="action-head"><span class="badge">Waiting</span><h2>Starts once <a href="/runs/{{$s.WaitingOn}}">{{.AfterT}}</a> is done</h2><span class="muted">{{ago $s.CreatedAt}}</span></header>
+  <p class="muted small">It takes no worktree or agent until then. It branches from {{if $s.AfterStack}}that run's branch{{else}}<code>{{$s.Base}}</code> as it is when it starts{{end}}. If that run ends any other way, you're asked whether to start anyway.</p>
+  <div class="choices">
+    <button class="btn primary" hx-post="/api/runs/{{$s.ID}}/start-now" hx-swap="none">Start now</button>
+    <button class="btn danger ghost" hx-post="/api/runs/{{$s.ID}}/cancel" hx-confirm="Cancel this run?" hx-swap="none">Cancel run</button>
+  </div>
+</section>
+{{end}}
+{{end}}
+
+{{/* checkin-card: a check-in or needs-attention card. One layout, most important first: what kind it is and where it
+     came from, the headline, the situation, the recommendation, the options, then the evidence folded away. Data: *RunView */}}
+{{define "checkin-card"}}{{$s := .S}}{{$c := .Card}}{{$a := $s.PendingAsk}}
+<section class="card action checkin ci-{{$c.Kind}}{{with $a}} ask-{{.Kind}}{{end}}" aria-label="{{$c.Label}}: {{$c.Headline}}">
+  <header class="ci-band">
+    <span class="ci-label"><span aria-hidden="true">{{if eq $c.Kind "problem"}}⚠{{else}}◆{{end}}</span> {{$c.Label}}</span>
+    <span class="ci-meta">
+      <span>{{$c.Pipeline}}</span>
+      {{with $c.From}}<span>from <strong>{{.}}</strong></span>{{end}}
+      <span title="since {{$c.Since.Local.Format "Mon 15:04"}}">waiting {{waited $c.Since}}</span>
+      <span>{{or (money $c.CostUSD) "$0"}} so far</span>
+    </span>
+  </header>
+  <h2 class="ci-headline">{{$c.Headline}}</h2>
+  {{with $c.Question}}<p class="ci-question small"><span class="muted">Asked:</span> {{.}}</p>{{end}}
+  {{with $c.Situation}}<p class="ci-situation">{{.}}</p>{{end}}
+  {{with $c.Tests}}<ul class="ci-tests" aria-label="Failing tests">{{range .}}<li><code>{{.}}</code></li>{{end}}</ul>{{end}}
+  {{if $c.SummaryModel}}<p class="ci-generated small">Summary written by {{$c.SummaryModel}} from {{$c.From}}'s handover, so check it against the full handover under Evidence.</p>{{end}}
+  <p class="ci-changed small" data-seen-run="{{$s.ID}}" data-seen="{{$c.Seen.JSON}}" data-seen-from="{{$c.From}}" hidden></p>
+
+  {{with $c.Fix}}
+  <div class="ci-rec">
+    <div class="ci-rec-text"><span class="ci-rec-k">Recommended</span> <strong>{{.Label}}</strong></div>
+    {{if $c.FixErr}}<p class="small warn-text">Can't do this from here: {{$c.FixErr}}</p>
+    {{else}}
+    {{if $c.FixWrite}}<div class="ci-preview small"><span class="muted">Writes to <code>{{$c.FixFile}}</code>, then runs {{$c.FixStep}} again:</span><pre>{{$c.FixWrite}}</pre></div>{{end}}
+    {{if or (eq .Kind "allow_tool") (eq .Kind "timeout")}}<button class="btn primary" hx-post="/api/runs/{{$s.ID}}/fix" hx-vals='{{vals "kind" .Kind "step" $c.FixStep "value" .Value}}' hx-swap="none" hx-confirm="Write this to {{$c.FixFile}}?&#10;&#10;{{$c.FixWrite}}&#10;&#10;Then move the run onto the edited pipeline and run {{$c.FixStep}} again.">{{.Label}}</button>
+    {{else if eq .Kind "budget"}}<button class="btn primary" hx-post="/api/runs/{{$s.ID}}/budget" hx-vals='{{vals "action" "retry" "usd" .Value "tokens" .Tokens}}' hx-swap="none">{{.Label}}</button>
+    {{else if eq .Kind "reacquire"}}<button class="btn primary" hx-post="/api/runs/{{$s.ID}}/reacquire" hx-swap="none">{{.Label}}</button>
+    {{else}}<button class="btn primary" hx-post="/api/runs/{{$s.ID}}/retry" hx-swap="none">{{.Label}}</button>{{end}}
+    {{end}}
+  </div>
+  {{else}}{{if $c.Recommended}}
+  <div class="ci-rec">
+    <div class="ci-rec-text"><span class="ci-rec-k">Recommended</span> <strong>{{$c.Recommended}}</strong>{{with $c.Reason}}<span class="ci-reason">: {{.}}</span>{{end}}</div>
+    {{if $c.DoRecommended}}<button class="btn primary" hx-post="/api/runs/{{$s.ID}}/answer" hx-vals='{{vals "choice" $c.Recommended}}' hx-swap="none" data-do-recommended>Do recommended: {{$c.Recommended}}</button>{{end}}
+  </div>
+  {{end}}{{end}}
+
+  {{if and $a (eq $a.Kind "split_review")}}
     <div class="slices">
       {{range .Slices}}
       <article class="slice">
@@ -57,77 +106,73 @@
       <label class="note"><span>Note <span class="muted">(required to re-split)</span></span>
         <textarea name="note" rows="2" placeholder="e.g. merge the API and UI slices"></textarea></label>
       <div class="choices">
-        <button class="btn primary" name="action" value="approve">Approve {{len .Slices}} slices</button>
-        <button class="btn" name="action" value="resplit">Re-split</button>
+        <button class="btn primary choice" name="action" value="approve"><span>Approve {{len .Slices}} slices</span><span class="choice-to">the slices start</span></button>
+        <button class="btn choice" name="action" value="resplit"><span>Re-split</span><span class="choice-to">→ {{$c.From}} again, with your note</span></button>
         <button class="btn" name="action" value="reload" title="Re-read the slice files after editing them">Reload files</button>
         <button class="btn ghost" type="button" hx-post="/api/runs/{{$s.ID}}/open" hx-vals='{"what":"slices"}' hx-swap="none">Open folder</button>
-        <button class="btn danger ghost" name="action" value="stop">Stop</button>
+        <button class="btn danger ghost choice" name="action" value="stop"><span>Stop</span><span class="choice-to">stops the run</span></button>
       </div>
     </form>
-  {{else if eq $a.Kind "var"}}
-    <header class="action-head"><span class="badge check-in">Check-in</span><h2>{{$a.Question}}</h2><span class="muted">{{ago $a.Since}}</span></header>
+  {{else if and $a (eq $a.Kind "var")}}
     <form class="answer" hx-post="/api/runs/{{$s.ID}}/answer" hx-swap="none">
       <label class="note"><span>Value for <code>{{$a.Var}}</code></span><input name="note" required autocomplete="off"></label>
       <div class="choices"><button class="btn primary">Set and continue</button></div>
     </form>
-  {{else}}
-    <header class="action-head"><span class="badge check-in">Check-in</span><h2>{{$a.Question}}</h2><span class="muted">{{ago $a.Since}}</span></header>
-    {{$notes := ne $a.Input "none"}}{{$needs := false}}
-    {{range .Panels}}{{if .NeedsYou}}{{$needs = true}}{{end}}{{template "ask-panel" (dict "P" . "Notes" $notes "Run" $s.ID)}}{{end}}
-    <form class="answer ask-bar{{if .Panels}} sticky{{end}}" data-ask-form hx-post="/api/runs/{{$s.ID}}/answer" hx-swap="none">
-      {{if .Panels}}<p class="ask-bar-q"><span class="badge check-in">Check-in</span> {{$a.Question}}</p>{{end}}
+  {{else if $a}}
+    {{$notes := ne $a.Input "none"}}{{$needs := false}}{{range .Panels}}{{if .NeedsYou}}{{$needs = true}}{{end}}{{end}}
+    <form class="answer" data-ask-form hx-post="/api/runs/{{$s.ID}}/answer" hx-swap="none">
+      <div class="choices ci-options">{{range .Choices}}<button class="btn choice{{if .Recommended}} primary{{else if .Danger}} danger ghost{{end}}" name="choice" value="{{.Label}}"{{with .Target}} title="{{.}}"{{end}}><span>{{.Label}}{{if .Recommended}} <span class="ci-star" title="recommended">★</span>{{end}}</span>{{if or .Target .Cost}}<span class="choice-to">{{.Target}}{{with .Cost}} · {{.}}{{end}}</span>{{end}}{{with .Consequence}}<span class="choice-what">{{.}}</span>{{end}}</button>{{end}}</div>
       {{if $notes}}<label class="note"><span>Your note {{if eq $a.Input "required"}}<span class="muted">(required)</span>{{else}}<span class="muted">(optional)</span>{{end}}</span>
         <textarea name="note" rows="2" {{if eq $a.Input "required"}}required{{end}} placeholder="Anything the next steps should know: what to fix, what to leave, why"></textarea></label>
       <div class="note-for" role="radiogroup" aria-label="Who the note is for">
         <label><input type="radio" name="for" value="step" checked> For the next step</label>
         <label><input type="radio" name="for" value="run"> For the whole run</label>
       </div>
-      <span class="muted small note-hint"><span class="for-step">It becomes this check-in's handover, which the next step reads.</span><span class="for-run">The next step reads it as this check-in's handover, and every later agent step of this run{{if $s.Children}} and its slices{{else}} (and any slices it splits into){{end}} gets it too. It's listed under Notes for this run.</span>{{if $needs}} Your calls on the findings above are added to it.{{end}}</span>{{end}}
-      <div class="choices">{{range $i, $c := .Choices}}<button class="btn choice{{if eq $i 0}} primary{{else if .Danger}} danger ghost{{end}}" name="choice" value="{{.Label}}"{{with .Target}} title="{{.}}"{{end}}><span>{{.Label}}</span>{{with .Target}}<span class="choice-to">{{.}}</span>{{end}}</button>{{end}}</div>
+      <span class="muted small note-hint"><span class="for-step">It becomes this check-in's handover, which the next step reads.</span><span class="for-run">The next step reads it as this check-in's handover, and every later agent step of this run{{if $s.Children}} and its slices{{else}} (and any slices it splits into){{end}} gets it too. It's listed under Notes for this run.</span>{{if $needs}} Your calls on the findings below are added to it.{{end}}</span>{{end}}
     </form>
-  {{end}}
-</section>
-{{else if $s.WaitingOn}}
-<section class="card action">
-  <header class="action-head"><span class="badge">Waiting</span><h2>Starts once <a href="/runs/{{$s.WaitingOn}}">{{.AfterT}}</a> is done</h2><span class="muted">{{ago $s.CreatedAt}}</span></header>
-  <p class="muted small">It takes no worktree or agent until then. It branches from {{if $s.AfterStack}}that run's branch{{else}}<code>{{$s.Base}}</code> as it is when it starts{{end}}. If that run ends any other way, you're asked whether to start anyway.</p>
-  <div class="choices">
-    <button class="btn primary" hx-post="/api/runs/{{$s.ID}}/start-now" hx-swap="none">Start now</button>
-    <button class="btn danger ghost" hx-post="/api/runs/{{$s.ID}}/cancel" hx-confirm="Cancel this run?" hx-swap="none">Cancel run</button>
-  </div>
-</section>
-{{else if eq $s.Status "needs_attention"}}
-<section class="card action attention">
-  <header class="action-head"><span class="badge warn">Needs attention</span><h2>{{$s.StatusReason}}</h2><span class="muted">{{ago $s.UpdatedAt}}</span></header>
-  {{with $s.LastVisit}}{{if .Error}}<p class="error-line"><code>{{.Error.Reason}}</code> {{.Error.Message}}</p>{{end}}{{end}}
-  {{if and .Budget.Stop (or .Budget.USD .Budget.Tokens)}}
-  <form class="answer budget-form" hx-post="/api/runs/{{$s.ID}}/budget" hx-swap="none">
-    <input type="hidden" name="action" value="retry">
-    <p class="small">So far: {{or (money $s.CostUSD) "$0"}}{{with .Budget.USD}} of {{money .}}{{end}}{{if .Budget.Tokens}} · {{tokens $s.Tokens}} of {{tokens .Budget.Tokens}} tokens{{end}}. Raise the budget by:</p>
-    <div class="choices">
-      {{if .Budget.USD}}<label class="inline-field"><span>$</span><input name="usd" inputmode="decimal" placeholder="5" size="6" aria-label="Dollars to add"></label>{{end}}
-      {{if .Budget.Tokens}}<label class="inline-field"><input name="tokens" placeholder="500k" size="7" aria-label="Tokens to add"><span>tokens</span></label>{{end}}
-      <button class="btn primary">Raise and retry</button>
+    {{if .CanRetry}}<div class="choices ci-more"><button class="btn small ghost" hx-post="/api/runs/{{$s.ID}}/retry" hx-swap="none" title="Run {{$s.CameFrom}} again without answering">Run {{$s.CameFrom}} again</button></div>{{end}}
+    {{if .Panels}}<div class="ci-evidence"><h3 class="sub">Evidence</h3>
+    {{range .Panels}}{{template "ask-panel" (dict "P" . "Notes" $notes "Run" $s.ID)}}{{end}}</div>{{end}}
+  {{else}}
+    <div class="choices ci-options">
+      {{if not $c.Fix}}<button class="btn{{if not .Budget.Stop}} primary{{end}}" hx-post="/api/runs/{{$s.ID}}/retry" hx-swap="none">Retry step</button>{{else if ne $c.Fix.Kind "retry"}}<button class="btn" hx-post="/api/runs/{{$s.ID}}/retry" hx-swap="none">Retry as it is</button>{{end}}
+      {{if .CanResume}}<button class="btn" hx-post="/api/runs/{{$s.ID}}/resume-session" hx-swap="none" title="Resume the interrupted agent session">Resume agent session</button>{{end}}
+      {{if and $s.WorkspaceMissing (not (and $c.Fix (eq $c.Fix.Kind "reacquire")))}}<button class="btn" hx-post="/api/runs/{{$s.ID}}/reacquire" hx-swap="none">Re-acquire worktree</button>{{end}}
+      <form class="inline" hx-post="/api/runs/{{$s.ID}}/goto" hx-swap="none">
+        <select name="step" aria-label="Step">{{range .Steps}}<option>{{.}}</option>{{end}}<option>done</option><option>stop</option></select>
+        <button class="btn">Go to step</button>
+      </form>
+      <button class="btn danger ghost" hx-post="/api/runs/{{$s.ID}}/cancel" hx-confirm="Cancel this run?" hx-swap="none">Cancel run</button>
     </div>
-  </form>
-  {{end}}
-  <div class="choices">
-    <button class="btn{{if not .Budget.Stop}} primary{{end}}" hx-post="/api/runs/{{$s.ID}}/retry" hx-swap="none">Retry step</button>
-    {{if .CanResume}}<button class="btn" hx-post="/api/runs/{{$s.ID}}/resume-session" hx-swap="none" title="Resume the interrupted agent session">Resume agent session</button>{{end}}
-    {{if $s.WorkspaceMissing}}<button class="btn" hx-post="/api/runs/{{$s.ID}}/reacquire" hx-swap="none">Re-acquire worktree</button>{{end}}
-    <form class="inline" hx-post="/api/runs/{{$s.ID}}/goto" hx-swap="none">
-      <select name="step" aria-label="Step">{{range .Steps}}<option>{{.}}</option>{{end}}<option>done</option><option>stop</option></select>
-      <button class="btn">Go to step</button>
+    {{if and .Budget.Stop (or .Budget.USD .Budget.Tokens)}}
+    <details class="panel"><summary>Raise the budget by a different amount</summary>
+    <form class="answer budget-form" hx-post="/api/runs/{{$s.ID}}/budget" hx-swap="none">
+      <input type="hidden" name="action" value="retry">
+      <p class="small">So far: {{or (money $s.CostUSD) "$0"}}{{with .Budget.USD}} of {{money .}}{{end}}{{if .Budget.Tokens}} · {{tokens $s.Tokens}} of {{tokens .Budget.Tokens}} tokens{{end}}. Raise the budget by:</p>
+      <div class="choices">
+        {{if .Budget.USD}}<label class="inline-field"><span>$</span><input name="usd" inputmode="decimal" placeholder="5" size="6" aria-label="Dollars to add"></label>{{end}}
+        {{if .Budget.Tokens}}<label class="inline-field"><input name="tokens" placeholder="500k" size="7" aria-label="Tokens to add"><span>tokens</span></label>{{end}}
+        <button class="btn">Raise and retry</button>
+      </div>
     </form>
-    <button class="btn danger ghost" hx-post="/api/runs/{{$s.ID}}/cancel" hx-confirm="Cancel this run?" hx-swap="none">Cancel run</button>
+    </details>
+    {{end}}
+  {{end}}
+  {{if not $a}}{{with $s.LastVisit}}
+  <div class="ci-evidence"><h3 class="sub">Evidence</h3>
+    <details class="panel"><summary>What {{.Step}} reported</summary>
+      {{if .Error}}<p class="error-line"><code>{{.Error.Reason}}</code> {{.Error.Message}}</p>{{end}}
+      {{with .Summary}}<div class="md">{{md .}}</div>{{end}}
+      <p class="small muted">Its live output, input, handover and result are in the timeline: visit {{.Seq}}.</p>
+    </details>
   </div>
+  {{end}}{{end}}
 </section>
-{{end}}
 {{end}}
 
 {{/* ask-panel: context shown with a check-in, with review findings as cards. Data: dict P (Panel), Notes (bool), Run */}}
 {{define "ask-panel"}}{{$p := .P}}{{$run := .Run}}{{$notes := .Notes}}
-<details class="panel" open><summary>{{$p.Title}}{{if $p.Findings}} <span class="muted small">· {{plural $p.Findings "finding"}}{{with $p.NeedsYou}} · <span class="needs-you-count">{{len .}} for you to decide</span>{{end}}</span>{{end}}</summary>
+<details class="panel"><summary>{{$p.Title}}{{if $p.Findings}} <span class="muted small">· {{plural $p.Findings "finding"}}{{with $p.NeedsYou}} · <span class="needs-you-count">{{len .}} for you to decide</span>{{end}}</span>{{end}}</summary>
   {{if $p.Parts}}
   {{with $p.NeedsYou}}<p class="needs-you-line small">Your call: {{range $i, $id := .}}{{if $i}}, {{end}}<a href="#f-{{$run}}-{{$id}}">{{$id}}</a>{{end}}</p>{{end}}
   {{range $p.Parts}}

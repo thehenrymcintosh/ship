@@ -30,11 +30,12 @@
 <section class="repo-group">
   <h2 class="repo-name" title="{{.Repo}}">{{.Name}} <span class="muted path">{{.Repo}}</span></h2>
   <ul class="run-rows">
-  {{range .Rows}}{{$s := .S}}
-    <li class="run-row{{if .Inbox}} in-inbox{{end}}">
+  {{range .Rows}}{{$s := .S}}{{$k := ciKind $s}}
+    <li class="run-row{{if .Inbox}} in-inbox{{end}}{{with $k}} ci-{{.}}{{end}}">
       <a class="run-link" href="/runs/{{$s.ID}}">
         {{template "pill" $s}}
         <span class="run-title">{{$s.Title}}{{if .Inbox}} <span class="bell" title="Waiting for you">🔔</span>{{end}}</span>
+        {{with $k}}<span class="ci-tag ci-{{.}}">{{ciLabel .}}</span>{{end}}
         <span class="run-meta">
           <span class="pipeline">{{$s.Pipeline}}</span>
           {{if $s.WaitingOn}}<span class="step" title="{{$s.StatusReason}}">waiting on {{short $s.WaitingOn}}</span>
@@ -49,7 +50,7 @@
         <summary><span class="minis">{{range .Children}}{{template "mini-pill" .}}{{end}}</span> {{.Progress}}</summary>
         <ol class="child-rows">
           {{range .Children}}
-          <li><a href="/runs/{{.ID}}">{{template "pill" .}} <span class="slice-n">{{with .Slice}}{{.Number}}{{end}}</span> {{.Title}}
+          <li><a href="/runs/{{.ID}}">{{template "pill" .}} <span class="slice-n">{{with .Slice}}{{.Number}}{{end}}</span> {{.Title}}{{with ciKind .}} <span class="ci-tag ci-{{.}}">{{ciLabel .}}</span>{{end}}
             <span class="run-meta"><span class="step">{{.CurrentStep}}</span><span class="branch"><code>{{.Branch}}</code></span>{{with money .CostUSD}}<span class="cost">{{.}}</span>{{end}}</span></a></li>
           {{end}}
         </ol>

@@ -71,18 +71,36 @@ func (a *app) answerCmd() *cobra.Command {
 					return fail(exitUser, "choose one of: %s", strings.Join(pa.Choices, ", "))
 				}
 				r := bufio.NewReader(os.Stdin)
-				fmt.Println(a.bold(pa.Question))
+				card := a.loadCard(id)
+				if card != nil {
+					a.printCard(os.Stdout, card, id)
+				} else {
+					fmt.Println(a.bold(pa.Question))
+				}
 				if pa.Kind == store.AskKindVar {
 					fmt.Print("value: ")
 					v, _ := r.ReadString('\n')
 					note = strings.TrimSpace(v)
 				} else {
-					for i, c := range pa.Choices {
-						fmt.Printf("  %d) %s\n", i+1, c)
+					rec := ""
+					if card != nil {
+						rec = card.Recommended
 					}
-					fmt.Print("choose: ")
+					if card == nil || len(card.Options) == 0 {
+						for i, c := range pa.Choices {
+							fmt.Printf("  %d) %s\n", i+1, c)
+						}
+					}
+					if rec != "" {
+						fmt.Printf("choose (Enter for %s): ", rec)
+					} else {
+						fmt.Print("choose: ")
+					}
 					v, _ := r.ReadString('\n')
 					choice = strings.TrimSpace(v)
+					if choice == "" {
+						choice = rec
+					}
 					if n, err := strconv.Atoi(choice); err == nil && n >= 1 && n <= len(pa.Choices) {
 						choice = pa.Choices[n-1]
 					}

@@ -10,6 +10,7 @@
 {{range .}}
 <article class="inbox-item">
   <header class="inbox-head">
+    {{with .V.Card}}<span class="ci-tag ci-{{.Kind}}">{{.Label}}</span>{{end}}
     <a href="/runs/{{.V.S.ID}}"><strong>{{.V.S.Title}}</strong></a>
     <span class="muted">{{.V.S.Pipeline}} · {{.V.S.CurrentStep}} · {{ago .Item.Since}}</span>
     {{with .V.S.Parent}}<a class="muted small" href="/runs/{{.ID}}">parent run</a>{{end}}

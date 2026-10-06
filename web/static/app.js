@@ -132,6 +132,47 @@
     t.focus();
   });
 
+  // ---- since you last looked ---------------------------------------------------
+  // Each browser remembers what a run looked like when its page was last
+  // open (visits, commits, visits per step); check-in cards say what changed
+  // since. The run page compares with what was remembered when it loaded.
+  var seenBase = {};
+  function seenKey(id) { return "ship-seen:" + id; }
+  function loadSeen(id) {
+    try { return JSON.parse(localStorage.getItem(seenKey(id)) || "null"); } catch (err) { return null; }
+  }
+  function plural(n, s) { return n + " " + s + (n === 1 ? "" : "s"); }
+  function showChanged(root) {
+    var page = document.body.dataset.page;
+    (root || document).querySelectorAll("[data-seen-run]").forEach(function (p) {
+      var id = p.dataset.seenRun, now;
+      try { now = JSON.parse(p.dataset.seen); } catch (err) { return; }
+      var then = page === "run" && id === document.body.dataset.run ? seenBase[id] : loadSeen(id);
+      if (!then) { p.hidden = true; return; }
+      var parts = [];
+      var c = now.commits - then.commits;
+      if (now.commits >= 0 && then.commits >= 0 && c > 0) parts.push(plural(c, "new commit"));
+      var from = p.dataset.seenFrom, r = 0;
+      if (from) {
+        r = ((now.steps || {})[from] || 0) - ((then.steps || {})[from] || 0);
+        if (r > 0) parts.push(plural(r, "more round") + " of " + from);
+      }
+      var v = now.visits - then.visits;
+      if (v > r) parts.push(plural(v - r, r ? "other visit" : "new visit"));
+      p.textContent = parts.length ? "Since you last looked: " + parts.join(" · ") : "Nothing new since you last looked.";
+      p.hidden = false;
+    });
+  }
+  function rememberRun() {
+    var head = document.querySelector("[data-run-seen]");
+    if (!head) return;
+    var id = head.dataset.runSeen;
+    if (!(id in seenBase)) seenBase[id] = loadSeen(id);
+    try { localStorage.setItem(seenKey(id), head.dataset.seen); } catch (err) {}
+  }
+  document.addEventListener("DOMContentLoaded", function () { rememberRun(); showChanged(); });
+  document.addEventListener("htmx:afterSwap", function (e) { rememberRun(); showChanged(e.detail.target); });
+
   // ---- copy ----------------------------------------------------------------
   document.addEventListener("click", function (e) {
     var b = e.target.closest("[data-copy]");

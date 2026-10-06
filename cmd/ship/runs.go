@@ -347,7 +347,10 @@ func (a *app) statusCmd() *cobra.Command {
 				}
 				tw.Flush()
 			}
-			if pa := s.PendingAsk; pa != nil {
+			if card := a.loadCard(s.ID); card != nil {
+				fmt.Println()
+				a.printCard(os.Stdout, card, s.ID)
+			} else if pa := s.PendingAsk; pa != nil {
 				fmt.Printf("\n%s %s\n", a.color("35", "●"), a.bold(pa.Question))
 				if len(pa.Choices) > 0 {
 					fmt.Printf("  choices: %s\n", strings.Join(pa.Choices, " · "))

@@ -18,7 +18,7 @@
 {{end}}
 
 {{define "run-header"}}{{$s := .S}}
-<div class="run-head">
+<div class="run-head" data-run-seen="{{$s.ID}}" data-seen="{{.Seen.JSON}}">
   <div class="run-head-main">
     {{if $s.Parent}}<a class="crumb" href="/runs/{{$s.Parent.ID}}">← {{.ParentT}}{{with $s.Slice}} · slice {{.Number}} of {{.Count}}{{end}}</a>{{end}}
     <h1>{{$s.Title}}</h1>

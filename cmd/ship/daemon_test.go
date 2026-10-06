@@ -382,7 +382,8 @@ steps:
 	for _, want := range []string{
 		`class="finding lv-warn"`, `class="finding lv-danger needs-you"`, `data-finding-note="R2"`,
 		"1 for you to decide", `href="#f-` + id + `-R2"`, "→ fix", "finishes the run", "stops the run",
-		`class="answer ask-bar sticky"`, `name="for" value="run"`, "every later agent step",
+		`class="answer" data-ask-form`, `name="for" value="run"`, "every later agent step",
+		"ci-decision", "Findings need your call.", "Evidence",
 	} {
 		if !strings.Contains(p, want) {
 			t.Fatalf("missing %q in\n%s", want, p)

@@ -29,6 +29,10 @@
   --warn: #b45309;
   --danger: #b91c1c;
 
+  /* check-ins: something broke (amber/red) or a decision (blue) */
+  --ci-problem: #c2410c;
+  --ci-decision: #1d4ed8;
+
   --radius: 10px;
   --font: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
   --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
@@ -43,7 +47,7 @@
     --st-starting: #9aa1ab; --st-running: #60a5fa; --st-waiting: #fbbf24; --st-asking: #a78bfa;
     --st-fanned_out: #818cf8; --st-needs_attention: #fb923c; --st-done: #4ade80;
     --st-stopped: #9ca3af; --st-failed: #f87171; --st-cancelled: #9ca3af; --st-paused: #facc15;
-    --ok: #4ade80; --warn: #fbbf24; --danger: #f87171;
+    --ok: #4ade80; --warn: #fbbf24; --danger: #f87171; --ci-problem: #fb923c; --ci-decision: #60a5fa;
     color-scheme: dark;
   }
 }
@@ -55,7 +59,7 @@
   --st-starting: #9aa1ab; --st-running: #60a5fa; --st-waiting: #fbbf24; --st-asking: #a78bfa;
   --st-fanned_out: #818cf8; --st-needs_attention: #fb923c; --st-done: #4ade80;
   --st-stopped: #9ca3af; --st-failed: #f87171; --st-cancelled: #9ca3af; --st-paused: #facc15;
-  --ok: #4ade80; --warn: #fbbf24; --danger: #f87171;
+  --ok: #4ade80; --warn: #fbbf24; --danger: #f87171; --ci-problem: #fb923c; --ci-decision: #60a5fa;
   color-scheme: dark;
 }
 
@@ -222,7 +226,6 @@ form.inline { display: inline-flex; gap: 0.4rem; align-items: center; flex-wrap:
 /* action panel */
 .action { border-width: 1.5px; }
 .action.attention { border-color: color-mix(in srgb, var(--st-needs_attention) 50%, var(--border)); }
-.action[class*="ask-"] { border-color: color-mix(in srgb, var(--st-asking) 45%, var(--border)); }
 .action-head { display: flex; gap: 0.6rem; align-items: baseline; flex-wrap: wrap; margin-bottom: 0.75rem; }
 .action-head h2 { flex: 1 1 16rem; }
 .answer { display: grid; gap: 0.75rem; margin-top: 0.5rem; }
@@ -374,11 +377,46 @@ form.inline { display: inline-flex; gap: 0.4rem; align-items: center; flex-wrap:
 .inline-field { display: inline-flex; align-items: center; gap: 0.3rem; }
 .inline-field input { width: 6rem; }
 
-/* Check-ins: findings and the answer bar */
-.ask-bar.sticky { position: sticky; bottom: 0; z-index: 5; background: var(--surface); border-top: 1px solid var(--border);
-  margin: 0.75rem -1.1rem -1rem; padding: 0.75rem 1.1rem 0.9rem; border-radius: 0 0 var(--radius) var(--radius);
-  box-shadow: 0 -6px 16px rgb(0 0 0 / 0.08); max-height: 60vh; overflow-y: auto; }
-.ask-bar-q { margin: 0; font-weight: 600; font-size: 0.92rem; }
+/* Check-ins: one card for every check-in and needs-attention state */
+.ci-problem { --ci: var(--ci-problem); }
+.ci-decision { --ci: var(--ci-decision); }
+.action.checkin { border-color: color-mix(in srgb, var(--ci) 45%, var(--border)); border-left: 5px solid var(--ci); padding-top: 0; }
+.ci-band { display: flex; gap: 0.4rem 1rem; align-items: center; flex-wrap: wrap; margin: 0 -1.1rem 0.8rem -1.1rem; padding: 0.45rem 1.1rem;
+  background: color-mix(in srgb, var(--ci) 12%, var(--surface)); border-bottom: 1px solid color-mix(in srgb, var(--ci) 25%, var(--border));
+  border-radius: 0 calc(var(--radius) - 1px) 0 0; }
+.ci-label { font-weight: 700; font-size: 0.8rem; letter-spacing: 0.04em; text-transform: uppercase; color: var(--ci); white-space: nowrap; }
+.ci-meta { display: inline-flex; gap: 0.25rem 0.9rem; flex-wrap: wrap; font-size: 0.82rem; color: var(--muted); }
+.ci-meta strong { color: var(--text); font-weight: 600; }
+.ci-headline { font-size: 1.15rem; margin: 0 0 0.35rem; overflow-wrap: anywhere; }
+.ci-question { margin: 0 0 0.35rem; }
+.ci-situation { margin: 0 0 0.6rem; white-space: pre-line; overflow-wrap: anywhere; max-width: 70ch; }
+.ci-tests { margin: 0 0 0.6rem; padding-left: 1.1rem; font-size: 0.88rem; columns: 2 18rem; }
+.ci-generated { margin: 0 0 0.6rem; color: var(--muted); font-style: italic; }
+.ci-changed { margin: 0 0 0.6rem; padding: 0.3rem 0.6rem; border-radius: 6px; background: var(--surface-2); display: inline-block; }
+.ci-changed[hidden] { display: none; }
+.ci-rec { display: grid; gap: 0.5rem; margin: 0.2rem 0 0.8rem; padding: 0.65rem 0.8rem; border-radius: 8px;
+  border: 1px solid color-mix(in srgb, var(--ci) 35%, var(--border)); background: color-mix(in srgb, var(--ci) 7%, var(--surface)); }
+.ci-rec .btn { justify-self: start; white-space: normal; text-align: left; }
+.ci-rec-k { font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--ci); margin-right: 0.35rem; }
+.ci-reason { color: var(--text); }
+.ci-preview pre { margin: 0.3rem 0 0; font-size: 0.8rem; }
+.ci-options .btn.choice { max-width: 22rem; white-space: normal; }
+.choice-what { font-size: 0.75rem; font-weight: 400; opacity: 0.85; margin-top: 0.15rem; }
+.ci-star { color: inherit; }
+.ci-more { margin-top: 0.4rem; }
+.ci-evidence { margin-top: 0.9rem; border-top: 1px solid var(--border); padding-top: 0.6rem; }
+.ci-evidence .panel > summary { font-weight: 550; }
+/* the same colour and label on run rows and inbox entries */
+.ci-tag { display: inline-flex; align-items: center; gap: 0.25rem; padding: 0.05rem 0.5rem; border-radius: 6px; font-size: 0.74rem; font-weight: 700;
+  color: var(--ci); background: color-mix(in srgb, var(--ci) 12%, transparent); border: 1px solid color-mix(in srgb, var(--ci) 35%, transparent); white-space: nowrap; }
+.run-row.ci-problem, .run-row.ci-decision { border-left: 4px solid var(--ci); }
+@media (max-width: 640px) {
+  .ci-band { margin-left: -1.1rem; margin-right: -1.1rem; }
+  .ci-meta { font-size: 0.78rem; }
+  .ci-headline { font-size: 1.05rem; }
+  .ci-options .btn.choice { max-width: none; flex: 1 1 100%; }
+  .ci-rec .btn { justify-self: stretch; }
+}
 .note-hint { display: block; margin-top: 0.15rem; }
 .note-for { display: flex; gap: 1rem; flex-wrap: wrap; font-size: 0.85rem; margin-top: 0.35rem; }
 .note-for label { display: inline-flex; align-items: center; gap: 0.3rem; cursor: pointer; }
@@ -412,10 +450,6 @@ form:has(.note-for input[value=run]:checked) .note-hint .for-step { display: non
 .finding-note label { font-weight: 600; color: var(--st-asking); }
 .finding-note .quick { display: flex; gap: 0.4rem; flex-wrap: wrap; }
 .finding-note textarea { width: 100%; }
-@media (max-width: 640px) {
-  .ask-bar.sticky { max-height: 50vh; }
-  .ask-bar-q .badge { display: none; }
-}
 
 /* pipeline page: older version in a neutral tone, newer in the accent */
 .page-pipeline { --series-a: var(--st-stopped); --series-b: var(--accent); }

@@ -22,6 +22,7 @@ import (
 
 	"github.com/thehenrymcintosh/ship/internal/brand"
 	"github.com/thehenrymcintosh/ship/internal/brief"
+	"github.com/thehenrymcintosh/ship/internal/checkin"
 	"github.com/thehenrymcintosh/ship/internal/engine"
 	"github.com/thehenrymcintosh/ship/internal/engine/steps"
 	"github.com/thehenrymcintosh/ship/internal/history"
@@ -87,7 +88,37 @@ var funcs = template.FuncMap{
 		}
 		return "resets " + t.Local().Format("Mon 15:04")
 	},
-	"inInbox":  func(s store.Status) bool { return s.InInbox() },
+	"inInbox": func(s store.Status) bool { return s.InInbox() },
+	// ciKind is "problem" or "decision" for a run waiting for a person.
+	"ciKind":  func(s *store.RunSnapshot) string { return string(checkin.Classify(s)) },
+	"ciLabel": func(k string) string { return checkin.Kind(k).Label() },
+	// waited is how long ago t was, briefly: "4m", "2h 05m".
+	"waited": func(t time.Time) string {
+		if t.IsZero() {
+			return ""
+		}
+		d := time.Since(t)
+		switch {
+		case d < time.Minute:
+			return "under a minute"
+		case d < time.Hour:
+			return fmt.Sprintf("%dm", int(d.Minutes()))
+		case d < 24*time.Hour:
+			return fmt.Sprintf("%dh %02dm", int(d.Hours()), int(d.Minutes())%60)
+		}
+		return fmt.Sprintf("%dd %dh", int(d.Hours())/24, int(d.Hours())%24)
+	},
+	// vals is hx-vals JSON from key/value pairs, leaving out empty values.
+	"vals": func(kv ...any) string {
+		m := map[string]string{}
+		for i := 0; i+1 < len(kv); i += 2 {
+			if v := fmt.Sprint(kv[i+1]); v != "" && v != "0" {
+				m[kv[i].(string)] = v
+			}
+		}
+		b, _ := json.Marshal(m)
+		return string(b)
+	},
 	"basename": filepath.Base,
 	"dict": func(kv ...any) map[string]any {
 		m := map[string]any{}
@@ -350,9 +381,15 @@ type Panel struct {
 
 // ChoiceView is an ask button and where it leads.
 type ChoiceView struct {
-	Label  string
-	Target string // step name, or a description for done/stop
-	Danger bool
+	Label  string `json:"label"`
+	Target string `json:"target,omitempty"` // where it leads, in words
+	Danger bool   `json:"danger,omitempty"`
+	// Cost is what the step it leads to has cost per visit in this run so
+	// far ("≈ $0.40"), when known.
+	Cost string `json:"cost,omitempty"`
+	// Consequence is what picking it does, in the agent's words.
+	Consequence string `json:"consequence,omitempty"`
+	Recommended bool   `json:"recommended,omitempty"`
 }
 
 // handoverPanel renders a handover, picking out review findings.
@@ -417,6 +454,8 @@ type RunView struct {
 	AfterT      string // title of the run this one starts after
 	Budget      BudgetView
 	Window      *RunWindow
+	Card        *CardView // when the run waits for a person
+	Seen        SeenView  // what the run looks like now, remembered by the browser
 }
 
 // BudgetView is the run's budget, raised amounts included (0 = no limit).
@@ -584,16 +623,18 @@ func (d *Daemon) runView(id string) (*RunView, error) {
 					cv.Target, cv.Danger = "cancels this run", true
 				}
 			} else if t, ok := choices.Get(c); ok {
+				step := t
 				switch t {
 				case pipeline.TargetStop:
 					cv.Target, cv.Danger = "stops the run", true
 				case pipeline.TargetDone:
 					cv.Target = "finishes the run"
 				case pipeline.TargetCameFrom:
-					cv.Target = "back to " + s.CameFrom
+					cv.Target, step = "back to "+s.CameFrom, s.CameFrom
 				default:
 					cv.Target = "→ " + t
 				}
+				cv.Cost = stepCost(v.StepStats, step)
 			}
 			v.Choices = append(v.Choices, cv)
 		}
@@ -610,7 +651,20 @@ func (d *Daemon) runView(id string) (*RunView, error) {
 			}
 		}
 	}
+	v.Seen = seenView(s)
+	v.Card = d.card(v)
 	return v, nil
+}
+
+// stepCost is what a visit of step has cost in this run on average, as
+// "≈ $0.40", or "" before it has cost anything.
+func stepCost(stats []store.StepStat, step string) string {
+	for _, st := range stats {
+		if st.Step == step && st.Visits > 0 && st.CostUSD > 0 {
+			return "≈ " + money(st.CostUSD/float64(st.Visits))
+		}
+	}
+	return ""
 }
 
 func prevOf(s *store.RunSnapshot, seq int) *store.VisitSummary {
