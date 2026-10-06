@@ -1360,8 +1360,13 @@ func (r *runner) finish(status store.Status, reason string) {
 	if status == store.StatusDone && r.cfg.Workspace.ReleaseOnDone {
 		r.release(false)
 	}
+	// Record the stats before the run is seen to finish, so anyone who
+	// waits for the terminal status can read them.
+	final := *r.snap()
+	now := time.Now().UTC()
+	final.Status, final.StatusReason, final.FinishedAt, final.PendingAsk = status, reason, &now, nil
+	r.e.RecordRunStats(&final, r.cfg)
 	r.emit(store.EvRunFinished, store.RunFinished{Status: status, Reason: reason})
-	r.e.RecordRunStats(r.snap(), r.cfg)
 }
 
 // recover re-enters a run after a restart. It returns false when

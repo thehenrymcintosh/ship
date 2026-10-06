@@ -4,7 +4,6 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
-	"time"
 
 	"github.com/thehenrymcintosh/ship/internal/history"
 	"github.com/thehenrymcintosh/ship/internal/store"
@@ -32,12 +31,8 @@ func TestRunStatsRecorded(t *testing.T) {
 	}
 	snap := en.waitStatus(s.ID, store.StatusDone)
 	hs := history.Open(filepath.Join(en.repo, ".ship", "history", "p"), t.TempDir())
-	// The stats are written just after the run finishes.
+	// The stats are written before the run is marked done.
 	runs, err := hs.Runs()
-	for deadline := time.Now().Add(5 * time.Second); err == nil && len(runs) == 0 && time.Now().Before(deadline); {
-		time.Sleep(20 * time.Millisecond)
-		runs, err = hs.Runs()
-	}
 	if err != nil || len(runs) != 1 {
 		t.Fatalf("%v %v", runs, err)
 	}

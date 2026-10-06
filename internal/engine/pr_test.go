@@ -53,13 +53,25 @@ func (f *fakePR) set(state, head string, checks []map[string]any, comments []map
 	}
 	b, _ := json.Marshal(map[string]any{"number": 7, "url": "https://github.com/o/r/pull/7", "state": state, "headRefOid": head,
 		"reviewDecision": "", "isDraft": false, "statusCheckRollup": checks, "reviews": reviews})
-	os.WriteFile(filepath.Join(f.dir, "view.json"), b, 0o644)
+	f.write("view.json", b)
 	for name, list := range map[string][]map[string]any{"comments.json": comments, "inline.json": inline} {
 		if list == nil {
 			list = []map[string]any{}
 		}
 		lb, _ := json.Marshal(list)
-		os.WriteFile(filepath.Join(f.dir, name), lb, 0o644)
+		f.write(name, lb)
+	}
+}
+
+// write replaces a file the fake gh reads in one step, so a poll never
+// reads it half written (os.WriteFile truncates first).
+func (f *fakePR) write(name string, b []byte) {
+	tmp := filepath.Join(f.dir, name+".tmp")
+	if err := os.WriteFile(tmp, b, 0o644); err != nil {
+		f.t.Fatal(err)
+	}
+	if err := os.Rename(tmp, filepath.Join(f.dir, name)); err != nil {
+		f.t.Fatal(err)
 	}
 }
 
