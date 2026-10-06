@@ -147,6 +147,26 @@ type Runtime interface {
 	Idle()
 }
 
+// SleepUntil waits until the wall clock reaches deadline. Go's timers stop
+// while the machine sleeps, so a long wait on a laptop would overrun by
+// however long the lid was closed; checking the clock every so often keeps
+// it on time.
+func SleepUntil(ctx context.Context, deadline time.Time) error {
+	for {
+		left := time.Until(deadline)
+		if left <= 0 {
+			return nil
+		}
+		t := time.NewTimer(min(left, 30*time.Second))
+		select {
+		case <-t.C:
+		case <-ctx.Done():
+			t.Stop()
+			return ctx.Err()
+		}
+	}
+}
+
 // InvalidError rejects a human command (bad choice, missing note…).
 type InvalidError struct{ Msg string }
 

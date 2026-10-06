@@ -37,14 +37,7 @@ func (w Wait) sleep(ctx context.Context, d time.Duration) error {
 	if w.Sleep != nil {
 		return w.Sleep(ctx, d)
 	}
-	t := time.NewTimer(d)
-	defer t.Stop()
-	select {
-	case <-t.C:
-		return nil
-	case <-ctx.Done():
-		return ctx.Err()
-	}
+	return SleepUntil(ctx, time.Now().Add(d))
 }
 
 // Execute polls until the last line names an outcome, the wait times out,

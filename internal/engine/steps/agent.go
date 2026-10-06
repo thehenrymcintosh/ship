@@ -256,9 +256,7 @@ func invoke(ctx context.Context, v *Visit, c *agentCall) (agent.Output, Result) 
 			note := fmt.Sprintf("Claude's usage limit was hit; carrying on at %s", until.Format("15:04"))
 			v.RT.AgentEvent(agent.UIEvent{Kind: "system", Data: map[string]any{"text": note}})
 			_ = v.RT.SetStatus(store.StatusWaiting, note)
-			select {
-			case <-time.After(wait):
-			case <-ctx.Done():
+			if SleepUntil(ctx, until) != nil {
 				return agent.Output{}, Result{Outcome: OutcomeCancelled, Summary: "cancelled", Cost: r.Cost, Tokens: r.Tokens, TokenUsage: r.TokenUsage, SessionID: r.SessionID}
 			}
 			_ = v.RT.SetStatus(store.StatusRunning, "")
