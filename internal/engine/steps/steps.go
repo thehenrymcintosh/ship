@@ -152,6 +152,9 @@ type Runtime interface {
 // however long the lid was closed; checking the clock every so often keeps
 // it on time.
 func SleepUntil(ctx context.Context, deadline time.Time) error {
+	// Drop the monotonic reading: comparisons with it use the monotonic
+	// clock, which also stops while the machine sleeps.
+	deadline = deadline.Round(0)
 	for {
 		left := time.Until(deadline)
 		if left <= 0 {
