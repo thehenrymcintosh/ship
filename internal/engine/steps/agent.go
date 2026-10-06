@@ -212,6 +212,9 @@ func invoke(ctx context.Context, v *Visit, c *agentCall) (agent.Output, Result) 
 		TranscriptW: tw, StderrW: io.MultiWriter(ew, outputWriter{v, "stderr"}),
 		RunID: v.RunID, Step: v.StepName, VisitNumber: v.Number,
 	}
+	// What the resumed session cost before this visit, and the session
+	// earlier tries in this visit ran in (their cost is in r.Cost).
+	prior, triedIn := sessionCost(v.Snapshot, v.ResumeID, v.Seq), ""
 	sink := agent.SinkFunc(func(e agent.UIEvent) { v.RT.AgentEvent(e) })
 	fail := func(e Result) (agent.Output, Result) {
 		e.Cost, e.Tokens, e.TokenUsage, e.SessionID, e.PermissionDenials, e.Usage = r.Cost, r.Tokens, r.TokenUsage, r.SessionID, r.PermissionDenials, r.Usage
@@ -228,7 +231,17 @@ func invoke(ctx context.Context, v *Visit, c *agentCall) (agent.Output, Result) 
 		if b.tokens > 0 {
 			req.MaxTokens = max(b.tokens-r.Tokens, 1)
 		}
+		req.SessionCostUSD = 0
+		if req.ResumeID != "" {
+			if req.ResumeID == v.ResumeID {
+				req.SessionCostUSD = prior
+			}
+			if req.ResumeID == triedIn {
+				req.SessionCostUSD += r.Cost
+			}
+		}
 		resp, err := c.adapter.Run(ctx, req, sink)
+		triedIn = firstNonEmpty(resp.SessionID, req.ResumeID, req.SessionID)
 		r.Cost += resp.CostUSD
 		r.Tokens += resp.Tokens
 		u := resp.TokenUsage
@@ -441,6 +454,22 @@ func firstNonEmpty(s ...string) string {
 		}
 	}
 	return ""
+}
+
+// sessionCost is what a session has cost over the run's visits before seq
+// (each visit records only its own invocations' cost, so they add up to the
+// session's running total).
+func sessionCost(s *store.RunSnapshot, session string, seq int) float64 {
+	if s == nil || session == "" {
+		return 0
+	}
+	var usd float64
+	for _, vs := range s.Visits {
+		if vs.Seq != seq && vs.SessionID == session {
+			usd += vs.CostUSD
+		}
+	}
+	return usd
 }
 
 // costPerToken is what the run's finished agent visits cost per token, or 0

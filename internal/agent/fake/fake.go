@@ -153,7 +153,7 @@ func (a *Adapter) Run(ctx context.Context, req agent.Request, sink agent.Sink) (
 			req.TranscriptW.Write(append(b, '\n'))
 		}
 	}
-	transcript(map[string]any{"type": "system", "subtype": "init", "session_id": session, "model": "fake", "step": req.Step, "visit": req.VisitNumber})
+	transcript(map[string]any{"type": "system", "subtype": "init", "session_id": session, "model": "fake", "step": req.Step, "visit": req.VisitNumber, "session_cost": req.SessionCostUSD})
 	if sink != nil {
 		sink.Event(agent.UIEvent{Kind: "text", Data: map[string]any{"text": fmt.Sprintf("fake agent: step %s, visit %d, entry %d", req.Step, req.VisitNumber, i+1)}})
 	}

@@ -290,6 +290,17 @@ func TestAgentLoopWithFake(t *testing.T) {
 	if strings.Count(string(tr), `"type":"result"`) != 2 {
 		t.Errorf("want a corrective retry:\n%s", tr)
 	}
+	// Resumed invocations are told what their session already cost, so the
+	// adapter can turn Claude's running total into the invocation's own:
+	// implement's revisit its first visit's $0.10, the correction retry the
+	// first try's $0.20.
+	tr2, _ := os.ReadFile(filepath.Join(en.st.RunDir(s.ID), "visits", s.Visits[2].Dir, "transcript.jsonl"))
+	if !strings.Contains(string(tr2), `"session_cost":0.1,`) {
+		t.Errorf("revisit should carry the session's cost so far:\n%s", tr2)
+	}
+	if !strings.Contains(string(tr), `"session_cost":0,`) || !strings.Contains(string(tr), `"session_cost":0.2,`) {
+		t.Errorf("correction retry should carry the first try's cost:\n%s", tr)
+	}
 }
 
 func TestErrorParksAndManualControls(t *testing.T) {

@@ -111,7 +111,8 @@ func Args(req agent.Request) ([]string, bool) {
 		args = append(args, "--plugin-dir", d)
 	}
 	if req.BudgetUSD > 0 {
-		args = append(args, "--max-budget-usd", strconv.FormatFloat(req.BudgetUSD, 'f', 4, 64))
+		// Claude checks the limit against the session's running total.
+		args = append(args, "--max-budget-usd", strconv.FormatFloat(req.BudgetUSD+sessionCost(req), 'f', 4, 64))
 	}
 	args = append(args, req.ExtraArgs...)
 	return args, stdin
@@ -157,6 +158,7 @@ func (a *Adapter) Run(ctx context.Context, req agent.Request, sink agent.Sink) (
 	if overTokens {
 		resp := p.Response()
 		resp.IsError, resp.OverBudget, resp.ExitCode = true, "tokens", res.ExitCode
+		resp.CostUSD = invocationCost(resp.CostUSD, req)
 		resp.ErrorText = fmt.Sprintf("stopped at its token budget: %d of %d tokens", resp.Tokens, req.MaxTokens)
 		if resp.SessionID == "" {
 			resp.SessionID = firstNonEmpty(req.ResumeID, req.SessionID)
@@ -168,6 +170,7 @@ func (a *Adapter) Run(ctx context.Context, req agent.Request, sink agent.Sink) (
 	}
 	resp := p.Response()
 	resp.ExitCode = res.ExitCode
+	resp.CostUSD = invocationCost(resp.CostUSD, req)
 	if resp.SessionID == "" {
 		resp.SessionID = firstNonEmpty(req.ResumeID, req.SessionID)
 	}
@@ -183,6 +186,22 @@ func (a *Adapter) Run(ctx context.Context, req agent.Request, sink agent.Sink) (
 		}
 	}
 	return resp, nil
+}
+
+// sessionCost is what a resumed session had cost before this invocation.
+func sessionCost(req agent.Request) float64 {
+	if req.ResumeID == "" {
+		return 0
+	}
+	return max(req.SessionCostUSD, 0)
+}
+
+// invocationCost turns the total_cost_usd claude reports, which on a
+// resumed session is the session's running total, into this invocation's
+// cost. It never goes negative (runs from before this was tracked
+// recorded running totals, so their sums can exceed the session's).
+func invocationCost(total float64, req agent.Request) float64 {
+	return max(total-sessionCost(req), 0)
 }
 
 // Parser turns stream-json lines into UI events and a Response.

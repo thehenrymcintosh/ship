@@ -84,6 +84,46 @@ func TestArgs(t *testing.T) {
 	}
 }
 
+// TestResumedSessionCost: on --resume, claude's total_cost_usd (and the
+// --max-budget-usd it enforces) cover the whole session, so the adapter
+// reports only this invocation's share and offsets the budget.
+func TestResumedSessionCost(t *testing.T) {
+	dir := t.TempDir()
+	bin := dir + "/claude"
+	script := "#!/bin/sh\necho \"$@\" > " + dir + "/args\n" +
+		`echo '{"type":"system","subtype":"init","session_id":"s1"}'` + "\n" +
+		`echo '{"type":"result","subtype":"success","session_id":"s1","result":"ok","total_cost_usd":0.0146,"usage":{"input_tokens":10,"cache_creation_input_tokens":849,"output_tokens":5}}'` + "\n"
+	if err := os.WriteFile(bin, []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	a := &Adapter{Binary: bin}
+	r, err := a.Run(context.Background(), agent.Request{Workdir: dir, Prompt: "again", ResumeID: "s1", SessionCostUSD: 0.0105, BudgetUSD: 1}, nil)
+	if err != nil || r.IsError {
+		t.Fatalf("%v %+v", err, r)
+	}
+	if r.CostUSD < 0.00409 || r.CostUSD > 0.00411 {
+		t.Errorf("cost %v, want this invocation's 0.0041", r.CostUSD)
+	}
+	if r.Tokens != 864 {
+		t.Errorf("tokens %d (usage is per invocation already)", r.Tokens)
+	}
+	args, _ := os.ReadFile(dir + "/args")
+	if !strings.Contains(string(args), "--max-budget-usd 1.0105") {
+		t.Errorf("budget should be offset by the session's cost: %s", args)
+	}
+	// Runs recorded before this fix stored running totals, so the session
+	// cost can exceed what claude reports: never go negative.
+	r, _ = a.Run(context.Background(), agent.Request{Workdir: dir, Prompt: "again", ResumeID: "s1", SessionCostUSD: 0.05}, nil)
+	if r.CostUSD != 0 {
+		t.Errorf("cost %v, want clamped to 0", r.CostUSD)
+	}
+	// A fresh session's total is its own.
+	r, _ = a.Run(context.Background(), agent.Request{Workdir: dir, Prompt: "new", SessionID: "s1", SessionCostUSD: 0.0105}, nil)
+	if r.CostUSD != 0.0146 {
+		t.Errorf("fresh cost %v", r.CostUSD)
+	}
+}
+
 // TestLive runs real Claude with haiku (SHIP_LIVE_CLAUDE=1).
 func TestLive(t *testing.T) {
 	if os.Getenv("SHIP_LIVE_CLAUDE") != "1" {

@@ -530,6 +530,7 @@ func (c Context) ask(ctx context.Context, step, system, prompt string, schema js
 		}
 		if attempt == 0 && resp.SessionID != "" {
 			req.ResumeID, req.Prompt = resp.SessionID, agent.CorrectionPrompt(verr.Error())
+			req.SessionCostUSD = cost
 			continue
 		}
 		return cost, fmt.Errorf("claude's answer wasn't in the expected shape: %v", verr)

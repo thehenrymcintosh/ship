@@ -55,6 +55,10 @@ type Request struct {
 	ExtraArgs    []string
 	TranscriptW  io.Writer // raw stream output
 	StderrW      io.Writer
+	// SessionCostUSD is what the resumed session has already cost. Claude
+	// reports (and budgets) a resumed session's running total; adapters
+	// subtract this so Response.CostUSD is this invocation's alone.
+	SessionCostUSD float64
 
 	// Identify the visit, for adapters (like fake) that script by step.
 	RunID       string
@@ -69,7 +73,7 @@ type Response struct {
 	Structured        json.RawMessage
 	Text              string // final text result, for diagnostics
 	SessionID         string
-	CostUSD           float64
+	CostUSD           float64 // this invocation's, not the session's running total
 	Usage             json.RawMessage
 	IsError           bool
 	ErrorText         string
