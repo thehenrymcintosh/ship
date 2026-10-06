@@ -1,0 +1,147 @@
+{{define "content"}}{{$v := .Data}}
+<div class="page-head">
+  <h1><a class="muted" href="/pipelines">Pipelines</a> / {{$v.Name}}{{if $v.Global}} <span class="badge">global</span>{{end}}</h1>
+  <p class="muted small">{{$v.Current}} · history in <code>{{$v.Where}}</code></p>
+</div>
+{{if $v.Description}}<p>{{$v.Description}}</p>{{end}}
+{{if $v.Backfilled}}<p class="muted small">Added {{$v.Backfilled}} earlier runs from this machine's run logs.</p>{{end}}
+{{if $v.Findings}}<ul class="findings">{{range $v.Findings}}<li class="sev-{{.Severity}}"><code>{{.Code}}</code> <span class="muted">{{basename .File}}:{{.Line}}</span> {{.Message}}</li>{{end}}</ul>{{end}}
+
+<nav class="pp-nav muted small" aria-label="Sections">
+  <a href="#overview">Overview</a> <a href="#steps">Steps</a> <a href="#versions">Versions</a> <a href="#compare">Compare</a> <a href="#feedback">Feedback</a>
+</nav>
+
+{{with $v.Overview}}
+<section class="card" id="overview">
+  <header class="card-head"><h2>Overview</h2>
+    <span class="muted small">{{.Runs}} recorded runs ·
+      {{if eq $v.Scope "all"}}time and cost over every finished run · <a href="?{{$v.Query}}">only runs that finished done</a>
+      {{else}}time and cost over runs that finished done · <a href="?{{$v.Query}}{{if $v.Query}}&amp;{{end}}scope=all">include stopped and failed runs</a>{{end}}</span></header>
+  {{if not .Runs}}
+  <p class="muted">No runs recorded yet. Each run that finishes adds a record to <code>{{$v.Where}}/runs/</code> (commit it with the pipeline, so everyone's runs count).</p>
+  {{else}}
+  <div class="tiles">
+    <div class="tile"><span class="tile-k">Success</span><span class="tile-v">{{pct .Success}}</span><span class="tile-s">{{.Done}} of {{.Runs}} done · 95% range {{pct .SuccessLo}} to {{pct .SuccessHi}}</span></div>
+    <div class="tile"><span class="tile-k">Typical run</span><span class="tile-v">{{or (dur .MedianMS) "-"}}</span><span class="tile-s">median time</span></div>
+    <div class="tile"><span class="tile-k">Typical cost</span><span class="tile-v">{{or (money .MedianCost) "-"}}</span><span class="tile-s">median per run</span></div>
+    <div class="tile"><span class="tile-k">Hands-on</span><span class="tile-v">{{num .HandsOn}}</span><span class="tile-s">times a person acted per run ({{num .CheckIns}} check-ins, {{num .Interventions}} interventions)</span></div>
+    <div class="tile"><span class="tile-k">On its own</span><span class="tile-v">{{pct .Autonomous}}</span><span class="tile-s">of runs needed nobody before the PR</span></div>
+    <div class="tile"><span class="tile-k">Waiting for you</span><span class="tile-v">{{or (dur .WaitMS) "0"}}</span><span class="tile-s">median per run</span></div>
+    {{if .PRRuns}}<div class="tile"><span class="tile-k">PR rounds</span><span class="tile-v">{{num .PRRounds}}</span><span class="tile-s">review batches and CI failures per PR</span></div>{{end}}
+    <div class="tile"><span class="tile-k">Feedback</span><span class="tile-v">{{.Feedback}}</span><span class="tile-s">pieces on these runs</span></div>
+  </div>
+  <p class="muted small">The less a person has to step in, and the fewer PR review rounds, the better the pipeline is doing.</p>
+  <div class="hist-pair">
+    <figure><figcaption>Run time</figcaption>{{.DurationHist}}</figure>
+    <figure><figcaption>Run cost</figcaption>{{.CostHist}}</figure>
+  </div>
+  {{if gt (len $v.Trend) 1}}
+  <h3>By version</h3>
+  <div class="table-scroll"><table class="step-stats">
+    <thead><tr><th>Version</th><th class="num">Runs</th><th class="num">Success</th><th class="num">Median time</th><th class="num">Median cost</th><th class="num">Hands-on</th></tr></thead>
+    <tbody>{{range $v.Trend}}<tr><td>{{.Label}}</td><td class="num">{{.Runs}}</td><td class="num">{{pct .Success}}</td><td class="num">{{or (dur .MedianMS) "-"}}</td><td class="num">{{or (money .MedianCost) "-"}}</td><td class="num">{{num .HandsOn}}</td></tr>{{end}}</tbody>
+  </table></div>
+  {{end}}
+  {{end}}
+</section>
+{{end}}
+
+{{if $v.HasGraph}}<section class="card"><header class="card-head"><h2>Graph</h2></header><div class="graph" data-src="/api/pipelines/{{$v.Name}}/graph?{{$v.Query}}"></div></section>{{end}}
+
+<section class="card" id="steps">
+  <header class="card-head"><h2>Steps</h2><span class="muted small">across every recorded run</span></header>
+  {{if not $v.Steps}}<p class="muted">Nothing yet.</p>{{else}}
+  <p class="muted small">A step passes when its outcome moves the run on, and fails when it sends work back, stops the run or errors. A step that always passes may not be needed; one that mostly fails is often let down by the step before it.</p>
+  <div class="table-scroll"><table class="step-stats">
+    <thead><tr><th>Step</th><th class="num">Visits/run</th><th class="num">Passes</th><th class="num">Median time</th><th>Spread</th><th class="num">Cost/run</th><th class="num">Tokens/run</th><th class="num">Needs a person</th><th>Outcomes</th></tr></thead>
+    <tbody>
+    {{range $v.Steps}}
+      <tr>
+        <td><span class="glyph" aria-hidden="true">{{glyph .Type}}</span> {{.Step}}</td>
+        <td class="num">{{num .Visits}}</td>
+        <td class="num">{{if .Total}}{{pct .PassRate}} <span class="muted">({{.Passes}}/{{.Total}})</span>{{else}}-{{end}}</td>
+        <td class="num">{{or (dur .MedianMS) "-"}}</td>
+        <td>{{.Hist}}</td>
+        <td class="num">{{or (money .CostPerRun) "-"}}</td>
+        <td class="num">{{if .TokensPerRun}}{{tokens .TokensPerRun}}{{else}}-{{end}}</td>
+        <td class="num">{{if .NeedsPerson}}{{pct .NeedsPerson}}{{else}}-{{end}}</td>
+        <td class="small">{{range $i, $o := .Outcomes}}{{if $i}}, {{end}}{{$o.K}} {{$o.V}}{{end}}</td>
+      </tr>
+      {{if .Advice}}<tr class="advice-row"><td colspan="9">{{range .Advice}}<span class="advice advice-{{.Kind}}">{{.Text}}</span>{{end}}</td></tr>{{end}}
+    {{end}}
+    </tbody>
+  </table></div>
+  {{end}}
+</section>
+
+<section class="card" id="versions">
+  <header class="card-head"><h2>Versions</h2><span class="muted small">newest first; a version is the pipeline plus every skill, rule and script it uses</span></header>
+  {{if not $v.Versions}}<p class="muted">No versions yet: the first run records one.</p>{{else}}
+  <ol class="versions">
+  {{range $v.Versions}}
+    <li class="version{{if .Current}} current{{end}}">
+      <div><strong>{{.Label}}</strong> <code class="muted">{{printf "%.8s" .Hash}}</code>{{if .Current}} <span class="badge">current</span>{{end}}
+        <span class="muted small">{{.At.Local.Format "2006-01-02"}} · {{.Source}}{{with .Author}} · {{.}}{{end}} · {{.Runs}} runs{{if .Feedback}} · {{.Feedback}} feedback{{end}}</span></div>
+      {{if .Summary}}<p>{{.Summary}}</p>{{end}}
+      {{if .Changed}}<p class="muted small">{{range $i, $c := .Changed}}{{if $i}}; {{end}}{{$c}}{{end}}</p>{{end}}
+      {{if .Addresses}}<p class="muted small">Set out to address feedback {{range $i, $a := .Addresses}}{{if $i}}, {{end}}#{{$a}}{{end}}</p>{{end}}
+      {{if not .Current}}<p class="muted small">{{if .Frozen}}Restore: <code>{{brand}} pipeline restore {{$v.Name}} {{.Label}}</code> · diff: <code>{{brand}} pipeline diff {{$v.Name}} {{.Label}}</code>{{else}}Recorded before ship kept copies of every file, so it can only be partly restored.{{end}}</p>{{end}}
+    </li>
+  {{end}}
+  </ol>
+  {{end}}
+</section>
+
+<section class="card" id="compare">
+  <header class="card-head"><h2>Compare versions</h2></header>
+  {{with $v.Compare}}
+  <form class="inline compare-form" method="get" action="#compare">
+    {{if $v.Repo}}<input type="hidden" name="repo" value="{{$v.Repo}}">{{end}}
+    {{if eq $v.Scope "all"}}<input type="hidden" name="scope" value="all">{{end}}
+    <label><span class="muted small">Before</span> <select name="a" data-autosubmit>{{range .Options}}<option value="{{.Label}}"{{if eq .Hash $.Data.Compare.AHash}} selected{{end}}>{{.Label}} ({{.Runs}} runs)</option>{{end}}</select></label>
+    <label><span class="muted small">After</span> <select name="b" data-autosubmit>{{range .Options}}<option value="{{.Label}}"{{if eq .Hash $.Data.Compare.BHash}} selected{{end}}>{{.Label}} ({{.Runs}} runs)</option>{{end}}</select></label>
+    <button class="btn small">Compare</button>
+  </form>
+  <p class="headline"><strong>{{.Headline}}</strong></p>
+  <p class="muted small">Each measure says how likely {{.B}} is better than {{.A}}, given the runs so far: <em>likely</em> means at least 95% sure, <em>probably</em> at least 80%; anything in between is no clear difference. The range is where the true change most likely lies (95%). Fewer than {{$v.MinRuns}} runs on either version is too few to say. Time and cost are compared as ratios, since they vary by multiples.</p>
+  <div class="legend small"><span class="key key-a"></span> {{.A}} ({{.NA}} runs) <span class="key key-b"></span> {{.B}} ({{.NB}} runs)</div>
+  <div class="table-scroll"><table class="step-stats compare">
+    <thead><tr><th>Measure</th><th class="num">{{.A}}</th><th class="num">{{.B}}</th><th class="num">Change</th><th class="num">Chance better</th><th>Verdict</th><th>Spread</th></tr></thead>
+    <tbody>{{range .Metrics}}{{template "metric-row" .}}{{end}}</tbody>
+  </table></div>
+  <ul class="explain small">{{range .Metrics}}<li class="verdict-{{verdictClass .Verdict}}">{{.Explain}}</li>{{end}}</ul>
+  <div class="hist-pair">{{range .Hists}}<figure><figcaption>{{.Title}}</figcaption>{{.SVG}}</figure>{{end}}</div>
+  <h3>Steps</h3>
+  <div class="table-scroll"><table class="step-stats compare">
+    <thead><tr><th>Step / measure</th><th class="num">{{.A}}</th><th class="num">{{.B}}</th><th class="num">Change</th><th class="num">Chance better</th><th>Verdict</th><th>Spread</th></tr></thead>
+    <tbody>{{range .Steps}}<tr class="group"><td colspan="7"><strong>{{.Step}}</strong></td></tr>{{range .Metrics}}{{template "metric-row" .}}{{end}}{{end}}</tbody>
+  </table></div>
+  {{else}}
+  <p class="muted">Comparisons appear once two versions have runs.</p>
+  {{end}}
+</section>
+
+<section class="card" id="feedback">
+  <header class="card-head"><h2>Feedback</h2>{{if $v.OpenFB}}<span class="muted small">{{$v.OpenFB}} open · <code>{{brand}} pipeline refine {{$v.Name}}</code> proposes a new version</span>{{end}}</header>
+  {{if not $v.Feedback}}<p class="muted">None yet. Give feedback on a run's page, with <code>{{brand}} feedback</code>, or in a PR comment starting with <code>{{brand}}:</code>.</p>{{else}}
+  <ul class="feedback-list">
+  {{range $v.Feedback}}
+    <li class="fb fb-{{.Status}}"><span class="muted small">#{{.ID}} · v{{.Version}}{{with .Run}} · <a href="/runs/{{.}}">run</a>{{end}}{{with .Step}} · {{.}}{{end}} · {{.Source}}{{with .Author}} · {{.}}{{end}} · {{.Status}}{{if .AddressedIn}} in v{{.AddressedIn}}{{end}}</span>
+      <p>{{.Text}}</p></li>
+  {{end}}
+  </ul>
+  {{end}}
+</section>
+{{end}}
+
+{{define "metric-row"}}
+<tr class="verdict-{{verdictClass .Verdict}}">
+  <td>{{.Metric}}</td>
+  <td class="num">{{.AText}}</td>
+  <td class="num">{{.BText}}</td>
+  <td class="num">{{if ne (print .Verdict) "too few runs"}}{{.Change}}{{else}}-{{end}}</td>
+  <td class="num">{{if ne (print .Verdict) "too few runs"}}{{pct .ProbBetter}}{{else}}-{{end}}</td>
+  <td><span class="verdict" title="{{.Explain}}">{{.Verdict}}</span></td>
+  <td>{{.Box}}</td>
+</tr>
+{{end}}

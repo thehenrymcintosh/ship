@@ -15,6 +15,11 @@
     try { localStorage.setItem("ship-theme", root.dataset.theme); } catch (err) {}
   });
 
+  // Version pickers on the pipeline page compare as soon as you pick.
+  document.addEventListener("change", function (e) {
+    if (e.target.matches && e.target.matches("[data-autosubmit]") && e.target.form) e.target.form.submit();
+  });
+
   // ---- toasts --------------------------------------------------------------
   function toast(msg, ok) {
     var box = document.getElementById("toasts");

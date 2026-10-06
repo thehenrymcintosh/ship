@@ -26,6 +26,7 @@ import (
 	"github.com/thehenrymcintosh/ship/internal/engine/steps"
 	"github.com/thehenrymcintosh/ship/internal/history"
 	"github.com/thehenrymcintosh/ship/internal/pipeline"
+	"github.com/thehenrymcintosh/ship/internal/stats"
 	"github.com/thehenrymcintosh/ship/internal/store"
 	"github.com/thehenrymcintosh/ship/web"
 )
@@ -33,12 +34,23 @@ import (
 // --- templates -------------------------------------------------------------
 
 var funcs = template.FuncMap{
-	"md":         Markdown,
-	"glyph":      pipeline.TypeGlyph,
-	"ago":        ago,
-	"dur":        durMS,
-	"money":      money,
-	"tokens":     steps.FormatTokens,
+	"md":     Markdown,
+	"glyph":  pipeline.TypeGlyph,
+	"ago":    ago,
+	"dur":    durMS,
+	"money":  money,
+	"tokens": steps.FormatTokens,
+	"pct":    pctf,
+	"num":    num1,
+	"verdictClass": func(v stats.Verdict) string {
+		switch {
+		case v.Good():
+			return "good"
+		case v.Bad():
+			return "bad"
+		}
+		return "none"
+	},
 	"usage":      steps.FormatUsage,
 	"usageTitle": steps.DescribeUsage,
 	"short":      shortID,
@@ -102,7 +114,7 @@ func (p *pages) get(name string) (*template.Template, error) {
 			return
 		}
 		p.m = map[string]*template.Template{"": base}
-		for _, page := range []string{"runs", "run", "inbox", "pipelines"} {
+		for _, page := range []string{"runs", "run", "inbox", "pipelines", "pipeline"} {
 			t, err := template.Must(base.Clone()).ParseFS(web.Templates, "templates/"+page+".html")
 			if err != nil {
 				p.err = err
@@ -843,6 +855,7 @@ func (d *Daemon) uiRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /runs/{id}", d.pageRun)
 	mux.HandleFunc("GET /inbox", d.pageInbox)
 	mux.HandleFunc("GET /pipelines", d.pagePipelines)
+	mux.HandleFunc("GET /pipelines/{name}", d.pagePipeline)
 	mux.HandleFunc("GET /fragments/runs", d.fragRuns)
 	mux.HandleFunc("GET /fragments/inbox", d.fragInbox)
 	mux.HandleFunc("GET /fragments/usage", d.fragUsage)
