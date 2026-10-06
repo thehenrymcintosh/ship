@@ -3,6 +3,9 @@ version: 1
 description: Implement the brief, review and tidy it, then publish a release
 start: implement
 
+variables:
+  bump: { set_by: checks, format: '^(patch|minor|major)$', description: "the release level review chose" }
+
 defaults:
   max_visits: 3            # rounds before it checks in with you
   when_exhausted: check-in
@@ -15,7 +18,8 @@ steps:
     prompt: |
       Implement the plan in the brief. Follow the repo's conventions, add or
       update focused tests, and keep the change as small as the brief allows.
-      On a later visit, address the review's findings in its handover.
+      On a later visit, address the review's findings in its handover, or
+      fix what the checks step (lint and tests) reported failing.
       Before finishing, run `make lint` and `go test -count=1 ./...` and fix
       what fails. Commit with clear messages and leave the tree clean.
       Choose stuck if the brief can't be implemented as written (say why).
@@ -35,7 +39,24 @@ steps:
       - major: breaks existing pipelines, config, commands or stored data
       - minor: adds features
       - patch: only fixes
-    next: { changes: implement, major: release, minor: release, patch: release, stuck: check-in }
+    next: { changes: implement, major: checks, minor: checks, patch: checks, stuck: check-in }
+
+  checks:
+    description: Format, refresh skill hashes, lint and test
+    timeout: 20m
+    run: |
+      set -e
+      gofmt -w .
+      scripts/skill-hashes.sh
+      if [ -n "$(git status --porcelain)" ]; then
+        git add -u
+        git commit -q -m "Format and refresh skill hashes"
+      fi
+      make lint
+      go test -count=1 ./...
+      echo {{prev.outcome}}
+    save: { bump: last_line }
+    next: { pass: release, fail: implement }
 
   release:
     description: Merge into main and publish the release
@@ -43,11 +64,10 @@ steps:
     run: |
       set -e
       main=$(cd "$(git rev-parse --git-common-dir)/.." && pwd)
-      git fetch -q origin main
-      git rebase -q origin/main
+      git rebase -q main     # release.sh checks main is up to date with origin
       git -C "$main" merge --ff-only -q {{run.branch}}
       cd "$main"
-      scripts/release.sh {{prev.outcome}}
+      scripts/release.sh {{vars.bump}}
       echo "Restart the daemon onto the new version with: ship serve --restart"
     next: { pass: done, fail: check-in }
 
