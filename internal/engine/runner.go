@@ -1303,6 +1303,7 @@ func (r *runner) finish(status store.Status, reason string) {
 		r.release(false)
 	}
 	r.emit(store.EvRunFinished, store.RunFinished{Status: status, Reason: reason})
+	r.e.RecordRunStats(r.snap(), r.cfg)
 }
 
 // recover re-enters a run after a restart. It returns false when

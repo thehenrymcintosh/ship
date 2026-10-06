@@ -209,7 +209,7 @@ review:
 		t.Fatalf("averages %+v %+v", w, r)
 	}
 	out = run("pipeline", "stats", "docs")
-	if !strings.Contains(out, "last 2 runs") || !strings.Contains(out, "CACHE READ") || !strings.Contains(out, "40k") || !strings.Contains(out, "1.5") {
+	if !strings.Contains(out, "last 2 runs") || !strings.Contains(out, "Hands-on: 0 per run") || !strings.Contains(out, "100% ran without anyone") || !strings.Contains(out, "CACHE READ") || !strings.Contains(out, "40k") || !strings.Contains(out, "1.5") {
 		t.Fatalf("stats:\n%s", out)
 	}
 }

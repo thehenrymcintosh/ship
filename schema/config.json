@@ -59,6 +59,9 @@
         },
         "retention": {
           "$ref": "#/$defs/Retention"
+        },
+        "stats": {
+          "$ref": "#/$defs/Stats"
         }
       },
       "additionalProperties": false,
@@ -84,6 +87,22 @@
         "keep_runs_days": {
           "type": "integer",
           "minimum": 0
+        }
+      },
+      "additionalProperties": false,
+      "type": "object"
+    },
+    "Stats": {
+      "properties": {
+        "record_runs": {
+          "type": "boolean"
+        },
+        "include_fake_runs": {
+          "type": "boolean"
+        },
+        "min_runs": {
+          "type": "integer",
+          "minimum": 2
         }
       },
       "additionalProperties": false,

@@ -24,6 +24,7 @@ type Config struct {
 	Notifications bool                 `yaml:"notifications"`
 	UI            UI                   `yaml:"ui"`
 	Retention     Retention            `yaml:"retention"`
+	Stats         Stats                `yaml:"stats"`
 }
 
 // Workspace configures workspace providers.
@@ -54,6 +55,19 @@ type Retention struct {
 	KeepRunsDays int `yaml:"keep_runs_days" jsonschema:"minimum=0"`
 }
 
+// Stats controls the run stats kept in each pipeline's history.
+type Stats struct {
+	// RecordRuns writes runs/<run-id>.json into the pipeline's history
+	// (committed with the pipeline) when a run finishes.
+	RecordRuns bool `yaml:"record_runs"`
+	// IncludeFakeRuns also records runs started with --fake-agents (dry
+	// runs), which otherwise would skew the numbers.
+	IncludeFakeRuns bool `yaml:"include_fake_runs"`
+	// MinRuns is how many runs each version needs before the pipeline page
+	// says whether one is better than the other.
+	MinRuns int `yaml:"min_runs" jsonschema:"minimum=2"`
+}
+
 // ProviderAuto picks treehouse when it's installed, else git worktrees.
 const ProviderAuto = "auto"
 
@@ -71,6 +85,7 @@ func Defaults() Config {
 		Notifications: true,
 		UI:            UI{Port: 7420, OpenOnStart: true},
 		Retention:     Retention{KeepRunsDays: 30},
+		Stats:         Stats{RecordRuns: true, MinRuns: 3},
 	}
 }
 
