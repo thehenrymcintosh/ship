@@ -3,7 +3,7 @@
 <div class="run-grid">
   <div class="run-main">
     <section class="card graph-card">
-      <header class="card-head"><h2>Pipeline</h2><span class="muted">{{$v.S.Pipeline}} · click a step to filter the timeline</span></header>
+      <header class="card-head"><h2>Pipeline</h2><span class="muted">{{$v.S.Pipeline}} · click a step for its details and visits</span></header>
       <div id="graph" class="graph" data-src="/api/runs/{{$v.S.ID}}/graph" aria-label="Pipeline graph"><p class="muted">Laying out…</p></div>
     </section>
     <div id="run-action" hx-get="/fragments/runs/{{$v.S.ID}}/action" hx-trigger="sse:run throttle:500ms, ship-refresh from:body" hx-swap="innerHTML">{{template "run-action" $v}}</div>

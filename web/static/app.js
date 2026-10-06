@@ -193,7 +193,7 @@
 
   function draw(box, out, hidden) {
     var pad = 8, w = out.width + pad * 2, h = out.height + pad * 2;
-    var root = svg("svg", { viewBox: "0 0 " + w + " " + h, width: w, height: h, role: "img" });
+    var root = svg("svg", { viewBox: "0 0 " + w + " " + h, width: w, height: h, role: "group", "aria-label": "Pipeline graph: select a step for details" });
     var defs = svg("defs", {}, root);
     var m = svg("marker", { id: "arrow-" + Math.random().toString(36).slice(2), viewBox: "0 0 10 10", refX: 9, refY: 5, markerWidth: 7, markerHeight: 7, orient: "auto-start-reverse" }, defs);
     svg("path", { d: "M0,0 L10,5 L0,10 z", class: "arrow" }, m);
@@ -213,7 +213,7 @@
     (out.children || []).forEach(function (n) {
       var d = n.data;
       var cls = "node t-" + d.type + (d.current ? " current" : "") + (d.visits ? " visited" : "");
-      var ng = svg("g", { class: cls, transform: "translate(" + n.x + "," + n.y + ")", tabindex: 0, "data-step": d.id }, g);
+      var ng = svg("g", { class: cls, transform: "translate(" + n.x + "," + n.y + ")", tabindex: 0, "data-step": d.id, role: "button", "aria-label": d.id + " (" + d.type + ")" }, g);
       var title = svg("title", {}, ng);
       title.textContent = d.id + " (" + d.type + ")" + (d.description ? ": " + d.description : "") + (d.visits ? " · " + d.visits + " visits" : "");
       svg("rect", { width: n.width, height: n.height, rx: d.type === "ask" ? 16 : 7 }, ng);
@@ -228,12 +228,16 @@
     });
     box.innerHTML = "";
     box.appendChild(root);
+    box._nodes = {};
+    (out.children || []).forEach(function (n) { box._nodes[n.data.id] = n.data; });
     if (hidden) {
       var note = document.createElement("p");
       note.className = "graph-note muted";
       note.textContent = "Catch-all check-ins (reached on errors or when a step gives up) are hidden until a run goes there · dashed lines go back";
       box.appendChild(note);
     }
+    // A refresh (live runs) keeps the open step panel, with fresh data.
+    if (box._step) openStep(box, box._step);
     applyFilter();
   }
 
@@ -241,7 +245,188 @@
     document.querySelectorAll(".graph[data-src]").forEach(renderGraph);
   }
 
-  // Click a node to filter the timeline to that step.
+  // ---- step panel ------------------------------------------------------------
+  // Click a node to see what the step does; on a run page it also filters
+  // the timeline to that step.
+  var TYPE_NAME = { agent: "agent step", run: "run step", ask: "check-in", wait: "wait step", split: "split step",
+    fanout: "fanout step", pr: "pull request step", done: "end of the run", stop: "the run stops" };
+
+  function el(tag, cls, text, parent) {
+    var e = document.createElement(tag);
+    if (cls) e.className = cls;
+    if (text != null) e.textContent = text;
+    if (parent) parent.appendChild(e);
+    return e;
+  }
+  function ms(n) {
+    if (!n) return "";
+    if (n < 1000) return n + "ms";
+    var s = Math.round(n / 1000);
+    if (s < 60) return s + "s";
+    var m = Math.floor(s / 60);
+    if (m < 60) return m + "m " + (s % 60) + "s";
+    return Math.floor(m / 60) + "h " + (m % 60) + "m";
+  }
+  function usd(n) { return n ? "$" + (n < 0.01 ? n.toFixed(4) : n.toFixed(2)) : ""; }
+
+  function stepPanel(box, n) {
+    var d = n.detail || {};
+    var panel = el("section", "step-panel");
+    panel.setAttribute("aria-label", "Step " + n.id);
+    var head = el("header", "step-panel-head", null, panel);
+    el("span", "glyph", GLYPH[n.type] || "", head).setAttribute("aria-hidden", "true");
+    el("h3", null, n.id, head);
+    el("span", "chip", TYPE_NAME[n.type] || n.type || "step", head);
+    var close = el("button", "btn small step-close", "✕", head);
+    close.type = "button";
+    close.setAttribute("aria-label", "Close step details");
+    close.addEventListener("click", function () { closeStep(box, true); });
+    if (n.description) el("p", "step-desc", n.description, panel);
+
+    var dl = null;
+    function row(label, value) {
+      if (value == null || value === "" || value === false || value === 0 || (value.length === 0)) return;
+      if (!dl) dl = el("dl", "step-kv", null, panel);
+      el("dt", null, label, dl);
+      var dd = el("dd", null, null, dl);
+      if (value === true) value = "yes";
+      if (Array.isArray(value)) value = value.join(", ");
+      el("code", null, String(value), dd);
+    }
+    function block(label, text) {
+      if (!text) return;
+      dl = null;
+      el("h4", null, label, panel);
+      el("pre", "step-pre", text, panel);
+    }
+    function pairs(list, sep) {
+      return (list || []).map(function (p) { return p.value ? p.key + sep + p.value : p.key; });
+    }
+
+    switch (n.type) {
+    case "agent":
+    case "split":
+      if (d.split) block("Split", d.split);
+      row("Skill", d.agent);
+      block("Prompt", d.prompt);
+      block("Rules", d.rules);
+      dl = null;
+      row("Model", d.model); row("Effort", d.effort); row("CLI", d.cli);
+      row("Permission mode", d.permission_mode); row("Allowed tools", d.allowed_tools);
+      row("Disallowed tools", d.disallowed_tools); row("Session", d.session); row("Context", d.context);
+      row("Saves", pairs(d.save, " ← ")); row("Saves on", d.save_on);
+      row("Budget per visit", usd(d.max_budget_usd)); row("Tokens per visit", d.max_tokens ? d.max_tokens.toLocaleString() : "");
+      row("Max slices", d.max_slices); row("Review slices", d.review);
+      break;
+    case "run":
+      block("Script", d.run);
+      row("Shell", d.shell); row("Exit codes", pairs(d.exit_codes, " → ")); row("Saves", pairs(d.save, " ← "));
+      break;
+    case "ask":
+      block("Question", d.ask);
+      row("Shows", d.show); row("Input", d.input);
+      break;
+    case "wait":
+      block("Command", d.wait);
+      row("Every", d.every);
+      break;
+    case "pr":
+      block("Pull request", d.pr);
+      row("Settle", d.settle); row("Trigger", d.trigger);
+      break;
+    case "fanout":
+      block("Fanout", d.fanout);
+      row("Mode", d.mode); row("Stack", d.stack); row("Advance on", d.advance_on);
+      row("Max parallel", d.max_parallel); row("On child stop", d.on_child_stop);
+      break;
+    }
+
+    if (d.routes && d.routes.length) {
+      el("h4", null, n.type === "ask" ? "Choices" : "Where it goes", panel);
+      var ul = el("ul", "step-routes", null, panel);
+      d.routes.forEach(function (r) {
+        var li = el("li", r.kind !== "outcome" ? "muted" : null, null, ul);
+        el("code", null, r.outcome, li);
+        li.append(" → ");
+        el("strong", null, r.to, li);
+      });
+    }
+    dl = null;
+    row("Max visits", d.max_visits); row("When exhausted", d.when_exhausted);
+    row("On error", d.on_error); row("Timeout", d.timeout);
+
+    if (box.id === "graph" && n.detail) {
+      el("h4", null, "Visits in this run", panel);
+      var h = n.history || [];
+      if (!h.length) el("p", "muted", "Not visited yet.", panel);
+      var ol = el("ol", "step-visits", null, panel);
+      h.forEach(function (v) {
+        var li = el("li", null, null, ol);
+        var a = el("a", null, "#" + v.number, li);
+        a.href = "#"; a.dataset.openSeq = v.seq;
+        a.title = "Open visit " + v.seq + " in the timeline";
+        el("span", v.running ? "chip running" : "chip oc-" + v.outcome, v.running ? "running" : (v.outcome || "–"), li);
+        var meta = [ms(v.duration_ms), usd(v.cost_usd)].filter(Boolean).join(" · ");
+        if (meta) el("span", "muted", meta, li);
+        if (v.summary) el("span", "step-visit-sum", v.summary.length > 280 ? v.summary.slice(0, 280) + "…" : v.summary, li);
+      });
+    }
+    return panel;
+  }
+
+  function openStep(box, id) {
+    var n = box._nodes && box._nodes[id];
+    if (!n) { closeStep(box); return; }
+    var old = box._panel, keep = old && old.contains(document.activeElement);
+    box._panel = stepPanel(box, n);
+    box._step = id;
+    if (old) old.replaceWith(box._panel);
+    else box.parentNode.insertBefore(box._panel, box.nextSibling);
+    if (keep) box._panel.querySelector(".step-close").focus();
+    box.querySelectorAll(".node").forEach(function (g) { g.classList.toggle("selected", g.dataset.step === id); });
+  }
+  function closeStep(box, refocus) {
+    var id = box._step;
+    if (box._panel) box._panel.remove();
+    box._panel = null; box._step = "";
+    box.querySelectorAll(".node.selected").forEach(function (g) { g.classList.remove("selected"); });
+    if (box.id === "graph" && filterStep) { filterStep = ""; applyFilter(); }
+    if (refocus && id) {
+      var g = box.querySelector('.node[data-step="' + CSS.escape(id) + '"]');
+      if (g) g.focus();
+    }
+  }
+  function pickNode(node) {
+    var box = node.closest(".graph"), id = node.dataset.step;
+    if (box._step === id) { closeStep(box); return; }
+    if (box.id === "graph") { filterStep = id; applyFilter(); }
+    openStep(box, id);
+    if (box._panel) box._panel.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  }
+  document.addEventListener("click", function (e) {
+    var n = e.target.closest && e.target.closest(".graph .node");
+    if (n) pickNode(n);
+    var a = e.target.closest && e.target.closest("[data-open-seq]");
+    if (!a) return;
+    e.preventDefault();
+    var v = document.querySelector('#run-timeline .visit[data-seq="' + a.dataset.openSeq + '"]');
+    if (v) { v.open = true; v.scrollIntoView({ behavior: "smooth", block: "start" }); }
+  });
+  document.addEventListener("keydown", function (e) {
+    if (e.key === "Escape") {
+      var open = Array.prototype.filter.call(document.querySelectorAll(".graph"), function (b) { return b._panel; });
+      if (!open.length) return;
+      var mine = open.filter(function (b) { return b._panel.contains(e.target) || b.contains(e.target); });
+      // Focus goes back to the step only when it was in the graph or panel.
+      (mine.length ? mine : open).forEach(function (b) { closeStep(b, mine.length > 0); });
+      return;
+    }
+    if ((e.key === "Enter" || e.key === " ") && e.target.closest && e.target.closest(".graph .node")) {
+      e.preventDefault();
+      pickNode(e.target.closest(".graph .node"));
+    }
+  });
+
   var filterStep = "";
   function applyFilter() {
     document.querySelectorAll(".visit").forEach(function (v) {
@@ -258,17 +443,17 @@
         label.append("Only “" + filterStep + "” · ");
         var a = document.createElement("a");
         a.href = "#"; a.textContent = "show all";
-        a.addEventListener("click", function (e) { e.preventDefault(); filterStep = ""; applyFilter(); });
+        a.addEventListener("click", function (e) {
+          e.preventDefault();
+          filterStep = "";
+          var box = document.getElementById("graph");
+          if (box) closeStep(box);
+          applyFilter();
+        });
         label.append(a);
       }
     }
   }
-  document.addEventListener("click", function (e) {
-    var n = e.target.closest && e.target.closest("#graph .node");
-    if (!n) return;
-    filterStep = filterStep === n.dataset.step ? "" : n.dataset.step;
-    applyFilter();
-  });
 
   // ---- timeline tabs ---------------------------------------------------------
   var openState = {}; // seq → {tab, pane, live}

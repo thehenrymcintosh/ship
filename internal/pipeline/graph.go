@@ -16,6 +16,21 @@ type GraphNode struct {
 	// Fallback marks a catch-all check-in: an ask step that error or
 	// exhausted routes lead to. Graphs hide it unless a run went there.
 	Fallback bool `json:"fallback,omitempty"`
+	// Detail is what the step does, for the step panel (steps only).
+	Detail *StepDetail `json:"detail,omitempty"`
+	// History lists the step's visits in a run (run graphs only).
+	History []GraphVisit `json:"history,omitempty"`
+}
+
+// GraphVisit is one visit of a step in a run, for the step panel.
+type GraphVisit struct {
+	Seq        int     `json:"seq"`
+	Number     int     `json:"number"`
+	Outcome    string  `json:"outcome,omitempty"`
+	Running    bool    `json:"running,omitempty"`
+	DurationMS int64   `json:"duration_ms,omitempty"`
+	CostUSD    float64 `json:"cost_usd,omitempty"`
+	Summary    string  `json:"summary,omitempty"`
 }
 
 // GraphEdge is one edge of the pipeline graph.
@@ -76,7 +91,7 @@ func (p *Pipeline) Graph() Graph {
 		if s != nil {
 			desc = s.Description
 		}
-		g.Nodes = append(g.Nodes, GraphNode{ID: name, Type: t, Label: name, Description: desc})
+		g.Nodes = append(g.Nodes, GraphNode{ID: name, Type: t, Label: name, Description: desc, Detail: p.StepDetail(name)})
 	}
 	static := p.Edges()
 	preds := map[string][]string{}

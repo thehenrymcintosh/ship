@@ -217,6 +217,19 @@ func TestRunAskLoopWithExhaustion(t *testing.T) {
 	if err != nil || rebuilt.LastEventSeq != s.LastEventSeq || rebuilt.Status != store.StatusDone {
 		t.Fatalf("rebuild %v %+v", err, rebuilt)
 	}
+	// The graph lists each step's visits for the step panel.
+	g, err := en.e.Graph(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, n := range g.Nodes {
+		if n.ID != "check-in" {
+			continue
+		}
+		if len(n.History) != 2 || n.History[0].Seq != s.Visits[4].Seq || n.History[0].Outcome != "retry" || n.History[1].Number != 2 || n.Detail == nil {
+			t.Fatalf("check-in history %+v", n.History)
+		}
+	}
 }
 
 const agentPipeline = `version: 1

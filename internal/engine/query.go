@@ -35,8 +35,21 @@ func (e *Engine) Graph(id string) (pipeline.Graph, error) {
 	}
 	snap, _ := e.Snapshot(id)
 	g := p.Graph()
+	history := map[string][]pipeline.GraphVisit{}
+	for i := range snap.Visits {
+		v := &snap.Visits[i]
+		oc := v.Outcome
+		if oc == "" && v.Interrupted {
+			oc = "interrupted"
+		}
+		history[v.Step] = append(history[v.Step], pipeline.GraphVisit{
+			Seq: v.Seq, Number: v.VisitNumber, Outcome: oc, Running: v.Running(),
+			DurationMS: v.DurationMS, CostUSD: v.CostUSD, Summary: v.Summary,
+		})
+	}
 	for i := range g.Nodes {
 		n := &g.Nodes[i]
+		n.History = history[n.ID]
 		n.Visits = snap.VisitTotals[n.ID]
 		n.Current = !snap.Status.Terminal() && snap.CurrentStep == n.ID
 		if snap.Status == store.StatusDone && n.ID == pipeline.TargetDone || snap.Status == store.StatusStopped && n.ID == pipeline.TargetStop {

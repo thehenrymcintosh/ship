@@ -93,7 +93,9 @@ served only on `127.0.0.1` and signs your browser in with a local token.
   into slices show their child runs underneath.
 - **A run's page:**
   - The pipeline as a graph, with the current step highlighted and the
-    paths taken so far drawn solid. Click a step to show only its visits.
+    paths taken so far drawn solid. Click a step (on any graph) to see what it
+    does: its prompt or script, settings and where each outcome goes; on a run
+    it also lists the step's visits and filters the timeline to them.
   - A timeline of every step visit. Each one has the live output (script
     output, or the agent's messages and tool calls), the exact input it got,
     the handover it wrote for the next step, and its raw result.
