@@ -439,6 +439,8 @@ svg .median { stroke-width: 2.5; }
 .feedback-list { list-style: none; padding: 0; margin: 0; display: grid; gap: 0.5rem; }
 .feedback-list p { margin: 0.15rem 0 0; }
 .fb-closed, .fb-addressed { opacity: 0.7; }
+.feedback-list p, .version p { overflow-wrap: anywhere; }
+.backfill { display: flex; gap: 0.6rem; align-items: center; flex-wrap: wrap; margin: 0 0 0.8rem; }
 @media (max-width: 640px) {
   .tile-v { font-size: 1.1rem; }
   .page-pipeline .step-stats td, .page-pipeline .step-stats th { padding: 0.3rem 0.35rem; }
