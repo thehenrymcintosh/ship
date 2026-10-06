@@ -43,6 +43,8 @@ type RunNote struct {
 // OutcomeInfo is one outcome and a description of where it leads.
 type OutcomeInfo struct {
 	Name, Target string
+	// Choices are the check-in's choices, when the outcome leads to one.
+	Choices []string
 }
 
 // Preamble is the data of preamble.tmpl.
@@ -90,6 +92,12 @@ func (p Preamble) Render() string {
 
 // OutcomeSchema builds the structured output schema for an agent step.
 func OutcomeSchema(outcomes, save []string) json.RawMessage {
+	return OutcomeSchemaWithDecision(outcomes, save, nil)
+}
+
+// OutcomeSchemaWithDecision adds an optional decision object, for a step
+// with outcomes that lead to a check-in offering choices.
+func OutcomeSchemaWithDecision(outcomes, save, choices []string) json.RawMessage {
 	props := map[string]any{
 		"outcome": map[string]any{"type": "string", "enum": outcomes},
 		"summary": map[string]any{"type": "string"},
@@ -105,6 +113,9 @@ func OutcomeSchema(outcomes, save []string) json.RawMessage {
 			"required": save, "properties": vp,
 		}
 		required = append(required, "vars")
+	}
+	if len(choices) > 0 {
+		props["decision"] = DecisionSchema(choices)
 	}
 	b, _ := json.Marshal(map[string]any{
 		"type": "object", "additionalProperties": false,
@@ -225,6 +236,8 @@ type Output struct {
 	Summary string            `json:"summary"`
 	Vars    map[string]string `json:"vars,omitempty"`
 	Slices  []SliceOut        `json:"slices,omitempty"`
+	// Decision is set for an outcome that leads to a check-in.
+	Decision *Decision `json:"decision,omitempty"`
 }
 
 // SliceOut is one slice in a split result.

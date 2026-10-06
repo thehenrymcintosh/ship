@@ -64,6 +64,9 @@ type Entry struct {
 	// Output, when set, is returned verbatim as the structured result
 	// (for callers with their own schema, like `ship pipeline refine`).
 	Output map[string]any `yaml:"output"`
+	// Decision is reported with the outcome (for one that leads to a
+	// check-in).
+	Decision *agent.Decision `yaml:"decision"`
 }
 
 // Usage is a scripted token breakdown.
@@ -224,7 +227,7 @@ func (a *Adapter) Run(ctx context.Context, req agent.Request, sink agent.Sink) (
 		resp.Structured = b
 		resp.Text = string(b)
 	} else {
-		out := agent.Output{Outcome: e.Outcome, Summary: e.Summary, Vars: e.Vars, Slices: e.Slices}
+		out := agent.Output{Outcome: e.Outcome, Summary: e.Summary, Vars: e.Vars, Slices: e.Slices, Decision: e.Decision}
 		b, _ := json.Marshal(out)
 		resp.Structured = b
 		resp.Text = e.Summary

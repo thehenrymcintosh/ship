@@ -27,6 +27,7 @@ type Config struct {
 	UI            UI                   `yaml:"ui"`
 	Retention     Retention            `yaml:"retention"`
 	Stats         Stats                `yaml:"stats"`
+	CheckIns      CheckIns             `yaml:"checkins"`
 	// DefaultPipeline is the pipeline `ship start` (and the ship skill)
 	// use when neither the command nor the brief names one.
 	DefaultPipeline string `yaml:"default_pipeline"`
@@ -73,6 +74,15 @@ type Stats struct {
 	MinRuns int `yaml:"min_runs" jsonschema:"minimum=2"`
 }
 
+// CheckIns configures how check-ins are presented.
+type CheckIns struct {
+	// Summarize has a small model (haiku) turn the previous step's handover
+	// into a headline, situation and recommendation when the agent didn't
+	// give one and ship can't diagnose the check-in itself. Its cost counts
+	// toward the run's.
+	Summarize bool `yaml:"summarize"`
+}
+
 // ProviderAuto picks treehouse when it's installed, else git worktrees.
 const ProviderAuto = "auto"
 
@@ -91,6 +101,7 @@ func Defaults() Config {
 		UI:            UI{Port: 7420, OpenOnStart: true},
 		Retention:     Retention{KeepRunsDays: 30},
 		Stats:         Stats{RecordRuns: true, MinRuns: 3},
+		CheckIns:      CheckIns{Summarize: true},
 	}
 }
 

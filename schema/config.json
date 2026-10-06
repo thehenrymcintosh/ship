@@ -39,6 +39,15 @@
       "additionalProperties": false,
       "type": "object"
     },
+    "CheckIns": {
+      "properties": {
+        "summarize": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object"
+    },
     "Config": {
       "properties": {
         "workspace": {
@@ -62,6 +71,9 @@
         },
         "stats": {
           "$ref": "#/$defs/Stats"
+        },
+        "checkins": {
+          "$ref": "#/$defs/CheckIns"
         },
         "default_pipeline": {
           "type": "string"

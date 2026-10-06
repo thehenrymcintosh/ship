@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/thehenrymcintosh/ship/internal/agent"
 	"github.com/thehenrymcintosh/ship/internal/brief"
 	"github.com/thehenrymcintosh/ship/internal/engine/steps"
 	"github.com/thehenrymcintosh/ship/internal/pipeline"
@@ -181,6 +182,7 @@ type resultJSON struct {
 	PermissionDenials []json.RawMessage `json:"permission_denials,omitempty"`
 	Polls             int               `json:"polls,omitempty"`
 	Extra             json.RawMessage   `json:"extra,omitempty"`
+	Decision          *agent.Decision   `json:"decision,omitempty"`
 }
 
 func writeResult(path string, r resultJSON) error {

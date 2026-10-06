@@ -586,7 +586,7 @@ func (r *runner) visit(name string, st *pipeline.Step, resume *store.VisitSummar
 		RunNotes:  r.runNotes(s),
 		SessionID: sessionID, ResumeID: resumeID, ResumeKind: resumeKind, Note: nv.note,
 		Thread: plan.thread, Since: r.sinceLastTurn(s, plan.last, worktree),
-		ForceCLI: forceCLI, Resumed: resume != nil, StartedAt: started,
+		ForceCLI: forceCLI, Resumed: resume != nil, StartedAt: started, Summarize: r.cfg.CheckIns.Summarize,
 	}
 	root := worktree
 	if root == "" {
@@ -940,7 +940,7 @@ func (r *runner) finishVisit(v *steps.Visit, typ string, vr visitResult, abort *
 	_ = writeResult(v.File("result.json"), resultJSON{
 		Seq: v.Seq, Step: v.StepName, Type: typ, Outcome: res.Outcome, Summary: res.Summary, Vars: res.Vars,
 		Error: res.Error, ExitCode: res.ExitCode, CostUSD: res.Cost, Tokens: res.Tokens, Usage: res.Usage, SessionID: res.SessionID,
-		DurationMS: dur, PermissionDenials: res.PermissionDenials, Polls: res.Polls, Extra: res.Extra,
+		DurationMS: dur, PermissionDenials: res.PermissionDenials, Polls: res.Polls, Extra: res.Extra, Decision: res.Decision,
 	})
 	_ = writeHandover(v.File("handover.md"), r.id, v.StepName, v.Number, res, finished, r.pipe.OutputTail())
 	if err := r.emit(store.EvVisitFinished, store.VisitFinished{

@@ -48,6 +48,7 @@ const (
 	EvUpgraded          = "pipeline_upgraded"
 	EvBudgetRaised      = "budget_raised"
 	EvAfterReleased     = "after_released"
+	EvCostAdded         = "cost_added"
 )
 
 // Actors.
@@ -132,6 +133,15 @@ type VisitStarted struct {
 // SeqOnly is the data of visit_dequeued, visit_interrupted, slices_approved.
 type SeqOnly struct {
 	Seq int `json:"seq"`
+}
+
+// CostAdded is spending outside any visit's own agent, such as summarising
+// a check-in; it counts toward the run's cost.
+type CostAdded struct {
+	Seq     int     `json:"seq"` // the visit it was for
+	What    string  `json:"what"`
+	CostUSD float64 `json:"cost_usd"`
+	Tokens  int64   `json:"tokens,omitempty"`
 }
 
 // StepError says why a visit produced `error`.

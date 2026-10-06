@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -30,13 +31,31 @@ func (Agent) Execute(ctx context.Context, v *Visit) (Result, error) {
 	if fail != nil {
 		return *fail, nil
 	}
-	call.schema = agent.OutcomeSchema(outcomes, save)
+	asks := askChoices(call.preamble.Outcomes)
+	var all []string
+	for _, o := range call.preamble.Outcomes {
+		for _, c := range o.Choices {
+			if !slices.Contains(all, c) {
+				all = append(all, c)
+			}
+		}
+	}
+	call.schema = agent.OutcomeSchemaWithDecision(outcomes, save, all)
 	call.preamble.Save = save
+	call.check = func(out agent.Output) error {
+		if choices, ok := asks[out.Outcome]; ok && out.Decision != nil {
+			return out.Decision.Validate(choices)
+		}
+		return nil
+	}
 	out, r := invoke(ctx, v, call)
 	if r.Outcome != "" {
 		return r, nil
 	}
 	r.Outcome, r.Summary = out.Outcome, out.Summary
+	if _, ok := asks[out.Outcome]; ok {
+		r.Decision = out.Decision
+	}
 	if len(save) > 0 {
 		r.Vars = map[string]string{}
 		for _, name := range save {
@@ -132,12 +151,14 @@ func buildCall(v *Visit, outcomes []string, extra string) (*agentCall, *Result) 
 	human := ""
 	for _, o := range outcomes {
 		t, _ := v.Step.Target(o)
-		infos = append(infos, agent.OutcomeInfo{Name: o, Target: describeTarget(v, t)})
-		if human == "" {
-			if ts, ok := v.Pipeline.Steps[t]; ok && ts.Type() == pipeline.TypeAsk {
+		info := agent.OutcomeInfo{Name: o, Target: describeTarget(v, t)}
+		if ts, ok := v.Pipeline.Steps[t]; ok && ts.Type() == pipeline.TypeAsk {
+			info.Choices = ts.Choices.Keys()
+			if human == "" {
 				human = o
 			}
 		}
+		infos = append(infos, info)
 	}
 	rules := ""
 	if v.Step.Rules != "" {
@@ -150,6 +171,17 @@ func buildCall(v *Visit, outcomes []string, extra string) (*agentCall, *Result) 
 		Outcomes: infos, HumanOutcome: human,
 	}
 	return c, nil
+}
+
+// askChoices maps the outcomes that lead to a check-in to its choices.
+func askChoices(infos []agent.OutcomeInfo) map[string][]string {
+	out := map[string][]string{}
+	for _, o := range infos {
+		if len(o.Choices) > 0 {
+			out[o.Name] = o.Choices
+		}
+	}
+	return out
 }
 
 func describeTarget(v *Visit, t string) string {

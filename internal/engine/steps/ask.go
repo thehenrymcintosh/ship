@@ -34,6 +34,19 @@ func (Ask) Execute(ctx context.Context, v *Visit) (Result, error) {
 	} else if err := v.RT.SetStatus(store.StatusAsking, "ask: "+v.StepName); err != nil {
 		return Result{}, err
 	}
+	// Summarise the check-in alongside waiting for the answer; it's over
+	// (or cut short) by the time the visit ends.
+	sctx, stop := context.WithCancel(ctx)
+	summarised := make(chan struct{})
+	go func() {
+		defer close(summarised)
+		q := ""
+		if pa := v.RT.Snapshot().PendingAsk; pa != nil {
+			q = pa.Question
+		}
+		summarizeCheckIn(sctx, v, q)
+	}()
+	defer func() { stop(); <-summarised }()
 
 	for {
 		cmd, err := v.RT.Await(ctx)

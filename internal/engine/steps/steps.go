@@ -57,6 +57,9 @@ type Visit struct {
 	Since      string // for a resumed conversation: what happened since its last turn
 	// ForceCLI overrides every agent step's cli (fake-agent dry runs).
 	ForceCLI string
+	// Summarize lets a check-in have a small model summarise the previous
+	// step's handover (config checkins.summarize).
+	Summarize bool
 	// PluginDirs are Claude Code plugins to load: the pipeline's folder,
 	// for a folder pipeline (its skills).
 	PluginDirs []string
@@ -95,6 +98,8 @@ type Result struct {
 	// (split review actions).
 	Internal string
 	Extra    json.RawMessage
+	// Decision is the agent's account of the check-in its outcome leads to.
+	Decision *agent.Decision
 }
 
 // Outcomes produced by the engine itself.

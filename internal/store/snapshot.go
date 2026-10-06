@@ -442,6 +442,13 @@ func Apply(s *RunSnapshot, e Event) error {
 		}
 	case EvBaseMoved:
 		s.BaseMoved = true
+	case EvCostAdded:
+		var d CostAdded
+		if err := dec(&d); err != nil {
+			return err
+		}
+		s.CostUSD += d.CostUSD
+		s.Tokens += d.Tokens
 	case EvStatusChanged:
 		var d StatusChanged
 		if err := dec(&d); err != nil {

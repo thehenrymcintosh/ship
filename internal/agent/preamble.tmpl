@@ -29,5 +29,8 @@ When finished, report your result using the structured output tool:
 {{end}}- summary: a concise handover for whoever runs next (what you did, what's left, anything surprising).
 {{if .Save}}- vars: {{join .Save ", "}}
 {{end}}{{if .Slices}}- slices: the slices, in the order they should land (required when the outcome is "ok").
-{{end}}If you are blocked or unsure, choose the outcome that leads to a human{{if .HumanOutcome}} ("{{.HumanOutcome}}"){{end}}
+{{end}}{{range .Outcomes}}{{if .Choices}}- decision: include it when the outcome is "{{.Name}}", which asks a person to choose: {{join .Choices ", "}}. Give them what they need to decide fast:
+  headline (one line: what they're deciding), situation (2-3 lines: what happened and what's at stake),
+  options (for each choice, what happens if they pick it), recommended (the choice you'd make) and reason (one line).
+{{end}}{{end}}If you are blocked or unsure, choose the outcome that leads to a human{{if .HumanOutcome}} ("{{.HumanOutcome}}"){{end}}
 rather than guessing.
