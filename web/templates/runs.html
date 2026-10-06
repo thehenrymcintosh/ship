@@ -21,7 +21,7 @@
 {{if not .Groups}}
 <div class="empty card">
   {{if eq .Filter "active"}}<h2>No active runs</h2>
-  <p>Start a run from a planning chat (“hand this to {{brand}}”), with <code>{{brand}} start &lt;pipeline&gt; --brief brief.md</code>, or from <a href="/pipelines">Pipelines</a>.</p>
+  <p>Start a run from a planning chat (“{{brand}} this”), with <code>{{brand}} start &lt;pipeline&gt; --brief brief.md</code>, or from <a href="/pipelines">Pipelines</a>.</p>
   {{else if eq .Filter "inbox"}}<h2>Inbox zero</h2><p>No run is waiting for you.</p>
   {{else}}<h2>No runs here yet</h2>{{end}}
 </div>

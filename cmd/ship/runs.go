@@ -271,6 +271,13 @@ func (a *app) statusCmd() *cobra.Command {
 				}
 				fmt.Printf("worktree:  %s%s\n", s.Workspace.Path, missing)
 			}
+			if s.PR != nil && s.PR.URL != "" {
+				fmt.Printf("pr:        %s", s.PR.URL)
+				if s.PR.State != "" {
+					fmt.Print(" " + a.dim(s.PR.State))
+				}
+				fmt.Println()
+			}
 			if c := money(s.CostUSD); c != "" {
 				fmt.Printf("cost:      %s\n", c)
 			}
