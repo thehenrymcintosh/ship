@@ -107,6 +107,21 @@ func TestHashDirFollowsSymlinks(t *testing.T) {
 	if got := hashDir(filepath.Join(dir, "skill")); got != want {
 		t.Fatalf("linked skill: %s want %s", got, want)
 	}
+
+	// Diff's copy of a linked skill has the same files.
+	cp := filepath.Join(t.TempDir(), "copy")
+	if err := copyPart(filepath.Join(dir, "skill"), cp); err != nil || hashDir(cp) != want {
+		t.Fatalf("copy: %v", err)
+	}
+	// Restoring it touches the files where they really are.
+	real, _ := filepath.EvalSymlinks(dir)
+	st := RestoreStep{To: filepath.Join(dir, "skill"), Dir: true, files: map[string][]byte{"SKILL.md": []byte("x")}}
+	if got, want := strings.Join(st.Touches(), " "), strings.Join([]string{st.To, filepath.Join(real, "linked", "SKILL.md"), filepath.Join(real, "shared", "a.md")}, " "); got != want {
+		t.Fatalf("touches:\n got %s\nwant %s", got, want)
+	}
+	if st := (RestoreStep{To: filepath.Join(dir, "real"), Dir: true}); len(st.Touches()) != 1 {
+		t.Fatalf("unlinked skill touches %v", st.Touches())
+	}
 }
 
 func TestVersionsAndFeedback(t *testing.T) {

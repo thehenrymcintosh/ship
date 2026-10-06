@@ -75,4 +75,35 @@ func TestDiffAndRestore(t *testing.T) {
 	if out := must("pipeline", "restore", "p", "v1"); !strings.Contains(out, "already matches v1") {
 		t.Fatal(out)
 	}
+
+	// A skill with a linked dir: diff reads through the link; restore
+	// writes through it only with --force (it's outside the repo), and
+	// keeps the link.
+	shared := t.TempDir()
+	os.WriteFile(filepath.Join(shared, "a.md"), []byte("refs one\n"), 0o644)
+	refs := filepath.Join(filepath.Dir(skill), "refs")
+	if err := os.Symlink(shared, refs); err != nil {
+		t.Fatal(err)
+	}
+	git("add", ".")
+	git("commit", "-qm", "refs")
+	run() // v4 (v3 is what the refused restore recorded first)
+	os.WriteFile(filepath.Join(shared, "a.md"), []byte("refs two\n"), 0o644)
+	os.WriteFile(filepath.Join(shared, "b.md"), []byte("new\n"), 0o644)
+	if out := must("pipeline", "diff", "p", "v4"); !strings.Contains(out, "-refs one") || !strings.Contains(out, "+refs two") {
+		t.Fatal(out)
+	}
+	if out, err := ship("pipeline", "restore", "p", "v4"); err == nil || !strings.Contains(out, "a.md (outside the repo)") {
+		t.Fatalf("%v\n%s", err, out)
+	}
+	must("pipeline", "restore", "p", "v4", "--force")
+	if st, err := os.Lstat(refs); err != nil || st.Mode()&os.ModeSymlink == 0 {
+		t.Fatalf("link not kept: %v %v", st, err)
+	}
+	if b, _ := os.ReadFile(filepath.Join(shared, "a.md")); string(b) != "refs one\n" {
+		t.Fatalf("linked file not restored: %s", b)
+	}
+	if _, err := os.Stat(filepath.Join(shared, "b.md")); err == nil {
+		t.Fatal("file added since v4 kept")
+	}
 }

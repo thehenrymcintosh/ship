@@ -86,8 +86,9 @@ func (a *app) restoreCmd() *cobra.Command {
 		Long: `Write a version's saved copies of the pipeline and everything it uses back to
 where they live now (or, for files since removed, where they lived then).
 Files that have uncommitted changes are left alone unless you pass --force,
-as are files outside the repo (such as your own ~/.claude skills), which git
-can't bring back. Parts added since the version are left as they are. The
+as are files outside the repo (such as your own ~/.claude skills, or what a
+symlink in a skill points at), which git can't bring back. Symlinks are
+followed, never removed. Parts added since the version are left as they are. The
 files as they were before the restore are recorded as a version first, so
 you can restore them too.`,
 		Args: cobra.ExactArgs(2),
@@ -115,8 +116,11 @@ you can restore them too.`,
 				if st.Same || force {
 					continue
 				}
-				if why := a.unsafeToOverwrite(repo, st.To); why != "" {
-					blocked = append(blocked, fmt.Sprintf("%s (%s)", a.show(repo, st.To), why))
+				// Through symlinks too: what they point at gets written.
+				for _, p := range st.Touches() {
+					if why := a.unsafeToOverwrite(repo, p); why != "" {
+						blocked = append(blocked, fmt.Sprintf("%s (%s)", a.show(repo, p), why))
+					}
 				}
 			}
 			if len(blocked) > 0 {
@@ -165,6 +169,12 @@ func (a *app) unsafeToOverwrite(repo, path string) string {
 		return "outside a repo"
 	}
 	rel, err := filepath.Rel(repo, path)
+	if err != nil || strings.HasPrefix(rel, "..") {
+		// path may be a real location (symlinks resolved): try the repo's.
+		if real, rerr := filepath.EvalSymlinks(repo); rerr == nil {
+			rel, err = filepath.Rel(real, path)
+		}
+	}
 	if err != nil || strings.HasPrefix(rel, "..") {
 		return "outside the repo"
 	}

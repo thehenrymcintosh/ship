@@ -277,13 +277,12 @@ func hashDir(dir string) string {
 	return hashBytes(listing)
 }
 
-// readTree lists a dir's files, skipping dotfiles and dot-dirs: a line
-// "<slash path>\x00<sha256 of content>\n" per file, sorted by path. The
-// dir's hash is the listing's hash, so a version stores the listing as an
-// object like any file. With keep, contents maps each file's hash to its
-// content. Symlinks are followed, as the pipeline's plugin follows them
-// (a link back up the tree is skipped).
-func readTree(dir string, keep bool) (listing []byte, contents map[string][]byte) {
+// treeFiles lists the slash paths, relative to dir, of everything in a dir
+// that isn't a dir, skipping dotfiles and dot-dirs, sorted. Symlinks are
+// followed (dir may be one), as the pipeline's plugin follows them; a link
+// back up the tree is skipped. Everything that reads or writes a version's
+// copy of a dir goes by this list.
+func treeFiles(dir string) []string {
 	var rels []string
 	open := map[string]bool{}
 	var walk func(p, rel string)
@@ -306,12 +305,23 @@ func readTree(dir string, keep bool) (listing []byte, contents map[string][]byte
 			if info, err := os.Stat(child); err == nil && info.IsDir() {
 				walk(child, childRel)
 			} else {
-				rels = append(rels, childRel) // unreadable ones are left out below
+				rels = append(rels, childRel)
 			}
 		}
 	}
 	walk(dir, "")
 	sort.Strings(rels)
+	return rels
+}
+
+// readTree lists a dir's files (see treeFiles; unreadable ones are left
+// out), skipping dotfiles and dot-dirs: a line
+// "<slash path>\x00<sha256 of content>\n" per file, sorted by path. The
+// dir's hash is the listing's hash, so a version stores the listing as an
+// object like any file. With keep, contents maps each file's hash to its
+// content.
+func readTree(dir string, keep bool) (listing []byte, contents map[string][]byte) {
+	rels := treeFiles(dir)
 	if keep {
 		contents = map[string][]byte{}
 	}

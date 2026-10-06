@@ -331,7 +331,8 @@ ship pipeline restore pr v3        # put the pipeline and its skills back as in 
 `restore` writes each file back to where it lives now (or where it lived
 then, if it's since been removed), and tells you what it changed. It won't
 overwrite files with uncommitted changes, or files outside the repo such as
-your own `~/.claude/skills`, unless you pass `--force`. Review the changes
+your own `~/.claude/skills` (or what a symlink in a skill points at), unless
+you pass `--force`; symlinks are followed, never removed. Review the changes
 and commit them; the next run is v3 again.
 
 **Give feedback wherever you are.** It's stored against the version that

@@ -668,8 +668,9 @@ func (s *Store) writeVersion(dir string, fp Fingerprint, sf seenFile) error {
 	return nil
 }
 
-// copyPart copies a file, or a dir's files (skipping dotfiles and
-// dot-dirs, as the fingerprint does), to dest.
+// copyPart copies a file, or a dir's files (as the fingerprint sees them:
+// see treeFiles), to dest. Files that can't be read are left out, as the
+// fingerprint leaves them out.
 func copyPart(src, dest string) error {
 	st, err := os.Stat(src)
 	if err != nil {
@@ -678,26 +679,20 @@ func copyPart(src, dest string) error {
 	if !st.IsDir() {
 		return copyFile(src, dest, st.Mode())
 	}
-	return filepath.WalkDir(src, func(p string, d fs.DirEntry, err error) error {
-		if err != nil {
+	if err := os.MkdirAll(dest, 0o755); err != nil {
+		return err
+	}
+	for _, rel := range treeFiles(src) {
+		p := filepath.Join(src, filepath.FromSlash(rel))
+		info, err := os.Stat(p)
+		if err != nil || !info.Mode().IsRegular() {
+			continue
+		}
+		if err := copyFile(p, filepath.Join(dest, filepath.FromSlash(rel)), info.Mode()); err != nil {
 			return err
 		}
-		if strings.HasPrefix(d.Name(), ".") && p != src {
-			if d.IsDir() {
-				return filepath.SkipDir
-			}
-			return nil
-		}
-		if d.IsDir() {
-			return nil
-		}
-		rel, _ := filepath.Rel(src, p)
-		info, err := d.Info()
-		if err != nil {
-			return err
-		}
-		return copyFile(p, filepath.Join(dest, rel), info.Mode())
-	})
+	}
+	return nil
 }
 
 func copyFile(src, dest string, mode fs.FileMode) error {

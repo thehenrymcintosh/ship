@@ -113,25 +113,71 @@ func writeContents(files map[string][]byte, dest string, dir bool) error {
 			return err
 		}
 	}
-	return filepath.WalkDir(dest, func(p string, d fs.DirEntry, err error) error {
-		if err != nil || p == dest {
-			return err
+	// The same files the fingerprint sees (through symlinks), but a
+	// symlink itself is never removed: it's the user's, not the version's.
+	for _, rel := range treeFiles(dest) {
+		if _, ok := files[rel]; ok {
+			continue
 		}
-		if strings.HasPrefix(d.Name(), ".") {
-			if d.IsDir() {
-				return filepath.SkipDir
+		p := filepath.Join(dest, filepath.FromSlash(rel))
+		if st, err := os.Lstat(p); err == nil && st.Mode()&fs.ModeSymlink == 0 {
+			if err := os.Remove(p); err != nil {
+				return err
 			}
-			return nil
 		}
-		if d.IsDir() {
-			return nil
+	}
+	return nil
+}
+
+// Touches lists where applying r writes or removes files: r.To, plus the
+// real location of every one of them that a symlink puts somewhere other
+// than under r.To (a linked skill, or a linked dir or file inside one), so
+// the caller can check those for unsaved work too.
+func (r RestoreStep) Touches() []string {
+	out := []string{r.To}
+	if r.Same {
+		return out
+	}
+	base := r.To
+	if parent, err := filepath.EvalSymlinks(filepath.Dir(r.To)); err == nil {
+		base = filepath.Join(parent, filepath.Base(r.To))
+	}
+	rels := []string{""}
+	if r.Dir {
+		rels = treeFiles(r.To)
+		for rel := range r.files {
+			rels = append(rels, rel)
 		}
-		rel, _ := filepath.Rel(dest, p)
-		if _, ok := files[filepath.ToSlash(rel)]; !ok {
-			return os.Remove(p)
+	}
+	seen := map[string]bool{}
+	for _, rel := range rels {
+		real := realPath(filepath.Join(r.To, filepath.FromSlash(rel)))
+		if in, err := filepath.Rel(base, real); err == nil && in != ".." && !strings.HasPrefix(in, ".."+string(filepath.Separator)) {
+			continue
 		}
-		return nil
-	})
+		if !seen[real] {
+			seen[real] = true
+			out = append(out, real)
+		}
+	}
+	return out
+}
+
+// realPath resolves the symlinks in p, which needn't exist yet: its
+// nearest existing ancestor is resolved and the rest kept.
+func realPath(p string) string {
+	rest := ""
+	for {
+		if real, err := filepath.EvalSymlinks(p); err == nil {
+			return filepath.Join(real, rest)
+		}
+		parent := filepath.Dir(p)
+		if parent == p {
+			return filepath.Join(p, rest)
+		}
+		rest = filepath.Join(filepath.Base(p), rest)
+		p = parent
+	}
 }
 
 func writeKeepingMode(path string, b []byte) error {
