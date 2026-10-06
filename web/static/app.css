@@ -122,7 +122,7 @@ form.inline { display: inline-flex; gap: 0.4rem; align-items: center; flex-wrap:
 .pill { display: inline-flex; align-items: center; gap: 0.35rem; padding: 0.08rem 0.55rem; border-radius: 999px; font-size: 0.78rem; font-weight: 650;
   color: var(--pc); background: color-mix(in srgb, var(--pc) 13%, transparent); border: 1px solid color-mix(in srgb, var(--pc) 30%, transparent); white-space: nowrap; }
 .mini { display: inline-block; width: 0.7rem; height: 0.7rem; border-radius: 3px; background: var(--pc); margin-right: 2px; }
-.st-starting { --pc: var(--st-starting); } .st-running { --pc: var(--st-running); } .st-waiting { --pc: var(--st-waiting); }
+.st-starting { --pc: var(--st-starting); } .st-pending { --pc: var(--st-starting); } .st-running { --pc: var(--st-running); } .st-waiting { --pc: var(--st-waiting); }
 .st-asking { --pc: var(--st-asking); } .st-fanned_out { --pc: var(--st-fanned_out); } .st-needs_attention { --pc: var(--st-needs_attention); }
 .st-paused { --pc: var(--st-paused); }
 .st-done { --pc: var(--st-done); } .st-stopped { --pc: var(--st-stopped); } .st-failed { --pc: var(--st-failed); } .st-cancelled { --pc: var(--st-cancelled); }
@@ -466,3 +466,4 @@ svg .median { stroke-width: 2.5; }
   .tile-v { font-size: 1.1rem; }
   .page-pipeline .step-stats td, .page-pipeline .step-stats th { padding: 0.3rem 0.35rem; }
 }
+.slice-rows .slice-start { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; margin: 0.2rem 0 0.1rem; }

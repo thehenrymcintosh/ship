@@ -139,6 +139,8 @@ takes a run, any unique part of its id works (`3fa`, `rate-limit`).
 | Command | What it does |
 |---|---|
 | `ship start --brief brief.md` | Start a run from a brief file (`-` reads stdin) |
+| `ship start --brief b.md --after <run> [--stack]` | Queue a run behind another: it waits (no worktree, no agent) until that run is done, then starts from its base as it is then, or from that run's branch with `--stack`. If that run ends any other way, you're asked whether to start anyway |
+| `ship start-now <run>` / `ship start-now <run> --slice N` | Start a waiting run now, or a pending slice of a run that's running its slices (out of turn, past `max_parallel`) |
 | `ship ls` | Active runs (`--all` includes finished ones; `--pipelines` lists pipelines) |
 | `ship status <run>` | Where a run is: current step, visits (with time, cost and tokens), pending question, worktree |
 | `ship logs <run> -f` | Follow the current step's output |

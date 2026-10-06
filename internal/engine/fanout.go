@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/thehenrymcintosh/ship/internal/engine/steps"
@@ -46,13 +47,9 @@ func (f *fanoutExec) Execute(ctx context.Context, v *steps.Visit) (steps.Result,
 	if len(slices) == 0 {
 		return steps.ErrorResult("no_slices", "fanout needs approved slices, and this run has none"), nil
 	}
-	childPipe := pipeline.Str(st.Fanout)
 	series := st.ModeOrDefault() == "series"
 	halt := st.OnChildStopOrDefault() == "halt"
-	reuse := false
-	if cf, _ := pipeline.NewLoader(r.dir + "/" + store.PipelineDir).Load(childPipe); cf != nil && cf.Pipeline.Workspace != nil {
-		reuse = cf.Pipeline.Workspace.Reuse == "parent" && series
-	}
+	reuse := reusesParent(r.dir, st)
 
 	poke := make(chan struct{}, 1)
 	prefix := r.id + "."
@@ -76,6 +73,41 @@ func (f *fanoutExec) Execute(ctx context.Context, v *steps.Visit) (steps.Result,
 	}
 	haltedOnce := false
 	var startErr error
+
+	// startNow starts slice n out of turn, at a person's request: it skips
+	// the series order and max_parallel, but a stacked slice needs the one
+	// it stacks on to have a branch.
+	startNow := func(n int) error {
+		if n < 1 || n > len(slices) {
+			return invalid("there's no slice %d (the run has %d)", n, len(slices))
+		}
+		if _, ok := started[n]; ok {
+			return conflict("slice %d has started already", n)
+		}
+		if haltedOnce || startErr != nil {
+			return conflict("the slices have halted, so no more start")
+		}
+		if why := blockedSlice(n, series, st.Stack, reuse, started); why != "" {
+			return conflict("%s", why)
+		}
+		base := ""
+		if series && st.Stack {
+			base = s.Base
+			if n > 1 {
+				prev, err := r.e.Snapshot(started[n-1])
+				if err != nil {
+					return conflict("slice %d, which slice %d stacks on, can't be read: %v", n-1, n, err)
+				}
+				base = prev.Branch
+			}
+		}
+		id, err := f.startChild(ctx, v, slices[n-1], len(slices), base, nil)
+		if err != nil {
+			return invalid("%v", err)
+		}
+		started[n] = id
+		return nil
+	}
 
 	for {
 		if err := syncStatus(); err != nil {
@@ -182,11 +214,36 @@ func (f *fanoutExec) Execute(ctx context.Context, v *steps.Visit) (steps.Result,
 		}
 		select {
 		case <-poke:
+		case c := <-r.sliceCmds:
+			reply(c, startNow(c.Slice))
 		case <-r.wake:
 		case <-ctx.Done():
 			return steps.Result{Outcome: steps.OutcomeCancelled, Summary: "cancelled"}, nil
 		}
 	}
+}
+
+// reusesParent reports whether a fanout's slices work in the parent's
+// worktree (series only), so only one can run at a time.
+func reusesParent(runDir string, st *pipeline.Step) bool {
+	if st.ModeOrDefault() != "series" {
+		return false
+	}
+	cf, _ := pipeline.NewLoader(filepath.Join(runDir, store.PipelineDir)).Load(pipeline.Str(st.Fanout))
+	return cf != nil && cf.Pipeline.Workspace != nil && cf.Pipeline.Workspace.Reuse == "parent"
+}
+
+// blockedSlice says why slice n can't be started out of turn ("" if it can).
+func blockedSlice(n int, series, stack, reuse bool, started map[int]string) string {
+	if reuse {
+		return "the slices share the parent's worktree, so they run one at a time, in order"
+	}
+	if series && stack && n > 1 {
+		if _, ok := started[n-1]; !ok {
+			return fmt.Sprintf("slice %d stacks on slice %d, which hasn't started yet", n, n-1)
+		}
+	}
+	return ""
 }
 
 func nextUnstarted(started map[int]string, n int) int {
@@ -262,4 +319,57 @@ func (f *fanoutExec) result(slices []store.Slice, states map[int]*childState, st
 		outcome = "done"
 	}
 	return steps.Result{Outcome: outcome, Summary: b.String()}
+}
+
+// SliceState is one of a fanout parent's slices, started or not.
+type SliceState struct {
+	Number int          `json:"number"`
+	Key    string       `json:"key"`
+	Title  string       `json:"title"`
+	RunID  string       `json:"run_id,omitempty"` // once started
+	Status store.Status `json:"status"`           // "pending" until started
+	Step   string       `json:"step,omitempty"`   // the started slice's current step
+	// CanStart: a pending slice can be started now, out of turn; Why says
+	// why not otherwise.
+	CanStart bool   `json:"can_start"`
+	Why      string `json:"why,omitempty"`
+}
+
+// SlicePending is the status of a slice that hasn't started.
+const SlicePending store.Status = "pending"
+
+// Slices lists a run's approved slices with each one's state.
+func (e *Engine) Slices(s *store.RunSnapshot) []SliceState {
+	if len(s.Slices) == 0 {
+		return nil
+	}
+	started := map[int]string{}
+	for _, c := range s.Children {
+		started[c.Number] = c.ID
+	}
+	// Slices start out of turn only while the fanout step supervises them.
+	var st *pipeline.Step
+	if lv := s.LastVisit(); lv != nil && lv.Type == pipeline.TypeFanout && lv.Running() && !s.Status.Terminal() {
+		if p, err := e.RunPipeline(s.ID); err == nil {
+			st = p.Steps[lv.Step]
+		}
+	}
+	out := make([]SliceState, 0, len(s.Slices))
+	for _, sl := range s.Slices {
+		ss := SliceState{Number: sl.Number, Key: sl.Key, Title: sl.Title, Status: SlicePending}
+		if id, ok := started[sl.Number]; ok {
+			ss.RunID, ss.Status = id, store.StatusStarting
+			if cs, err := e.Snapshot(id); err == nil {
+				ss.Status, ss.Step = cs.Status, cs.CurrentStep
+			}
+		} else if st == nil {
+			ss.Why = "slices start while the run is at its fanout step"
+		} else {
+			series := st.ModeOrDefault() == "series"
+			ss.Why = blockedSlice(sl.Number, series, st.Stack, reusesParent(e.o.Store.RunDir(s.ID), st), started)
+			ss.CanStart = ss.Why == ""
+		}
+		out = append(out, ss)
+	}
+	return out
 }

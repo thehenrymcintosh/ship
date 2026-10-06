@@ -106,7 +106,11 @@ func (a *app) lsCmd() *cobra.Command {
 				if s.Status.InInbox() {
 					bell = " 🔔"
 				}
-				fmt.Fprintf(tw, "%s\t%s%s\t%s\t%s\t%s\t%s\t%s\n", id, a.status(s.Status), bell, s.CurrentStep, s.Pipeline, truncate(s.Title, 48), money(s.CostUSD), ago(s.CreatedAt))
+				step := s.CurrentStep
+				if s.WaitingOn != "" {
+					step = "after " + shortRef(s.WaitingOn)
+				}
+				fmt.Fprintf(tw, "%s\t%s%s\t%s\t%s\t%s\t%s\t%s\n", id, a.status(s.Status), bell, step, s.Pipeline, truncate(s.Title, 48), money(s.CostUSD), ago(s.CreatedAt))
 			}
 			return tw.Flush()
 		},
@@ -260,6 +264,15 @@ func (a *app) statusCmd() *cobra.Command {
 			if s.StatusReason != "" {
 				fmt.Printf("reason:    %s\n", s.StatusReason)
 			}
+			if s.WaitingOn != "" {
+				stack := ""
+				if s.AfterStack {
+					stack = ", on its branch"
+				}
+				fmt.Printf("after:     %s (starts once it's done%s; `%s start-now %s` starts it now)\n", s.WaitingOn, stack, brand.Name, shortRef(s.ID))
+			} else if s.After != "" {
+				fmt.Printf("after:     %s\n", s.After)
+			}
 			fmt.Printf("pipeline:  %s · step %s · %d transitions\n", s.Pipeline, s.CurrentStep, s.Transitions)
 			if s.Branch != "" {
 				fmt.Printf("branch:    %s ← %s\n", s.Branch, s.Base)
@@ -341,9 +354,18 @@ func (a *app) statusCmd() *cobra.Command {
 				}
 				fmt.Printf("  answer:  %s answer %s <choice> [--note … [--for run]]\n", brand.Name, shortRef(s.ID))
 			}
-			if len(s.Children) > 0 {
-				fmt.Println("\nchildren:")
+			if len(s.Slices) > 0 || len(s.Children) > 0 {
+				fmt.Println("\nslices:")
+				started := map[int]store.ChildRef{}
 				for _, c := range s.Children {
+					started[c.Number] = c
+				}
+				for _, sl := range s.Slices {
+					c, ok := started[sl.Number]
+					if !ok {
+						fmt.Printf("  %d. %s  %s\n", sl.Number, sl.Key, a.dim("pending"))
+						continue
+					}
 					cs, _ := a.loadRun(c.ID)
 					step := ""
 					st := c.Status
@@ -351,6 +373,9 @@ func (a *app) statusCmd() *cobra.Command {
 						step, st = cs.CurrentStep, cs.Status
 					}
 					fmt.Printf("  %d. %s  %s  %s\n", c.Number, c.SliceKey, a.status(st), step)
+				}
+				if len(s.Children) < len(s.Slices) && !s.Status.Terminal() {
+					fmt.Printf("  start a pending slice now: %s start-now %s --slice <n>\n", brand.Name, shortRef(s.ID))
 				}
 			}
 			return nil

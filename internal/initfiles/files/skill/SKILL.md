@@ -34,10 +34,20 @@ description: Hand a planned piece of work over to a ship pipeline. Use when the 
    The front matter is YAML, so a `: ` or ` #` inside a value breaks it: keep each acceptance
    item in double quotes (escaping any `"` inside as `\"`), and quote the title or a var too
    when it contains one.
-3. Start the run, passing the brief on stdin:
+3. If the user wants this to wait for another run ("stack it on <run or description>",
+   "start it after the current release"), find that run: `ship ls` lists the active runs
+   (`--all` includes finished ones) with their id, pipeline and title. Match it by id, title
+   or pipeline; if more than one could fit, or none does, ask which. Pass `--after <run id>`
+   below: the new run waits, without a worktree or agent, until that run is done, then starts
+   from its base as it is then (after a release has merged, that includes the release). Add
+   `--stack` only when the user wants it built on that run's branch rather than the base,
+   e.g. "on top of its branch" or when that run's work won't be merged first.
+4. Start the run, passing the brief on stdin (with `--after <run id>` from step 3, if any):
 
    ship start <pipeline> --brief - --no-open <<'BRIEF'
    <the brief>
    BRIEF
 
-4. Report the run id and URL from the output. Do not start implementing the work yourself.
+5. Report the run id and URL from the output (and, with `--after`, that it starts once the
+   other run is done; `ship start-now <run>` starts it sooner). Do not start implementing the
+   work yourself.

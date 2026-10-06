@@ -47,6 +47,7 @@ const (
 	EvPRPolled          = "pr_polled"
 	EvUpgraded          = "pipeline_upgraded"
 	EvBudgetRaised      = "budget_raised"
+	EvAfterReleased     = "after_released"
 )
 
 // Actors.
@@ -81,6 +82,10 @@ type RunCreated struct {
 	Branch      string            `json:"branch"`
 	Base        string            `json:"base,omitempty"`
 	FakeAgents  string            `json:"fake_agents,omitempty"`
+	// After is the run this one waits for: it starts once that run is done.
+	// AfterStack branches it from that run's branch instead of its base.
+	After      string `json:"after,omitempty"`
+	AfterStack bool   `json:"after_stack,omitempty"`
 	// The pipeline version this run uses, and where its history lives.
 	PipelineVersion int    `json:"pipeline_version,omitempty"`
 	PipelineHash    string `json:"pipeline_hash,omitempty"`
@@ -209,6 +214,13 @@ const (
 	AskKindAsk         = "ask"
 	AskKindSplitReview = "split_review"
 	AskKindVar         = "var"
+	AskKindAfter       = "after" // the run waited on ended without done
+)
+
+// Answers to an AskKindAfter question.
+const (
+	AfterStartAnyway = "start anyway"
+	AfterCancel      = "cancel"
 )
 
 // AskPending opens a question for a human.
@@ -334,6 +346,14 @@ type PRStatus struct {
 	Trigger         string     `json:"trigger"`
 	SettleSeconds   int        `json:"settle_seconds"`
 	Note            string     `json:"note,omitempty"` // e.g. "no PR for branch x yet"
+}
+
+// AfterReleased ends a run's wait for the run it starts after. How is
+// done (that run finished done), start_now or start anyway (a person
+// chose to); Base, when set, is the base it now branches from.
+type AfterReleased struct {
+	How  string `json:"how"`
+	Base string `json:"base,omitempty"`
 }
 
 // RunFinished ends the run.

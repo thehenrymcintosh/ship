@@ -39,6 +39,9 @@ func (s Status) Terminal() bool {
 // InInbox reports whether a run with this status waits for a human.
 func (s Status) InInbox() bool { return s == StatusAsking || s == StatusNeedsAttention }
 
+// WaitingOnReason is the status reason of a run waiting for another.
+func WaitingOnReason(id string) string { return "waiting on " + id }
+
 // ParentRef links a child run to its parent.
 type ParentRef struct {
 	ID   string `json:"id"`
@@ -144,6 +147,9 @@ type RunSnapshot struct {
 	Provider          string            `json:"provider"`
 	Branch            string            `json:"branch"`
 	Base              string            `json:"base,omitempty"`
+	After             string            `json:"after,omitempty"`       // the run this one started (or starts) after
+	AfterStack        bool              `json:"after_stack,omitempty"` // branched from After's branch
+	WaitingOn         string            `json:"waiting_on,omitempty"`  // After, until this run starts
 	Workspace         *workspace.Lease  `json:"workspace,omitempty"`
 	WorkspaceMissing  bool              `json:"workspace_missing,omitempty"`
 	BaseMoved         bool              `json:"base_moved,omitempty"`
@@ -245,6 +251,10 @@ func Apply(s *RunSnapshot, e Event) error {
 		s.PipelineVersion, s.PipelineHash, s.HistoryDir = d.PipelineVersion, d.PipelineHash, d.HistoryDir
 		s.PipelineFolders = d.PipelineFolders
 		s.Warnings = d.Warnings
+		if d.After != "" {
+			s.After, s.AfterStack, s.WaitingOn = d.After, d.AfterStack, d.After
+			s.Status, s.StatusReason = StatusWaiting, WaitingOnReason(d.After)
+		}
 		for k, v := range d.Vars {
 			s.Vars[k] = v
 		}
@@ -421,6 +431,15 @@ func Apply(s *RunSnapshot, e Event) error {
 		s.PipelineVersion, s.PipelineHash, s.Warnings = 0, "", d.Warnings
 		s.PipelineFolders = d.PipelineFolders
 		s.Upgrades++
+	case EvAfterReleased:
+		var d AfterReleased
+		if err := dec(&d); err != nil {
+			return err
+		}
+		s.WaitingOn = ""
+		if d.Base != "" {
+			s.Base = d.Base
+		}
 	case EvBaseMoved:
 		s.BaseMoved = true
 	case EvStatusChanged:

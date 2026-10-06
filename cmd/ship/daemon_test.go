@@ -401,3 +401,61 @@ steps:
 		t.Fatalf("side: %v\n%s", err, page)
 	}
 }
+
+// A run started --after another waits (listed, on the run page), and
+// start-now starts it.
+func TestStartAfterFromTheCLI(t *testing.T) {
+	h := newHarness(t, map[string]string{"p": askPipeline})
+	first := h.startRun("p", "work: [{outcome: done, summary: did it}]\n")
+	h.waitFor(first, func(s *store.RunSnapshot) bool { return s.Status == store.StatusAsking })
+	brief := filepath.Join(h.home, "next.md")
+	os.WriteFile(brief, []byte("---\ntitle: Next one\n---\n"), 0o644)
+	cmd := exec.Command(shipBin, "--home", h.home, "start", "p", "--brief", brief, "--repo", h.repo, "--after", first[len(first)-4:], "--stack", "--no-open", "--json", "--fake-agents", filepath.Join(h.home, "fake.yml"))
+	out, err := cmd.Output()
+	if err != nil {
+		t.Fatalf("%v: %s", err, out)
+	}
+	var res struct{ ID string }
+	if err := json.Unmarshal(out, &res); err != nil {
+		t.Fatalf("%v: %s", err, out)
+	}
+	s := h.waitFor(res.ID, func(s *store.RunSnapshot) bool { return true })
+	if s.Status != store.StatusWaiting || s.WaitingOn != first || !s.AfterStack {
+		t.Fatalf("%s %q on=%q", s.Status, s.StatusReason, s.WaitingOn)
+	}
+	ls, _ := exec.Command(shipBin, "--home", h.home, "ls").CombinedOutput()
+	if !strings.Contains(string(ls), "after "+first[len(first)-4:]) {
+		t.Fatalf("ls should show what it waits on:\n%s", ls)
+	}
+	page := h.get("/runs/" + res.ID)
+	if !strings.Contains(page, "/api/runs/"+res.ID+"/start-now") || !strings.Contains(page, "Daemon test") {
+		t.Fatalf("the run page should offer Start now and name the run it waits on:\n%s", page)
+	}
+	if out, err := exec.Command(shipBin, "--home", h.home, "start-now", res.ID).CombinedOutput(); err != nil {
+		t.Fatalf("%v: %s", err, out)
+	}
+	s = h.waitFor(res.ID, func(s *store.RunSnapshot) bool {
+		return s.Status == store.StatusRunning || s.Status == store.StatusAsking
+	})
+	if s.WaitingOn != "" || s.Base == "main" {
+		t.Fatalf("on=%q base=%q", s.WaitingOn, s.Base)
+	}
+}
+
+func (h *harness) get(path string) string {
+	h.t.Helper()
+	req, _ := http.NewRequest("GET", h.c.Info.URL()+path, nil)
+	req.Header.Set("Authorization", "Bearer "+h.c.Info.Token)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		h.t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	var b strings.Builder
+	sc := bufio.NewScanner(resp.Body)
+	sc.Buffer(make([]byte, 1<<20), 1<<20)
+	for sc.Scan() {
+		b.WriteString(sc.Text() + "\n")
+	}
+	return b.String()
+}

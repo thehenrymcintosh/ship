@@ -133,6 +133,29 @@ func (a *app) simpleCmd(use, short, _ string, endpoint string) *cobra.Command {
 	}
 }
 
+func (a *app) startNowCmd() *cobra.Command {
+	var slice int
+	cmd := &cobra.Command{
+		Use:   "start-now <run> [--slice N]",
+		Short: "Start a run waiting on another (--after) now, or a fanout's pending slice",
+		Long: `Start a run created with --after straight away, without waiting for the
+run it waits on.
+
+With --slice, start that pending slice of a run that's running its slices,
+now: it skips the series order and max_parallel. A slice that stacks on the
+one before can start once that one has.`,
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if slice > 0 {
+				return a.post(args[0], "start-slice", map[string]any{"slice": strconv.Itoa(slice)})
+			}
+			return a.post(args[0], "start-now", nil)
+		},
+	}
+	cmd.Flags().IntVar(&slice, "slice", 0, "the number of the slice to start")
+	return cmd
+}
+
 func (a *app) gotoCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "goto <run> <step>",

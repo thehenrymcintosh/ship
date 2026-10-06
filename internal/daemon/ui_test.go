@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/thehenrymcintosh/ship/internal/engine"
 	"github.com/thehenrymcintosh/ship/internal/store"
 )
 
@@ -48,5 +49,33 @@ func TestPipelinePageGraphQuery(t *testing.T) {
 	}
 	if want := `data-src="/api/pipelines/release/graph?repo=%2Fa&#43;b%2Frepo"`; !strings.Contains(buf.String(), want) {
 		t.Fatalf("want %s in:\n%s", want, buf.String())
+	}
+}
+
+// A fanout parent lists every slice: started ones link to their runs,
+// pending ones offer Start now (disabled, with the reason, when blocked).
+func TestRunSideListsPendingSlices(t *testing.T) {
+	tp, err := tpl.get("run")
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := &store.RunSnapshot{ID: "p1", Title: "t", Status: store.StatusFannedOut}
+	v := &RunView{S: s, SliceRows: []engine.SliceState{
+		{Number: 1, Title: "One", RunID: "p1.01-a", Status: store.StatusRunning, Step: "implement"},
+		{Number: 2, Title: "Two", Status: engine.SlicePending, CanStart: true},
+		{Number: 3, Title: "Three", Status: engine.SlicePending, Why: "slice 3 stacks on slice 2, which hasn't started yet"},
+	}}
+	var buf bytes.Buffer
+	if err := tp.ExecuteTemplate(&buf, "run-side", v); err != nil {
+		t.Fatal(err)
+	}
+	out := buf.String()
+	for _, want := range []string{`href="/runs/p1.01-a"`, "1. One", "2. Two", "3. Three", `{"slice":"2"}`, "disabled title=\"slice 3 stacks on slice 2, which hasn&#39;t started yet\""} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("want %s in:\n%s", want, out)
+		}
+	}
+	if strings.Count(out, "/start-slice") != 2 {
+		t.Fatalf("Start now on each pending slice:\n%s", out)
 	}
 }

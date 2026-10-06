@@ -26,6 +26,7 @@
       {{template "pill" $s}}
       {{if not (terminal $s.Status)}}<span class="phase">{{phase $s .P}}</span>{{end}}
       <span title="pipeline">{{$s.Pipeline}}{{with .Version}} <span class="muted" title="pipeline version: the pipeline plus the skills, rules and scripts it uses">{{.}}</span>{{end}}</span>
+      {{if $s.WaitingOn}}<span class="badge" title="It starts once that run is done">waiting on <a href="/runs/{{$s.WaitingOn}}">{{.AfterT}}</a>{{if $s.AfterStack}}, stacked on its branch{{end}}</span>{{else if $s.After}}<span class="muted">started after <a href="/runs/{{$s.After}}">{{.AfterT}}</a></span>{{end}}
       {{if $s.Branch}}<span class="branch" title="branch ← base"><code>{{$s.Branch}}</code> ← <code>{{$s.Base}}</code></span>{{end}}
       {{with $s.PR}}{{if .URL}}<a class="pr-link" href="{{.URL}}" target="_blank" rel="noopener" title="the run's pull request{{with .State}} ({{.}}){{end}}">PR #{{.Number}}{{with .State}} <span class="muted">{{.}}</span>{{end}}</a>{{end}}{{end}}
       {{if or $s.CostUSD .Budget.USD}}<span class="cost{{if and .Budget.USD (ge $s.CostUSD .Budget.USD)}} warn-text{{end}}" title="agent cost{{if $s.ExtraBudgetUSD}}, budget raised by {{money $s.ExtraBudgetUSD}}{{end}}">{{or (money $s.CostUSD) "$0"}}{{with .Budget.USD}} <span class="muted">of {{money .}}</span>{{end}}</span>{{end}}
@@ -53,6 +54,7 @@
   </div>
   {{if not (terminal $s.Status)}}
   <div class="head-actions">
+  {{if $s.WaitingOn}}<button class="btn primary" hx-post="/api/runs/{{$s.ID}}/start-now" hx-swap="none" title="Start without waiting for the other run">Start now</button>{{end}}
   {{if or (eq $s.Status "paused") $s.PauseRequested}}
     <button class="btn primary" hx-post="/api/runs/{{$s.ID}}/resume" hx-swap="none">Resume</button>
     {{if .Children}}<button class="btn" hx-post="/api/runs/{{$s.ID}}/resume" hx-vals='{"all":true}' hx-swap="none" title="Also resume its paused slices">Resume all</button>{{end}}
@@ -78,7 +80,7 @@
 {{end}}
 
 {{define "run-timeline"}}{{$v := .}}
-{{if not .Visits}}<p class="muted empty-line">{{if eq .S.Status "starting"}}Getting the worktree ready…{{else}}No visits yet.{{end}}</p>{{end}}
+{{if not .Visits}}<p class="muted empty-line">{{if eq .S.Status "starting"}}Getting the worktree ready…{{else if .S.WaitingOn}}Waiting for another run to finish.{{else}}No visits yet.{{end}}</p>{{end}}
 <ol class="timeline">
 {{$ask := .S.PendingAsk}}
 {{range .Visits}}
@@ -203,7 +205,23 @@
   </dl>
 </section>
 {{end}}
-{{if .Children}}
+{{if .SliceRows}}
+<section class="card">
+  <header class="card-head"><h2>Slices</h2></header>
+  {{if .Progress}}<p class="muted small">{{.Progress}}</p>{{end}}
+  <ol class="child-rows compact slice-rows">
+    {{range .SliceRows}}
+    <li>{{if .RunID}}<a href="/runs/{{.RunID}}"><span class="pill st-{{.Status}}">{{.Status}}</span> {{.Number}}. {{.Title}}</a> <span class="muted small">{{.Step}}</span>
+    {{else}}<span class="pill st-pending">pending</span> {{.Number}}. {{.Title}}
+      {{if not (terminal $s.Status)}}<div class="slice-start">
+        <button class="btn small ghost" hx-post="/api/runs/{{$s.ID}}/start-slice" hx-vals='{"slice":"{{.Number}}"}' hx-swap="none" {{if .CanStart}}title="Start this slice now, out of turn"{{else}}disabled title="{{.Why}}"{{end}}>Start now</button>
+        {{if not .CanStart}}<span class="muted small">{{.Why}}</span>{{end}}
+      </div>{{end}}
+    {{end}}</li>
+    {{end}}
+  </ol>
+</section>
+{{else if .Children}}
 <section class="card">
   <header class="card-head"><h2>Slices</h2></header>
   {{if .Progress}}<p class="muted small">{{.Progress}}</p>{{end}}

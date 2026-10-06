@@ -30,9 +30,9 @@ import (
 )
 
 func (a *app) startCmd() *cobra.Command {
-	var briefPath, repoFlag, fakeAgents string
+	var briefPath, repoFlag, fakeAgents, after string
 	var vars []string
-	var noOpen, foreground bool
+	var noOpen, foreground, stack bool
 	cmd := &cobra.Command{
 		Use:   "start [pipeline] --brief <file|->",
 		Short: "Start a run from a brief",
@@ -40,11 +40,22 @@ func (a *app) startCmd() *cobra.Command {
 
 The pipeline is the argument, else the brief's "pipeline:", else the default
 (` + "`" + brand.Name + ` pipeline default` + "`" + `), else the only pipeline available. Pipelines come from the repo's ` + brand.Dir + `/pipelines, then the
-global ~/` + brand.Dir + `/pipelines.`,
+global ~/` + brand.Dir + `/pipelines.
+
+With --after, the run is created now but waits, taking no worktree or agent,
+until that run is done; then it starts from its base as it is then (with
+--stack, from that run's branch). If that run ends any other way, you're
+asked whether to start anyway. ` + "`" + brand.Name + ` start-now` + "`" + ` starts a waiting run straight away.`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if briefPath == "" {
 				return fail(exitUser, "--brief is required (a file, or - for stdin)")
+			}
+			if stack && after == "" {
+				return fail(exitUser, "--stack needs --after <run>")
+			}
+			if after != "" && foreground {
+				return fail(exitUser, "--after needs the daemon; drop --foreground")
 			}
 			repo, err := repoRoot(repoFlag)
 			if err != nil {
@@ -105,14 +116,18 @@ global ~/` + brand.Dir + `/pipelines.`,
 				URL      string   `json:"url"`
 				Warnings []string `json:"warnings"`
 			}
-			body := daemon.StartBody{Repo: repo, Pipeline: name, Brief: string(data), Vars: given, FakeAgents: fakeAgents}
+			body := daemon.StartBody{Repo: repo, Pipeline: name, Brief: string(data), Vars: given, FakeAgents: fakeAgents, After: after, Stack: stack}
 			if err := c.Do("POST", "/api/runs", body, &res); err != nil {
 				return startError(err)
 			}
 			if a.json {
 				return printJSON(res)
 			}
-			fmt.Printf("Started %s\n%s\n", a.bold(res.ID), res.URL)
+			if after != "" {
+				fmt.Printf("Queued %s: it starts once %s is done\n%s\n", a.bold(res.ID), after, res.URL)
+			} else {
+				fmt.Printf("Started %s\n%s\n", a.bold(res.ID), res.URL)
+			}
 			for _, w := range res.Warnings {
 				fmt.Fprintln(os.Stderr, a.color("33", "warning: "+w))
 			}
@@ -127,6 +142,8 @@ global ~/` + brand.Dir + `/pipelines.`,
 	cmd.Flags().StringArrayVar(&vars, "var", nil, "set a from_brief variable (name=value, repeatable)")
 	cmd.Flags().BoolVar(&noOpen, "no-open", false, "don't open the browser")
 	cmd.Flags().BoolVar(&foreground, "foreground", false, "run in this process without the daemon, answering check-ins here")
+	cmd.Flags().StringVar(&after, "after", "", "wait for this run to finish done, then start")
+	cmd.Flags().BoolVar(&stack, "stack", false, "with --after: branch from that run's branch instead of the base")
 	cmd.Flags().StringVar(&fakeAgents, "fake-agents", "", "run every agent step on the scripted fake adapter")
 	cmd.Flags().MarkHidden("fake-agents")
 	return cmd

@@ -37,7 +37,8 @@
         <span class="run-title">{{$s.Title}}{{if .Inbox}} <span class="bell" title="Waiting for you">🔔</span>{{end}}</span>
         <span class="run-meta">
           <span class="pipeline">{{$s.Pipeline}}</span>
-          {{if not (terminal $s.Status)}}<span class="step">{{with $s.LastVisit}}{{if .Running}}<span class="spin small" aria-hidden="true"></span>{{end}}{{end}}{{$s.CurrentStep}}</span>{{end}}
+          {{if $s.WaitingOn}}<span class="step" title="{{$s.StatusReason}}">waiting on {{short $s.WaitingOn}}</span>
+          {{else if not (terminal $s.Status)}}<span class="step">{{with $s.LastVisit}}{{if .Running}}<span class="spin small" aria-hidden="true"></span>{{end}}{{end}}{{$s.CurrentStep}}</span>{{end}}
           <span class="elapsed" title="elapsed">{{.Elapsed}}</span>
           {{with money $s.CostUSD}}<span class="cost">{{.}}</span>{{end}}
           <span class="id muted">{{short $s.ID}}</span>

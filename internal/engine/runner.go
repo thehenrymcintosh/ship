@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -47,6 +48,8 @@ type runner struct {
 
 	cmds      chan Command
 	visitCmds chan steps.Command
+	// sliceCmds hands start_slice commands to a running fanout supervisor.
+	sliceCmds chan Command
 	awaiting  atomic.Bool
 	executing atomic.Bool
 	done      chan struct{}
@@ -72,7 +75,7 @@ func (e *Engine) newRunner(id string, rl *store.RunLog, lock *store.Lock) *runne
 	ctx, cancel := context.WithCancel(e.ctx)
 	r := &runner{
 		e: e, id: id, dir: rl.Dir(), log: rl, lock: lock, ctx: ctx, cancel: cancel,
-		cmds: make(chan Command, 16), visitCmds: make(chan steps.Command, 1), done: make(chan struct{}), wake: make(chan struct{}, 1),
+		cmds: make(chan Command, 16), visitCmds: make(chan steps.Command, 1), sliceCmds: make(chan Command, 1), done: make(chan struct{}), wake: make(chan struct{}, 1),
 	}
 	rl.OnEvent = func(ev store.Event, snap *store.RunSnapshot) { e.dispatch(id, ev, snap) }
 	return r
@@ -123,6 +126,9 @@ func (r *runner) emitUser(c Command) {
 			args[k] = v
 		}
 	}
+	if c.Slice > 0 {
+		args["slice"] = strconv.Itoa(c.Slice)
+	}
 	_, _ = r.log.Emit(store.EvCommand, store.ActorUser, store.Command{Name: c.Name, Args: args, Actor: store.ActorUser, Source: c.Source})
 }
 
@@ -163,6 +169,12 @@ func (r *runner) loop() {
 		s := r.snap()
 		if s.Status.Terminal() {
 			return
+		}
+		if s.WaitingOn != "" {
+			if !r.waitAfter() {
+				return
+			}
+			continue
 		}
 		switch s.Status {
 		case store.StatusStarting:
@@ -664,6 +676,8 @@ func (r *runner) dropVisitCmds() {
 		select {
 		case c := <-r.visitCmds:
 			c.Respond(conflict("the step ended before the command was taken"))
+		case c := <-r.sliceCmds:
+			reply(c, conflict("the run stopped running its slices before the command was taken"))
 		default:
 			return
 		}
@@ -798,6 +812,17 @@ func (r *runner) duringVisit(c Command, v *steps.Visit) *abortReq {
 		}
 		r.emitUser(c)
 		return &abortReq{to: v.CameFrom, cmd: c}
+	case CmdStartSlice:
+		if v.Step.Type() != pipeline.TypeFanout {
+			reply(c, conflict("the run isn't running its slices right now"))
+			return nil
+		}
+		if len(r.sliceCmds) > 0 {
+			reply(c, conflict("another slice is being started"))
+			return nil
+		}
+		r.emitUser(c)
+		r.sliceCmds <- c // only this goroutine sends, so there's room
 	case CmdParentHalted:
 		r.halted = true
 		reply(c, nil)

@@ -51,6 +51,9 @@ func (d *Daemon) routes() http.Handler {
 	api("POST /api/runs/{id}/reacquire", d.command(engine.CmdReacquire))
 	api("POST /api/runs/{id}/upgrade", d.upgrade)
 	api("POST /api/runs/{id}/budget", d.command(engine.CmdRaiseBudget))
+	api("POST /api/runs/{id}/start-now", d.command(engine.CmdStartNow))
+	api("GET /api/runs/{id}/slices", d.runSlices)
+	api("POST /api/runs/{id}/start-slice", d.command(engine.CmdStartSlice))
 	api("POST /api/runs/{id}/focus", d.focus)
 	api("GET /api/usage", d.getUsage)
 	api("POST /api/runs/{id}/open", d.openThing)
@@ -329,6 +332,8 @@ type StartBody struct {
 	Brief      string            `json:"brief"`
 	Vars       map[string]string `json:"vars"`
 	FakeAgents string            `json:"fake_agents,omitempty"`
+	After      string            `json:"after,omitempty"` // a run to start after (an id or a unique part of one)
+	Stack      bool              `json:"stack,omitempty"` // branch from After's branch
 }
 
 func (d *Daemon) startRun(w http.ResponseWriter, r *http.Request) {
@@ -342,7 +347,15 @@ func (d *Daemon) startRun(w http.ResponseWriter, r *http.Request) {
 			delete(body.Vars, k)
 		}
 	}
-	snap, err := d.eng.Start(r.Context(), engine.StartRequest{Repo: body.Repo, Pipeline: body.Pipeline, Brief: []byte(body.Brief), Vars: body.Vars, FakeAgents: body.FakeAgents})
+	if body.After != "" {
+		id, err := d.st.Resolve(body.After)
+		if err != nil {
+			writeEngineErr(w, err)
+			return
+		}
+		body.After = id
+	}
+	snap, err := d.eng.Start(r.Context(), engine.StartRequest{Repo: body.Repo, Pipeline: body.Pipeline, Brief: []byte(body.Brief), Vars: body.Vars, FakeAgents: body.FakeAgents, After: body.After, Stack: body.Stack})
 	if err != nil {
 		writeEngineErr(w, err)
 		return
@@ -529,6 +542,7 @@ type CommandBody struct {
 	// raise-budget: amounts to add ("5", "2.50"; "100k", "1m")
 	USD    string `json:"usd"`
 	Tokens string `json:"tokens"`
+	Slice  string `json:"slice"` // start-slice: the slice's number
 }
 
 func (d *Daemon) command(name string) http.HandlerFunc {
@@ -566,6 +580,14 @@ func (d *Daemon) command(name string) http.HandlerFunc {
 			}
 			c.Tokens = n
 		}
+		if name == engine.CmdStartSlice {
+			n, err := strconv.Atoi(strings.TrimSpace(b.Slice))
+			if err != nil || n < 1 {
+				writeErr(w, 400, "bad_request", fmt.Sprintf("slice wants a slice number, got %q", b.Slice))
+				return
+			}
+			c.Slice = n
+		}
 		if err := d.eng.Do(id, c); err != nil {
 			writeEngineErr(w, err)
 			return
@@ -582,6 +604,24 @@ func (d *Daemon) command(name string) http.HandlerFunc {
 		}
 		writeJSON(w, 200, snap)
 	}
+}
+
+// runSlices lists a fanout parent's slices, started or not.
+func (d *Daemon) runSlices(w http.ResponseWriter, r *http.Request) {
+	id, ok := d.resolve(w, r)
+	if !ok {
+		return
+	}
+	snap, err := d.eng.Snapshot(id)
+	if err != nil {
+		writeEngineErr(w, err)
+		return
+	}
+	out := d.eng.Slices(snap)
+	if out == nil {
+		out = []engine.SliceState{}
+	}
+	writeJSON(w, 200, out)
 }
 
 // upgrade moves a run onto its pipeline as it is now; body {step}.

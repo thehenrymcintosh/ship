@@ -76,6 +76,7 @@ func main() {
 		a.answerCmd(), a.reviewCmd(),
 		a.simpleCmd("retry", "Retry the current step (needs attention, or a pending check-in)", engine.CmdRetry, "retry"),
 		a.gotoCmd(),
+		a.startNowCmd(),
 		a.upgradeCmd(),
 		a.budgetCmd(),
 		a.usageCmd(),

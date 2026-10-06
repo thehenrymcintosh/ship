@@ -413,6 +413,8 @@ type RunView struct {
 	WatchingPR  bool // a pr step is polling right now
 	Upgrade     *UpgradeView
 	Choices     []ChoiceView // of a pending ask
+	SliceRows   []engine.SliceState
+	AfterT      string // title of the run this one starts after
 	Budget      BudgetView
 	Window      *RunWindow
 }
@@ -506,6 +508,13 @@ func (d *Daemon) runView(id string) (*RunView, error) {
 	if len(s.Slices) > 0 && len(kids) > 0 {
 		v.Progress = sliceProgress(len(s.Slices), kids)
 	}
+	v.SliceRows = d.eng.Slices(s)
+	if s.After != "" {
+		v.AfterT = s.After
+		if as, err := d.eng.Snapshot(s.After); err == nil {
+			v.AfterT = as.Title
+		}
+	}
 	if s.Parent != nil {
 		if ps, err := d.eng.Snapshot(s.Parent.ID); err == nil {
 			v.ParentT = ps.Title
@@ -569,7 +578,12 @@ func (d *Daemon) runView(id string) (*RunView, error) {
 		}
 		for _, c := range a.Choices {
 			cv := ChoiceView{Label: c}
-			if t, ok := choices.Get(c); ok {
+			if a.Kind == store.AskKindAfter {
+				cv.Target, cv.Danger = "starts this run now", false
+				if c == store.AfterCancel {
+					cv.Target, cv.Danger = "cancels this run", true
+				}
+			} else if t, ok := choices.Get(c); ok {
 				switch t {
 				case pipeline.TargetStop:
 					cv.Target, cv.Danger = "stops the run", true

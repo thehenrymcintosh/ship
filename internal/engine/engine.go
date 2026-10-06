@@ -310,6 +310,8 @@ const (
 	CmdPRTrigger     = "pr_trigger"
 	CmdUpgrade       = "upgrade" // sent by Upgrade, which stages the pipeline
 	CmdRaiseBudget   = "raise_budget"
+	CmdStartNow      = "start_now"   // a run waiting on another starts now
+	CmdStartSlice    = "start_slice" // a fanout starts slice Command.Slice now
 )
 
 // Command is a manual control.
@@ -331,6 +333,7 @@ type Command struct {
 	USD    float64
 	Tokens int64
 	Source string // cli | ui | engine
+	Slice  int    // start_slice: the slice's number
 	reply  chan error
 }
 
@@ -474,7 +477,11 @@ type StartRequest struct {
 	Brief      []byte
 	Vars       map[string]string
 	FakeAgents string
-	child      *childSpec
+	// After is a run to wait for: the new run is created waiting and starts
+	// once that run is done. Stack branches it from that run's branch.
+	After string
+	Stack bool
+	child *childSpec
 }
 
 type childSpec struct {
@@ -557,6 +564,18 @@ func (e *Engine) Start(ctx context.Context, req StartRequest) (*store.RunSnapsho
 		if fi, err := os.Stat(req.Repo); err != nil || !fi.IsDir() {
 			return nil, invalid("repo %s doesn't exist", req.Repo)
 		}
+	}
+	var after *store.RunSnapshot
+	switch {
+	case req.After != "" && req.child != nil:
+		return nil, invalid("a slice can't wait on another run")
+	case req.After != "":
+		var err error
+		if after, err = e.Snapshot(req.After); err != nil {
+			return nil, invalid("run %s, to start after, doesn't exist", req.After)
+		}
+	case req.Stack:
+		return nil, invalid("stack needs the run to start after")
 	}
 	cfg, err := e.o.LoadConfig(req.Repo)
 	if err != nil {
@@ -648,7 +667,8 @@ func (e *Engine) Start(ctx context.Context, req StartRequest) (*store.RunSnapsho
 			return nil, invalid("%v", err)
 		}
 	}
-	if provider == "none" {
+	if provider == "none" && after == nil {
+		// A run that waits checks out nothing until it starts.
 		if other := e.activeNoneRun(req.Repo); other != "" {
 			return nil, conflict("run %s already uses the main checkout of %s (workspace provider none allows one at a time)", other, req.Repo)
 		}
@@ -688,6 +708,10 @@ func (e *Engine) Start(ctx context.Context, req StartRequest) (*store.RunSnapsho
 	if req.child != nil && req.child.reuse != nil {
 		branch, base = req.child.reuse.Branch, req.child.reuse.Base
 	}
+	if req.Stack && after.Branch != "" {
+		// Set again when the run starts, from the branch as it is then.
+		base = after.Branch
+	}
 
 	// Create the run dir, brief and pipeline snapshot.
 	rl, err := e.o.Store.Create(id)
@@ -723,6 +747,9 @@ func (e *Engine) Start(ctx context.Context, req StartRequest) (*store.RunSnapsho
 		ID: id, Pipeline: name, Repo: req.Repo, RepoOrigin: gitws.Origin(ctx, req.Repo),
 		BriefTitle: b.Title, Start: p.Start, Vars: vars, ShipVersion: brand.Version,
 		Provider: provider, Branch: branch, Base: base, FakeAgents: req.FakeAgents,
+	}
+	if after != nil {
+		created.After, created.AfterStack = after.ID, req.Stack
 	}
 	// Where the pipeline's history lives. The version itself is recorded
 	// once the worktree exists, from what the run's agents will actually use.
@@ -887,7 +914,7 @@ func CheckFormat(p *pipeline.Pipeline, name, val string) error {
 func (e *Engine) activeNoneRun(repo string) string {
 	snaps, _ := e.o.Store.List()
 	for _, s := range snaps {
-		if s.Repo == repo && s.Provider == "none" && !s.Status.Terminal() {
+		if s.Repo == repo && s.Provider == "none" && !s.Status.Terminal() && s.WaitingOn == "" {
 			return s.ID
 		}
 	}

@@ -87,6 +87,15 @@
     </form>
   {{end}}
 </section>
+{{else if $s.WaitingOn}}
+<section class="card action">
+  <header class="action-head"><span class="badge">Waiting</span><h2>Starts once <a href="/runs/{{$s.WaitingOn}}">{{.AfterT}}</a> is done</h2><span class="muted">{{ago $s.CreatedAt}}</span></header>
+  <p class="muted small">It takes no worktree or agent until then. It branches from {{if $s.AfterStack}}that run's branch{{else}}<code>{{$s.Base}}</code> as it is when it starts{{end}}. If that run ends any other way, you're asked whether to start anyway.</p>
+  <div class="choices">
+    <button class="btn primary" hx-post="/api/runs/{{$s.ID}}/start-now" hx-swap="none">Start now</button>
+    <button class="btn danger ghost" hx-post="/api/runs/{{$s.ID}}/cancel" hx-confirm="Cancel this run?" hx-swap="none">Cancel run</button>
+  </div>
+</section>
 {{else if eq $s.Status "needs_attention"}}
 <section class="card action attention">
   <header class="action-head"><span class="badge warn">Needs attention</span><h2>{{$s.StatusReason}}</h2><span class="muted">{{ago $s.UpdatedAt}}</span></header>
