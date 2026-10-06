@@ -33,6 +33,11 @@ implement → review ⇄ fix → verify ⇄ fix → checks ⇄ fix → write PR 
 It installs as a pipeline folder, `.ship/pipelines/rigorous/`, with its
 skills (`ship-implement`, `ship-review`, `ship-fix`, `ship-verify`,
 `ship-pr`) inside it under `skills/`, so they're versioned with the pipeline
-and don't touch your own `.claude/skills`.
+and don't touch your own `.claude/skills`. ship hands them to the
+pipeline's agents as a plugin it builds in each run's dir; call them as
+`/rigorous:ship-review` and so on if you have skills of the same names. The
+folder also collects the pipeline's history (versions, run stats,
+feedback): commit it, and see how it's doing with `ship pipeline stats
+rigorous` or its page in the web UI.
 
 Set `test` to your test command after adding it.

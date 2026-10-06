@@ -317,8 +317,9 @@ its worktree's skills, rules and scripts. When anything in that set changes,
 whether you edited it or `refine` did, the next run is the next version (v1,
 v2, …).
 
-Each version keeps a copy of every one of those files as they were, so you
-can see exactly what changed and go back:
+Each version keeps a copy of every one of those files as they were (each
+distinct file stored once, however many versions use it), so you can see
+exactly what changed and go back:
 
 ```sh
 ship pipeline versions pr          # every version: when, why, what changed, feedback
@@ -391,14 +392,16 @@ is doing:
   Pausing and resuming are counted but treated as scheduling, not help.
 - **Waiting for a person:** how long the run sat waiting for you.
 - **Notes** you wrote at check-ins, for the next step or the whole run.
-- **On its own:** whether nobody had to answer or step in before the run
-  reached its PR (or at all, if it has no `pr:` step).
+- **Fully autonomous:** the run had no check-ins and no interventions
+  before it reached its PR (or at all, if it has no `pr:` step). Pausing and
+  resuming don't count. What happens on the PR doesn't either: that's the
+  next measure.
 - **PR rounds:** review comment batches and CI failures sent to a fixer,
   until the PR was ready or merged; and feedback recorded against the run.
 
 `ship pipeline stats pr` averages the recent runs per step (time, cost,
 tokens, and how often each step needed a person) under a headline of how
-hands-on the runs were.
+hands-on the runs were. It only reads the records.
 
 **The pipeline page** in the web UI (click a pipeline's name on the
 Pipelines page) shows it all, version by version:
@@ -416,7 +419,7 @@ Pipelines page) shows it all, version by version:
 - **Versions:** what changed in each, run and feedback counts, and the
   restore and diff commands.
 - **Compare versions** (the latest against the one before, or any two):
-  success rate, time, cost, tokens, hands-on, waiting, running on its own
+  success rate, time, cost, tokens, hands-on, waiting, fully autonomous
   and PR rounds, then each step's pass rate, time and need for a person.
   For each it shows the distributions, and how likely the newer version is
   better given the runs so far: **likely better** at 95% or more,
@@ -431,9 +434,11 @@ Pipelines page) shows it all, version by version:
 
 Dry runs (`--fake-agents`) aren't recorded, so they don't skew the numbers
 (`stats.include_fake_runs: true` records them). `stats.record_runs: false`
-stops recording altogether. Runs that finished on your machine before ship
-kept these records are added from `~/.ship/state` when a pipeline has none
-yet, or any time with `ship pipeline stats <pipeline> --backfill`.
+stops recording altogether. Viewing the page and running `ship pipeline
+stats` never write anything. Runs that finished on your machine without a
+record (from before ship kept them, say) are added from `~/.ship/state` only
+when you ask: with `ship pipeline stats <pipeline> --backfill`, or the
+**Backfill from N past runs** button the page shows when there are some.
 
 ### Where the history lives
 
@@ -443,9 +448,9 @@ single-file pipeline's lives in `.ship/history/<pipeline>/` (global ones in
 each version, and everyone's runs and feedback, travel with it:
 
 ```
-versions/<hash>/version.json     what the version is made of
-versions/<hash>/files/…          a copy of every part, for diff and restore
+versions/<hash>/version.json     what the version is made of: each part and its content hash
 versions/<hash>/seen/<id>.json   when it was first seen, by whom, and why
+objects/<sha256>                 the content of every file a version used, for diff and restore
 runs/<run-id>.json               one finished run
 feedback/<id>.json               one piece of feedback (and .closed-… when dealt with)
 proposals/, reports/             from refine and report
@@ -453,10 +458,18 @@ proposals/, reports/             from refine and report
 
 Every record is its own file, written once and never changed, so several
 people using the same pipeline on different machines can commit their
-history without conflicts. Version numbers (v1, v2…) and feedback numbers
-(#1, #2…) are worked out from the dates when read. History from older
-versions of ship (`versions.jsonl`, `feedback.jsonl`) is converted when it's
-first read; the old files can then be deleted.
+history without conflicts. `objects/` is content-addressed: each file is
+stored once, named by the hash of its content, however many versions use it
+(a skill folder's listing of its files is stored the same way). So a new
+version adds only the files that changed, and two machines saving the same
+file write the same object. `ship pipeline diff` and `ship pipeline restore`
+read the copies from there. Version numbers (v1, v2…) and feedback numbers
+(#1, #2…) are worked out from the dates when read.
+
+History from older versions of ship (`versions.jsonl`, `feedback.jsonl`) is
+read as it is, and written out as record files the next time ship records
+something in that history (a run starting, feedback, a refine). The old
+files are left in place; once converted, you can delete them.
 
 ## Briefs
 
@@ -498,18 +511,20 @@ a `pipeline.yml` (what `/ship-design` writes), or a single file,
 .ship/pipelines/pr/
   pipeline.yml
   skills/review/SKILL.md          # the pipeline's own skills
-  .claude-plugin/plugin.json      # written by ship
-  versions/ runs/ feedback/ …     # its history (see above)
+  versions/ objects/ runs/ …      # its history (see above)
 ```
 
 A folder keeps everything about a pipeline together: the pipeline, the
-skills written for it, and its history. The folder is a Claude Code plugin:
-ship passes it to every agent of the pipeline (`--plugin-dir`), so a step
-calls a folder skill as `agent: /review` (or `/pr:review` to be explicit).
-When names clash, the folder's skill wins over the repo's `.claude/skills/`,
-which wins over your `~/.claude/skills/`. Like repo skills, folder skills
+skills written for it, and its history. Its skills reach every agent of the
+pipeline as a Claude Code plugin named after it: before each agent step,
+ship assembles the plugin in the run's own dir (a manifest, and the
+folder's `skills/` as the run's worktree has them) and passes it with
+`--plugin-dir`, so nothing is written into your checkout. A step calls a
+folder skill as `agent: /review`, or `/pr:review` to be explicit (do that
+if a repo or user skill has the same name). Like repo skills, folder skills
 come from the run's branch, so commit them. `ship validate` warns (W108)
-when a step calls a skill it can't find in any of those places.
+when a step calls a skill it can't find in the folder, the repo's
+`.claude/skills/` or your `~/.claude/skills/`.
 
 To turn a single-file pipeline into a folder:
 
@@ -517,6 +532,9 @@ To turn a single-file pipeline into a folder:
 ship pipeline migrate pr            # moves pr.yml and its history into .ship/pipelines/pr/
 ship pipeline migrate pr --skills   # also moves the repo skills only pr uses
 ```
+
+Files git tracks are moved with `git mv`, so the moves are staged; commit
+them.
 
 ### A complete example
 
@@ -619,7 +637,9 @@ steps:
 - **Claude's usage limits.** When an agent hits your account's 5-hour or
   weekly limit, the step waits until the limit resets (the run shows as
   waiting) and then carries on in the same conversation, so nothing is
-  lost. `ship usage` and the meter in the web UI's top bar show how much
+  lost. Waits follow the clock, so if your laptop sleeps through one it
+  carries on within half a minute of waking once the limit has reset (the
+  same goes for `wait:` steps' polls and timeouts). `ship usage` and the meter in the web UI's top bar show how much
   of each limit is used and what each run spent in the current window. If
   several runs are going and the window is nearly used up, `ship focus
   <run>` pauses the others after their current step so that one can finish;

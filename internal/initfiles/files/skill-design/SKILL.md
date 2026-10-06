@@ -16,8 +16,12 @@ the workflow in plain language, then write and check the file yourself.
 
 If the user wants to improve a pipeline based on feedback they've given on
 its runs, suggest `ship pipeline refine <pipeline>`: it reads the recorded
-feedback and proposes a new version. Use this skill for designing pipelines
-and for changes the user describes directly.
+feedback and proposes a new version. To see how a pipeline is doing, point
+them to `ship pipeline stats <pipeline>` or the pipeline's page in the web
+UI (time, cost, how hands-on its runs were, and whether a newer version is
+better), and to `ship pipeline versions`, `diff` and `restore` to compare or
+go back. Use this skill for designing pipelines and for changes the user
+describes directly.
 
 1. **Look first.** Run `ship ls --pipelines` to see the existing pipelines and
    where each comes from (repo or global). Read any that are relevant. If the
@@ -45,12 +49,14 @@ and for changes the user describes directly.
    schema comment line (below). Skills written for this pipeline go in the
    folder too, as `skills/<skill>/SKILL.md` (with `name: <skill>` in the
    front matter), and its agent steps call them as `agent: /<skill>`: ship
-   loads the folder as a plugin for the pipeline's agents, versions the
-   skills with the pipeline, and they don't clash with the user's own
-   skills. Use a skill rather than a long `prompt:` when the instructions
-   are long or shared by several steps. When changing an existing
-   single-file pipeline, keep it as it is, or offer `ship pipeline migrate
-   <name> --skills` to turn it into a folder.
+   gives the folder's skills to the pipeline's agents as a plugin named
+   after the pipeline (it builds the plugin itself, so the folder needs no
+   `.claude-plugin/`), and versions them with the pipeline. If the user has
+   a skill of the same name, call the folder's as `/<name>:<skill>`. Use a
+   skill rather than a long `prompt:` when the instructions are long or
+   shared by several steps. When changing an existing single-file pipeline,
+   keep it as it is, or offer `ship pipeline migrate <name> --skills` to turn
+   it into a folder (it stages the moves of tracked files with `git mv`).
 5. **Check it.** Run `ship validate <folder>` and fix every error. Explain any
    warning that remains in one sentence; some are worth keeping. Then run
    `ship graph <name>` and walk the user through the flow in words. Remind
@@ -60,7 +66,8 @@ and for changes the user describes directly.
    repos: copy the folder to `~/.ship/templates/<name>/pipelines/<name>/`,
    add a `template.yml` (`description: …`) beside `pipelines/`, and any
    helper scripts (`bin/`) and rules (`rules/`) it uses. Leave out the
-   history (`versions/`, `runs/`, `feedback/`, `proposals/`, `reports/`).
+   history (`versions/`, `objects/`, `runs/`, `feedback/`, `proposals/`,
+   `reports/`).
    It then shows up in `ship templates`.
 7. **Offer a dry run** when it would help:
    `ship start <name> --brief brief.md --fake-agents script.yml --no-open`,
