@@ -153,6 +153,7 @@
   function renderGraph(box) {
     if (typeof ELK === "undefined") { setTimeout(function () { renderGraph(box); }, 100); return; }
     fetch(box.dataset.src, { credentials: "same-origin" }).then(function (r) { return r.json(); }).then(function (g) {
+      if (!g.nodes) throw new Error((g.error && g.error.message) || "no graph in the response");
       var elk = new ELK();
       // Catch-all check-ins (where errors and give-ups go) would connect to
       // every step; show them only when a run actually went there.

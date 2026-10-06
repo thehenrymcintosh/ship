@@ -22,14 +22,15 @@ import (
 // PipelinePage is /pipelines/{name}: how a pipeline is doing, version by
 // version.
 type PipelinePage struct {
-	Name, Repo, Query string
-	Description       string
-	Global            bool
-	Where             string // where its history lives
-	HasGraph          bool
-	Findings          []pipeline.Finding
-	Current           string // label of the version as the files are now
-	Unrecorded        int    // finished runs on this machine with no record yet
+	Name, Repo  string
+	Query       template.URL // encoded already, so templates mustn't escape it again
+	Description string
+	Global      bool
+	Where       string // where its history lives
+	HasGraph    bool
+	Findings    []pipeline.Finding
+	Current     string // label of the version as the files are now
+	Unrecorded  int    // finished runs on this machine with no record yet
 
 	Scope   string // "done": time and cost from runs that finished done; "all": every finished run
 	MinRuns int
@@ -159,7 +160,7 @@ func (d *Daemon) pagePipeline(w http.ResponseWriter, r *http.Request) {
 	if repo != "" {
 		vals.Set("repo", repo)
 	}
-	v.Query = vals.Encode()
+	v.Query = template.URL(vals.Encode())
 	v.Global = repo == "" || l.Dir(name) != engine.PipelinesDir(repo)
 	opts := d.eng.ValidateOptions(cfg)
 	opts.SkillExists = d.eng.SkillCheck(repo)
