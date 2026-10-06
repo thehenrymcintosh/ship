@@ -18,7 +18,7 @@ description: Hand a planned piece of work over to a ship pipeline. Use when the 
    vars:
      <any variables the pipeline needs, e.g. ticket>
    acceptance:
-     - <testable criterion>
+     - "<testable criterion>"
    ---
 
    ## Context
@@ -31,6 +31,9 @@ description: Hand a planned piece of work over to a ship pipeline. Use when the 
    <how the user wants this broken into PRs, if discussed>
 
    Acceptance criteria are required. If none were agreed, propose some and confirm with the user.
+   The front matter is YAML, so a `: ` or ` #` inside a value breaks it: keep each acceptance
+   item in double quotes (escaping any `"` inside as `\"`), and quote the title or a var too
+   when it contains one.
 3. Start the run, passing the brief on stdin:
 
    ship start <pipeline> --brief - --no-open <<'BRIEF'
