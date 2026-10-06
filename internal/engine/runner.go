@@ -1033,7 +1033,29 @@ func (r *runner) interrupted(v *steps.Visit, typ string) {
 		return
 	}
 	r.emit(store.EvVisitInterrupted, store.SeqOnly{Seq: v.Seq})
+	if s.Status == store.StatusWaiting && strings.HasPrefix(s.StatusReason, steps.LimitWaitPrefix) {
+		r.setStatus(store.StatusNeedsAttention, limitInterrupted)
+		return
+	}
 	r.setStatus(store.StatusNeedsAttention, "interrupted: "+brand.Name+" stopped while this step was running")
+}
+
+// limitInterrupted marks a run stopped while waiting out a usage limit; it
+// carries on by itself when ship starts again.
+const limitInterrupted = "interrupted while waiting out a usage limit; carries on when " + brand.Name + " restarts"
+
+// resumeAfterLimit continues an agent visit that a restart cut off while it
+// waited out a usage limit, in the same conversation. It reports whether it
+// did.
+func (r *runner) resumeAfterLimit(lv *store.VisitSummary) bool {
+	if lv == nil || lv.SessionID == "" {
+		return false
+	}
+	r.halted = false
+	r.next = nextVisit{resumeKind: "interrupted", resumeID: lv.SessionID}
+	r.transition(lv.CameFrom, lv.Step, "", store.ReasonNormal, false)
+	r.setStatus(store.StatusRunning, "")
+	return true
 }
 
 // parked waits for a human command while the run needs attention. It
@@ -1322,6 +1344,19 @@ func (r *runner) recover() bool {
 	}
 	lv := s.LastVisit()
 	running := lv != nil && lv.Running()
+	// Stopped while waiting out a usage limit: carry on (if the limit
+	// hasn't reset yet, the step waits again).
+	if s.Status == store.StatusNeedsAttention && s.StatusReason == limitInterrupted && lv != nil && lv.Interrupted {
+		if r.resumeAfterLimit(lv) {
+			return true
+		}
+	}
+	if running && s.Status == store.StatusWaiting && strings.HasPrefix(s.StatusReason, steps.LimitWaitPrefix) {
+		r.emit(store.EvVisitInterrupted, store.SeqOnly{Seq: lv.Seq})
+		if r.resumeAfterLimit(r.snap().LastVisit()) {
+			return true
+		}
+	}
 	// An agent can't be re-entered mid-invocation; the only agent-like
 	// visit that resumes is a split waiting for its review. Anything else
 	// (such as an agent waiting out a usage limit) was interrupted.
@@ -1393,6 +1428,7 @@ func (v *visitRT) Idle() {
 }
 
 func (v *visitRT) Emit(typ string, data any) error { return v.r.emit(typ, data) }
+func (v *visitRT) Executing(on bool)               { v.r.executing.Store(on) }
 func (v *visitRT) SetStatus(st store.Status, reason string) error {
 	return v.r.setStatus(st, reason)
 }

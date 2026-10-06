@@ -253,10 +253,13 @@ func invoke(ctx context.Context, v *Visit, c *agentCall) (agent.Output, Result) 
 				return fail(ErrorResult("rate_limited", "Claude kept refusing for a usage or rate limit: "+resp.ErrorText))
 			}
 			until := time.Now().Add(wait)
-			note := fmt.Sprintf("Claude's usage limit was hit; carrying on at %s", until.Format("15:04"))
+			note := fmt.Sprintf("%s; carrying on at %s", LimitWaitPrefix, until.Format("15:04"))
 			v.RT.AgentEvent(agent.UIEvent{Kind: "system", Data: map[string]any{"text": note}})
 			_ = v.RT.SetStatus(store.StatusWaiting, note)
-			if SleepUntil(ctx, until) != nil {
+			v.RT.Executing(false)
+			slept := SleepUntil(ctx, until)
+			v.RT.Executing(true)
+			if slept != nil {
 				return agent.Output{}, Result{Outcome: OutcomeCancelled, Summary: "cancelled", Cost: r.Cost, Tokens: r.Tokens, TokenUsage: r.TokenUsage, SessionID: r.SessionID}
 			}
 			_ = v.RT.SetStatus(store.StatusRunning, "")

@@ -81,10 +81,35 @@ steps:
 	if _, err := en.e.Recover(); err != nil {
 		t.Fatal(err)
 	}
-	s = en.waitStatus(s.ID, store.StatusNeedsAttention)
-	if lv := s.LastVisit(); len(s.Visits) != 1 || !lv.Interrupted || lv.SessionID == "" {
-		t.Fatalf("%s %+v", visitTrail(s), lv)
+	checkCarriesOn(t, en, s.ID)
+}
+
+// checkCarriesOn checks a run cut off during a usage-limit wait carries on
+// by itself in the same conversation (and here, waits for the limit again).
+func checkCarriesOn(t *testing.T, en *env, id string) {
+	t.Helper()
+	s := en.waitFor(id, "the step to carry on", func(s *store.RunSnapshot) bool {
+		return len(s.Visits) == 2 && s.Status == store.StatusWaiting
+	})
+	first, second := s.Visits[0], s.Visits[1]
+	if !first.Interrupted || first.SessionID == "" || second.ResumeID != first.SessionID {
+		t.Fatalf("%s first %+v second %+v", visitTrail(s), first, second)
 	}
+}
+
+func TestLimitWaitDoesntHoldUpARestart(t *testing.T) {
+	en := newEnv(t, map[string]string{"p": `version: 1
+start: work
+steps:
+  work: {prompt: Do it., next: done}
+`})
+	s := en.start("p", "", nil, `work: [{outcome: done, summary: ok, limited: 1, limit_reset: 1h}]`)
+	en.waitStatus(s.ID, store.StatusWaiting)
+	if n := en.e.Executing(); n != 0 {
+		t.Fatalf("a limit wait counts as executing (%d)", n)
+	}
+	en.restart()
+	checkCarriesOn(t, en, s.ID)
 }
 
 func TestRecoverAskAndWait(t *testing.T) {

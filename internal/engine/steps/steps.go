@@ -145,7 +145,14 @@ type Runtime interface {
 	// waits for a human: its agent slot is released and it no longer counts
 	// as executing (for restarts).
 	Idle()
+	// Executing marks whether the visit is doing work right now. A step
+	// waiting out a usage limit isn't, so a graceful restart needn't wait
+	// for it.
+	Executing(bool)
 }
+
+// LimitWaitPrefix starts the status reason of a run waiting out a usage limit.
+const LimitWaitPrefix = "Claude's usage limit was hit"
 
 // SleepUntil waits until the wall clock reaches deadline. Go's timers stop
 // while the machine sleeps, so a long wait on a laptop would overrun by

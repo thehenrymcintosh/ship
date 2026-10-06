@@ -225,6 +225,9 @@ func Serve(ctx context.Context, o Options) error {
 			case <-time.After(time.Second):
 			case <-sigs:
 				req.force = true
+			case again := <-d.stopCh:
+				// A later --force overrides a restart that's still waiting.
+				req.force = req.force || again.force
 			}
 		}
 		o.Log.Info("shutdown requested", "force", req.force)
