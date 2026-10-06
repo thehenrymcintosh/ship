@@ -76,8 +76,35 @@ func TestFolderPipelines(t *testing.T) {
 	folder := filepath.Join(dir, "folder")
 	plugin := filepath.Join(t.TempDir(), "plugin")
 	writeT(t, filepath.Join(plugin, "skills", "gone", "SKILL.md"), "stale")
-	if err := BuildPlugin(plugin, folder, "folder", "Greets"); err != nil {
+	// Links are followed (to a dir, to a file); a dangling link or a link
+	// back up the tree is left out without costing the other skills.
+	shared := t.TempDir()
+	writeT(t, filepath.Join(shared, "linked", "SKILL.md"), "linked")
+	writeT(t, filepath.Join(shared, "file.md"), "file")
+	os.Chmod(filepath.Join(shared, "file.md"), 0o600)
+	skills := filepath.Join(folder, SkillsDir)
+	for link, target := range map[string]string{
+		"linked":         filepath.Join(shared, "linked"),
+		"greet/ref.md":   filepath.Join(shared, "file.md"),
+		"greet/dangling": filepath.Join(shared, "nope"),
+		"greet/loop":     skills,
+	} {
+		if err := os.Symlink(target, filepath.Join(skills, filepath.FromSlash(link))); err != nil {
+			t.Fatal(err)
+		}
+	}
+	skipped, err := BuildPlugin(plugin, folder, "folder", "Greets")
+	if err != nil {
 		t.Fatal(err)
+	}
+	if got := strings.Join(skipped, ","); got != "greet/dangling,greet/loop" {
+		t.Fatalf("skipped: %s", got)
+	}
+	if b, _ := os.ReadFile(filepath.Join(plugin, "skills", "linked", "SKILL.md")); string(b) != "linked" {
+		t.Fatal("linked skill dir not copied")
+	}
+	if st, err := os.Lstat(filepath.Join(plugin, "skills", "greet", "ref.md")); err != nil || st.Mode() != 0o600 {
+		t.Fatalf("linked file: %v %v", st, err)
 	}
 	var m Manifest
 	b, _ := os.ReadFile(filepath.Join(plugin, PluginManifest))

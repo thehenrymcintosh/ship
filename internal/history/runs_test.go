@@ -72,3 +72,26 @@ func TestBuildRunStatsHumanAndPR(t *testing.T) {
 		t.Fatalf("%+v", rs.Human)
 	}
 }
+
+// An answer given by an `answer` command doesn't undo the unrelated
+// intervention issued just before it.
+func TestBuildRunStatsAnswerCommand(t *testing.T) {
+	t0 := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	fin := t0.Add(time.Hour)
+	s := &store.RunSnapshot{ID: "r", Pipeline: "p", Status: store.StatusDone, CreatedAt: t0, FinishedAt: &fin,
+		Visits: []store.VisitSummary{{Seq: 1, Step: "plan", Type: "ask", Outcome: "yes", Finished: &fin}}}
+	ev := func(typ, actor string, data any) store.Event {
+		b, _ := json.Marshal(data)
+		return store.Event{TS: t0, Type: typ, Actor: actor, Data: b}
+	}
+	rs := BuildRunStats(s, []store.Event{
+		ev(store.EvRunCreated, "engine", store.RunCreated{Start: "plan"}),
+		ev(store.EvVisitStarted, "engine", store.VisitStarted{Seq: 1, Step: "plan"}),
+		ev(store.EvCommand, "user", store.Command{Name: "pause", Source: "cli"}),
+		ev(store.EvCommand, "user", store.Command{Name: "answer", Source: "ui"}),
+		ev(store.EvAskAnswered, "user", store.AskAnswered{Seq: 1, Choice: "yes"}),
+	})
+	if h := rs.Human; h.Interventions["pause"] != 1 || h.CheckIns != 1 {
+		t.Fatalf("human: %+v", h)
+	}
+}

@@ -322,7 +322,8 @@ func BuildRunStats(s *store.RunSnapshot, events []store.Event) RunStats {
 				break
 			}
 			if d.Name == "answer" || d.Name == "split_review" {
-				break // counted by the answer itself
+				prevCmd = nil // the answer that follows is this command's
+				break         // counted by the answer itself
 			}
 			rs.Human.intervene(d.Name)
 			step(cur, "").Human.intervene(d.Name)

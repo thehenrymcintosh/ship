@@ -117,7 +117,7 @@ web UI compares versions.`,
 			}
 			var runs []history.RunStats
 			for _, r := range recorded {
-				if r.ParentRun == "" && (all || r.Status == store.StatusDone) {
+				if all || r.Status == store.StatusDone {
 					runs = append(runs, r)
 				}
 			}

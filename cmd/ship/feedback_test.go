@@ -224,4 +224,19 @@ review:
 	if !strings.Contains(out, "last 2 runs") || !strings.Contains(out, "Hands-on: 0 per run") || !strings.Contains(out, "100% were fully autonomous") || !strings.Contains(out, "CACHE READ") || !strings.Contains(out, "40k") || !strings.Contains(out, "1.5") {
 		t.Fatalf("stats:\n%s", out)
 	}
+
+	// A fanout slice is recorded in its own pipeline's history and counts
+	// like any other run.
+	recs, _ := filepath.Glob(filepath.Join(h.repo, ".ship", "history", "docs", "runs", "*.json"))
+	b, _ := os.ReadFile(recs[0])
+	var rec map[string]any
+	if err := json.Unmarshal(b, &rec); err != nil {
+		t.Fatal(err)
+	}
+	rec["parent_run"] = "parent"
+	b, _ = json.Marshal(rec)
+	os.WriteFile(recs[0], b, 0o644)
+	if err := json.Unmarshal([]byte(run("pipeline", "stats", "docs", "--json")), &st); err != nil || len(st.Runs) != 2 {
+		t.Fatalf("slice run dropped: %v %+v", err, st.Runs)
+	}
 }

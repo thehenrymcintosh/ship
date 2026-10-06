@@ -584,7 +584,11 @@ func (r *runner) visit(name string, st *pipeline.Step, resume *store.VisitSummar
 		// The folder's skills as a plugin, built in the run's dir (never
 		// in the checkout) from the skills as the worktree has them now.
 		dir := filepath.Join(r.dir, pluginDir)
-		if perr := pipeline.BuildPlugin(dir, folder, s.Pipeline, r.pipe.Description); perr != nil {
+		skipped, perr := pipeline.BuildPlugin(dir, folder, s.Pipeline, r.pipe.Description)
+		if len(skipped) > 0 {
+			r.e.o.Log.Warn("left unreadable entries out of the pipeline's plugin", "run", r.id, "skipped", skipped)
+		}
+		if perr != nil {
 			r.e.o.Log.Warn("building the pipeline's plugin", "run", r.id, "err", perr)
 		} else {
 			v.PluginDirs = []string{dir}
