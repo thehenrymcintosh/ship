@@ -144,10 +144,13 @@ func TestTemplatesAndAdd(t *testing.T) {
 		t.Errorf("add output: %s", out)
 	}
 	out = runShip(t, repo, env, "add", "rigorous")
-	for _, p := range []string{".ship/pipelines/rigorous.yml", ".claude/skills/ship-review/SKILL.md"} {
+	for _, p := range []string{".ship/pipelines/rigorous/pipeline.yml", ".ship/pipelines/rigorous/skills/ship-review/SKILL.md", ".ship/pipelines/rigorous/.claude-plugin/plugin.json"} {
 		if _, err := os.Stat(filepath.Join(repo, p)); err != nil {
 			t.Fatalf("%s missing after add rigorous:\n%s", p, out)
 		}
+	}
+	if strings.Contains(out, "W108") {
+		t.Errorf("the folder's skills should be found:\n%s", out)
 	}
 	cmd := exec.Command(shipBin, "add", "nope")
 	cmd.Dir, cmd.Env = repo, append(os.Environ(), env...)

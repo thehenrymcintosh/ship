@@ -40,14 +40,27 @@ and for changes the user describes directly.
    each step, who does it, and where each result leads. For example: "3.
    Run the tests. If they pass, open the PR. If they fail, go back to step 1
    with the failures." Get a yes or corrections.
-4. **Write the YAML**, starting with the schema comment line (below).
-5. **Check it.** Run `ship validate <file>` and fix every error. Explain any
+4. **Write it as a pipeline folder**: `.ship/pipelines/<name>/pipeline.yml`
+   (or under `~/.ship/pipelines/` for a global one), starting with the
+   schema comment line (below). Skills written for this pipeline go in the
+   folder too, as `skills/<skill>/SKILL.md` (with `name: <skill>` in the
+   front matter), and its agent steps call them as `agent: /<skill>`: ship
+   loads the folder as a plugin for the pipeline's agents, versions the
+   skills with the pipeline, and they don't clash with the user's own
+   skills. Use a skill rather than a long `prompt:` when the instructions
+   are long or shared by several steps. When changing an existing
+   single-file pipeline, keep it as it is, or offer `ship pipeline migrate
+   <name> --skills` to turn it into a folder.
+5. **Check it.** Run `ship validate <folder>` and fix every error. Explain any
    warning that remains in one sentence; some are worth keeping. Then run
-   `ship graph <name>` and walk the user through the flow in words.
+   `ship graph <name>` and walk the user through the flow in words. Remind
+   them to commit the folder: runs check out the base branch, so they only
+   see committed skills.
 6. **Offer to keep it as a template** if it's something they'd reuse in other
-   repos: copy it to `~/.ship/templates/<name>/` with a `template.yml`
-   (`description: …`), the pipeline under `pipelines/`, and any helper scripts
-   (`bin/`), rules (`rules/`) and agent skills it calls (`skills/<skill>/`).
+   repos: copy the folder to `~/.ship/templates/<name>/pipelines/<name>/`,
+   add a `template.yml` (`description: …`) beside `pipelines/`, and any
+   helper scripts (`bin/`) and rules (`rules/`) it uses. Leave out the
+   history (`versions/`, `runs/`, `feedback/`, `proposals/`, `reports/`).
    It then shows up in `ship templates`.
 7. **Offer a dry run** when it would help:
    `ship start <name> --brief brief.md --fake-agents script.yml --no-open`,
@@ -60,8 +73,11 @@ they ask.
 
 ## Pipeline file reference
 
+The schema path is for a folder pipeline; a single-file pipeline
+(`.ship/pipelines/<name>.yml`) uses `$schema=../schema/pipeline.json`.
+
 ```yaml
-# yaml-language-server: $schema=../schema/pipeline.json
+# yaml-language-server: $schema=../../schema/pipeline.json
 version: 1                    # required, always 1
 description: One line shown in the UI
 start: implement              # first step (required)
@@ -201,12 +217,13 @@ such as `SHIP_RUN_ID`, `SHIP_RUN_DIR`, `SHIP_BRANCH`, `SHIP_VAR_<NAME>` and
   warns about this (W107). Default to fresh for steps that should be
   independent.
 
-- **Write agent steps as `prompt:`** unless a matching skill really exists.
-  Only use `agent: /<name>` after checking that `.claude/skills/<name>/SKILL.md`
-  exists in the repo or `~/.claude/skills/<name>/SKILL.md` for the user (or
-  the user tells you it comes from a plugin). A pipeline that calls a missing
-  skill fails on its first agent step. If the user has suitable skills, ask
-  whether to use them.
+- **Write agent steps as `prompt:`** unless a matching skill really exists
+  or you write it. Only use `agent: /<name>` for a skill in the pipeline
+  folder's `skills/<name>/SKILL.md`, the repo's `.claude/skills/<name>/`, or
+  the user's `~/.claude/skills/<name>/` (or one the user says comes from a
+  plugin). A pipeline that calls a missing skill fails on its first agent
+  step; `ship validate` warns about it (W108). If the user has suitable
+  skills, ask whether to use them.
 - Good prompts say what to do and what "done" means. Don't restate the brief
   or the previous step's handover: every agent step already gets both, plus
   the list of outcomes it can choose and where each leads.

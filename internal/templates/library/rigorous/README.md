@@ -30,4 +30,9 @@ implement → review ⇄ fix → verify ⇄ fix → checks ⇄ fix → write PR 
   the change (a flaky test, infrastructure), you choose: keep watching the
   PR, have it fixed anyway, or abandon.
 
+It installs as a pipeline folder, `.ship/pipelines/rigorous/`, with its
+skills (`ship-implement`, `ship-review`, `ship-fix`, `ship-verify`,
+`ship-pr`) inside it under `skills/`, so they're versioned with the pipeline
+and don't touch your own `.claude/skills`.
+
 Set `test` to your test command after adding it.

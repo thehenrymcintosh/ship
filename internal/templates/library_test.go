@@ -46,7 +46,12 @@ func TestBuiltinTemplatesAreSound(t *testing.T) {
 							continue
 						}
 						skill := strings.TrimPrefix(strings.Fields(l)[0], "/")
-						b, err := os.ReadFile(filepath.Join(skills, skill, "SKILL.md"))
+						skill = strings.TrimPrefix(skill, name+":")
+						// The pipeline folder's own skills first, then the shared ones.
+						b, err := os.ReadFile(filepath.Join(ship, "pipelines", name, "skills", skill, "SKILL.md"))
+						if err != nil {
+							b, err = os.ReadFile(filepath.Join(skills, skill, "SKILL.md"))
+						}
 						if err != nil {
 							t.Errorf("step %s calls /%s, which the template doesn't include", sn, skill)
 							continue

@@ -1,4 +1,4 @@
-# yaml-language-server: $schema=../schema/pipeline.json
+# yaml-language-server: $schema=../../schema/pipeline.json
 version: 1
 description: "Thorough: implement, adversarial review with fixes, live verification with evidence, a PR written for its reviewer, then watch it to merge"
 start: implement

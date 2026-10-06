@@ -134,6 +134,9 @@ type File struct {
 	Mode os.FileMode
 }
 
+// historyDirs are a pipeline folder's history (see history.Subdirs).
+var historyDirs = map[string]bool{"versions": true, "runs": true, "feedback": true, "proposals": true, "reports": true}
+
 // Files lists what the template installs. Files outside pipelines/, bin/,
 // rules/ and skills/ (template.yml, READMEs) aren't installed.
 func (t *Template) Files() ([]File, error) {
@@ -141,6 +144,13 @@ func (t *Template) Files() ([]File, error) {
 	err := fs.WalkDir(t.fsys, ".", func(p string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
+		}
+		// A pipeline folder's history isn't part of the template.
+		if parts := strings.Split(p, "/"); len(parts) >= 3 && parts[0] == "pipelines" && historyDirs[parts[2]] {
+			if d.IsDir() {
+				return fs.SkipDir
+			}
+			return nil
 		}
 		if d.IsDir() || strings.HasPrefix(d.Name(), ".") {
 			return nil
