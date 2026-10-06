@@ -85,7 +85,7 @@ func Defaults() Config {
 			ReleaseOnDone: true,
 			Git:           Git{Dir: "{repo_parent}/{repo}" + brand.WorktreeSuffix + "/{run}", Setup: []string{}},
 		},
-		Agent:         pipeline.AgentConfig{CLI: "claude", PermissionMode: "acceptEdits", AllowedTools: []string{}},
+		Agent:         pipeline.AgentConfig{CLI: "claude", PermissionMode: "acceptEdits", AllowedTools: []string{"Bash"}},
 		MaxAgents:     3,
 		Notifications: true,
 		UI:            UI{Port: 7420, OpenOnStart: true},

@@ -786,7 +786,7 @@ agent:                       # defaults for every agent step (each can override)
   model: sonnet              # sonnet | opus | haiku | a full model id
   effort: medium             # low | medium | high | xhigh | max
   permission_mode: acceptEdits
-  allowed_tools: ["Bash(make *)"]
+  allowed_tools: ["Bash"]     # the default; a list here replaces it
 
 workspace:
   branch: "feat/{{vars.ticket}}"   # default: ship/<run-id>
@@ -796,7 +796,9 @@ workspace:
 
 Agents run unattended, in the worktree, with your project's
 `.claude/settings.json`, skills and `CLAUDE.md`. Tools they're refused are
-flagged in the UI. Add what they need to `allowed_tools`.
+flagged in the UI. Bash is allowed by default; to narrow it, list what
+they may use in `allowed_tools` (such as `"Bash(make *)"`), which replaces
+the default.
 
 Put helper scripts in `.ship/bin/` and supporting docs (like splitting rules)
 in `.ship/rules/`. They run from the worktree, so they're versioned with

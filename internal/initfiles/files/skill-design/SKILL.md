@@ -98,7 +98,7 @@ agent:                        # defaults for every agent step (all optional)
   model: sonnet               # sonnet | opus | haiku | full model id
   effort: medium              # low | medium | high | xhigh | max
   permission_mode: acceptEdits   # default | acceptEdits | plan | bypassPermissions
-  allowed_tools: ["Bash(make *)"]
+  allowed_tools: ["Bash"]      # the default; a list here replaces it
 
 variables:                    # each has exactly one source
   ticket: { from_brief: true, prompt: "Ticket?", format: '^[A-Z]+-[0-9]+$' }
@@ -250,8 +250,9 @@ such as `SHIP_RUN_ID`, `SHIP_RUN_DIR`, `SHIP_BRANCH`, `SHIP_VAR_<NAME>` and
   executable.
 - `fanout` must come after a `split` step, and the pipeline it names must
   exist next to this one (or globally).
-- Agent steps run unattended. If a step needs a tool the project doesn't
-  allow, add it to `allowed_tools`; denied tools show up as warnings in the UI.
+- Agent steps run unattended, with Bash allowed by default. If a step needs a
+  tool the project doesn't allow, add it to `allowed_tools` (a list replaces
+  the default, so keep "Bash" in it); denied tools show up as warnings in the UI.
 
 ## Fake-agent script for dry runs
 
