@@ -6,7 +6,9 @@ import (
 	"net/url"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/thehenrymcintosh/ship/internal/checkin"
 	"github.com/thehenrymcintosh/ship/internal/engine"
 	"github.com/thehenrymcintosh/ship/internal/store"
 )
@@ -77,5 +79,36 @@ func TestRunSideListsPendingSlices(t *testing.T) {
 	}
 	if strings.Count(out, "/start-slice") != 2 {
 		t.Fatalf("Start now on each pending slice:\n%s", out)
+	}
+}
+
+// A needs-attention card leads with its diagnosis and the one-click fix,
+// then the other controls, then the evidence.
+func TestProblemCard(t *testing.T) {
+	tp, err := tpl.get("run")
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now()
+	s := &store.RunSnapshot{ID: "r1", Pipeline: "release", Status: store.StatusNeedsAttention, StatusReason: "budget reached at impl", CostUSD: 4.2,
+		Visits: []store.VisitSummary{{Seq: 1, Step: "impl", Type: "agent", Finished: &now, Error: &store.StepError{Reason: "run_budget", Message: "spent"}}}}
+	v := &RunView{S: s, Steps: []string{"impl"}, Budget: BudgetView{USD: 4, Stop: true}, Card: &CardView{
+		Kind: checkin.Problem, Label: "Something broke", Pipeline: "release", From: "impl", Since: now, CostUSD: 4.2,
+		Headline: "The run reached its budget", Situation: "It has spent $4.20 of its $4.00.", Source: "diagnosis",
+		Fix: &checkin.Fix{Kind: checkin.FixBudget, Label: "Raise the budget by $2 and retry", Value: "2"}}}
+	var buf bytes.Buffer
+	if err := tp.ExecuteTemplate(&buf, "run-action", v); err != nil {
+		t.Fatal(err)
+	}
+	out := buf.String()
+	order := []string{"ci-problem", "Something broke", "from <strong>impl</strong>", "$4.20 so far", "The run reached its budget", "Recommended",
+		`hx-post="/api/runs/r1/budget" hx-vals='{&#34;action&#34;:&#34;retry&#34;,&#34;usd&#34;:&#34;2&#34;}'`, "Retry as it is", "Raise the budget by a different amount", "Evidence", "run_budget"}
+	at := 0
+	for _, want := range order {
+		i := strings.Index(out[at:], want)
+		if i < 0 {
+			t.Fatalf("want %s after position %d in:\n%s", want, at, out)
+		}
+		at += i
 	}
 }
