@@ -279,8 +279,8 @@ func (d *Daemon) planFix(s *store.RunSnapshot, kind, step, value string) (*fixPl
 		}
 		tools := slices.Clone(f.Pipeline.AgentFor(cfg.Agent, st).AllowedTools)
 		added := false
-		for _, t := range strings.Fields(strings.ReplaceAll(value, "\n", " ")) {
-			if t != "" && !slices.Contains(tools, t) {
+		for _, t := range strings.Split(value, "\n") {
+			if t = strings.TrimSpace(t); t != "" && !slices.Contains(tools, t) {
 				tools, added = append(tools, t), true
 			}
 		}
@@ -292,7 +292,14 @@ func (d *Daemon) planFix(s *store.RunSnapshot, kind, step, value string) (*fixPl
 			// The step's own list replaces the pipeline's, so it goes there.
 			p.path = []string{"steps", step, "allowed_tools"}
 		}
-		p.snippet = yamlSnippet(p.path, "["+strings.Join(tools, ", ")+"]")
+		quoted := make([]string, len(tools))
+		for i, t := range tools {
+			quoted[i] = t
+			if strings.ContainsAny(t, " *:,[]{}#&!|>'\"%@`") {
+				quoted[i] = strconv.Quote(t)
+			}
+		}
+		p.snippet = yamlSnippet(p.path, "["+strings.Join(quoted, ", ")+"]")
 	case checkin.FixTimeout:
 		if _, err := pipeline.ParseDuration(value); err != nil {
 			return nil, err

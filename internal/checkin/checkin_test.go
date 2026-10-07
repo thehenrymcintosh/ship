@@ -61,7 +61,7 @@ func TestToolPatterns(t *testing.T) {
 		`{"tool_name":"mcp__db__query"}`,
 		`not json`,
 	))
-	want := []string{"Bash(go test:*)", "Bash(psql:*)", "Bash(git:*)", "WebFetch(domain:pkg.go.dev)", "Edit", "mcp__db__query"}
+	want := []string{"Bash(go test *)", "Bash(psql *)", "Bash(git *)", "WebFetch(domain:pkg.go.dev)", "Edit", "mcp__db__query"}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("%q", got)
 	}
@@ -137,7 +137,7 @@ func TestDiagnose(t *testing.T) {
 	v.PermissionDenials = 2
 	in = Input{Snap: &store.RunSnapshot{Status: store.StatusAsking}, Visit: &v,
 		Denials: raw(`{"tool_name":"Bash","tool_input":{"command":"go test ./..."}}`, `{"tool_name":"Bash","tool_input":{"command":"go test -run X ./..."}}`)}
-	if d := Diagnose(in); d == nil || d.Fix.Kind != FixAllowTool || d.Fix.Value != "Bash(go test:*)" || d.Fix.Label != "Allow Bash(go test:*) for this pipeline" ||
+	if d := Diagnose(in); d == nil || d.Fix.Kind != FixAllowTool || d.Fix.Value != "Bash(go test *)" || d.Fix.Label != "Allow Bash(go test *) for this pipeline" ||
 		d.Headline != "impl wasn't allowed to run 2 tool calls" {
 		t.Fatalf("denials: %+v", d)
 	}

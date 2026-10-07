@@ -99,17 +99,38 @@ served only on `127.0.0.1` and signs your browser in with a local token.
   - A timeline of every step visit. Each one has the live output (script
     output, or the agent's messages and tool calls), the exact input it got,
     the handover it wrote for the next step, and its raw result.
-  - When the run needs you: the question, any context it chose to show, a
-    note box and one button per choice, each saying where it leads. The
-    question and buttons stay in view while you read a long handover.
-    Review findings written as `R1 [warning, auto-fix] file:line: …` show as
-    cards coloured by severity, and the ones the reviewer left to you
-    (`ask-user`) are highlighted, each with its own box for your call; those
-    are added to your note. The note is for the next step by default (it
-    becomes the check-in's handover, which that step reads); switch it to
-    **for the whole run** and every later agent step of the run, and of any
-    slices it splits into, gets it too. Those notes are listed under "Notes
-    for this run" on the run's page.
+  - When the run needs you, one card that says first whether **something
+    broke** (amber) or a **decision** is wanted (blue), with the pipeline,
+    the step it came from, how long it has waited and what the run has cost.
+    Then a one-line headline of what's being decided, the situation in two
+    or three lines, a highlighted recommendation with its reason, and the
+    options as buttons, each saying where it leads and what that step has
+    cost per visit so far. The evidence (review findings, the full handover,
+    errors) is folded away below. The card also says what changed since you
+    last opened the run (new commits, visits, rounds of the step), which
+    your browser remembers.
+    - The headline and recommendation come from the agent: when its
+      outcome leads to a check-in, it's asked for a `decision` (headline,
+      situation, what each choice does, the one it recommends and why).
+      When it gives none, haiku writes one from its handover (marked as
+      generated; `checkins.summarize: false` in the config turns this off;
+      it costs a cent or so, counted in the run's cost).
+    - Known failures are diagnosed without an agent, each with a one-click
+      fix: a denied tool offers **Allow `Bash(go test *)` for this
+      pipeline** (it shows what it will write to the pipeline file, writes
+      it keeping your comments, moves the run onto the edited pipeline and
+      runs the step again); a timeout offers a higher one; a budget offers
+      raise-and-retry; a usage limit says when it resets; a missing worktree
+      offers re-acquire; a failing script lists the failing tests from its
+      output.
+    - Review findings written as `R1 [warning, auto-fix] file:line: …` show
+      as cards coloured by severity, and the ones the reviewer left to you
+      (`ask-user`) are highlighted, each with its own box for your call;
+      those are added to your note. The note is for the next step by default
+      (it becomes the check-in's handover, which that step reads); switch it
+      to **for the whole run** and every later agent step of the run, and of
+      any slices it splits into, gets it too. Those notes are listed under
+      "Notes for this run" on the run's page.
   - What the run has cost so far, in dollars and tokens, against its budget
     if it has one. When it stops at its budget, you can raise it and retry
     in place.
@@ -119,7 +140,9 @@ served only on `127.0.0.1` and signs your browser in with a local token.
     agent session, or cancel. You can also edit the run's variables, and
     copy the worktree path or open it in your editor or terminal.
 - **Inbox:** everything waiting for you across all runs, oldest first,
-  answerable in place.
+  as the same cards, so a routine check-in can be answered with **Do
+  recommended** without opening the run. Runs waiting for you are marked
+  Something broke or Decision in the runs list too.
 - **Usage meter:** the top bar shows how much of Claude's 5-hour and weekly
   usage limits your account has used (as of the last agent step), and the
   runs page breaks the current window down by run, with advice when several
@@ -130,6 +153,12 @@ served only on `127.0.0.1` and signs your browser in with a local token.
   success, time, cost, how hands-on runs were, each step's numbers with
   suggestions, its versions, and whether the newest version is better than
   the last. See [Stats](#stats-and-whether-a-new-version-is-better).
+- **Charts** show their details on hover, keyboard focus or tap: a
+  histogram bar's range, count and share of runs (per version when two are
+  overlaid), a box plot's n, min, quartiles, median and max, a graph step's
+  visits and outcomes, a route's count, a usage meter's use and reset time.
+  Table rows that sum up several values (time, cost and tokens per step or
+  per version) have a small histogram of them alongside.
 
 ### The CLI
 
@@ -142,9 +171,9 @@ takes a run, any unique part of its id works (`3fa`, `rate-limit`).
 | `ship start --brief b.md --after <run> [--stack]` | Queue a run behind another: it waits (no worktree, no agent) until that run is done, then starts from its base as it is then, or from that run's branch with `--stack`. If that run ends any other way, you're asked whether to start anyway |
 | `ship start-now <run>` / `ship start-now <run> --slice N` | Start a waiting run now, or a pending slice of a run that's running its slices (out of turn, past `max_parallel`) |
 | `ship ls` | Active runs (`--all` includes finished ones; `--pipelines` lists pipelines) |
-| `ship status <run>` | Where a run is: current step, visits (with time, cost and tokens), pending question, worktree |
+| `ship status <run>` | Where a run is: current step, visits (with time, cost and tokens), worktree, and the check-in card when it waits for you (recommendation first) |
 | `ship logs <run> -f` | Follow the current step's output |
-| `ship answer <run> [choice] --note "…" [--for run]` | Answer a question (prompts for the choice if you leave it out). The note goes to the next step; `--for run` sends it to every later agent step too |
+| `ship answer <run> [choice] --note "…" [--for run]` | Answer a question (without a choice it shows the card and prompts, Enter taking the recommended one). The note goes to the next step; `--for run` sends it to every later agent step too |
 | `ship pause <run>` / `ship resume <run>` | Hold a run after its current step, and carry on later (`--all` includes its slices) |
 | `ship retry <run>`, `ship goto <run> <step>`, `ship cancel <run>` | Step in manually |
 | `ship budget <run> --usd 5 --tokens 1m [--retry]` | Raise a run's budget, and retry a run that stopped at it |

@@ -16,7 +16,7 @@ steps:
     next: review
   review: {prompt: Review it., next: done}
 `
-	out, err := SetYAML([]byte(src), []string{"agent", "allowed_tools"}, []string{"Bash", "Bash(go test:*)"})
+	out, err := SetYAML([]byte(src), []string{"agent", "allowed_tools"}, []string{"Bash", "Bash(go test *)"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -25,7 +25,7 @@ steps:
 		t.Fatal(err)
 	}
 	got := string(out)
-	for _, want := range []string{"# The release pipeline.", "# Writes the code.", "prompt: Implement it. # keep this", "agent:\n  allowed_tools:\n    - Bash\n    - Bash(go test:*)", "timeout: 40m"} {
+	for _, want := range []string{"# The release pipeline.", "# Writes the code.", "prompt: Implement it. # keep this", "agent:\n  allowed_tools:\n    - Bash\n    - Bash(go test *)", "timeout: 40m"} {
 		if !strings.Contains(got, want) {
 			t.Errorf("missing %q in:\n%s", want, got)
 		}

@@ -321,7 +321,7 @@ func firstLine(s string) string {
 // --- permission denials ------------------------------------------------------
 
 // subcommands are CLIs whose first argument names what they do, so a denial
-// of "go test ./..." is allowed as Bash(go test:*) rather than all of go.
+// of "go test ./..." is allowed as Bash(go test *) rather than all of go.
 var subcommands = map[string]bool{
 	"go": true, "npm": true, "pnpm": true, "yarn": true, "npx": true, "bun": true, "cargo": true, "git": true,
 	"gh": true, "make": true, "docker": true, "kubectl": true, "pip": true, "uv": true, "poetry": true,
@@ -355,7 +355,7 @@ func toolPattern(tool string, in map[string]any) string {
 	case "Bash":
 		cmd, _ := in["command"].(string)
 		if prefix := commandPrefix(cmd); prefix != "" {
-			return "Bash(" + prefix + ":*)"
+			return "Bash(" + prefix + " *)"
 		}
 	case "WebFetch":
 		if s, _ := in["url"].(string); s != "" {
