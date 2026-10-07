@@ -13,6 +13,12 @@ type GraphNode struct {
 	Description string `json:"description,omitempty"`
 	Visits      int    `json:"visits"`
 	Current     bool   `json:"current"`
+	// Recorded is the step's visits over every recorded run (a pipeline's
+	// graph, where Visits stays 0).
+	Recorded int `json:"recorded,omitempty"`
+	// Outcomes counts the visits' outcomes (a run's, or every recorded
+	// run's on a pipeline's graph).
+	Outcomes map[string]int `json:"outcomes,omitempty"`
 	// Fallback marks a catch-all check-in: an ask step that error or
 	// exhausted routes lead to. Graphs hide it unless a run went there.
 	Fallback bool `json:"fallback,omitempty"`
@@ -40,6 +46,8 @@ type GraphEdge struct {
 	Label string `json:"label"`
 	Kind  string `json:"kind"` // outcome, error, exhausted, came_from
 	Taken bool   `json:"taken"`
+	// Count is how many times it was taken.
+	Count int `json:"count,omitempty"`
 	// Fallback marks an implicit route: error/exhausted routing, or any
 	// edge into or out of a fallback check-in.
 	Fallback bool `json:"fallback,omitempty"`

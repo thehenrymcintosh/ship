@@ -229,6 +229,16 @@ func TestRunAskLoopWithExhaustion(t *testing.T) {
 		if len(n.History) != 2 || n.History[0].Seq != s.Visits[4].Seq || n.History[0].Outcome != "retry" || n.History[1].Number != 2 || n.Detail == nil {
 			t.Fatalf("check-in history %+v", n.History)
 		}
+		// Outcome counts, for the graph's tooltips.
+		if n.Outcomes["retry"] != 2 {
+			t.Fatalf("check-in outcomes %+v", n.Outcomes)
+		}
+	}
+	// …and how often each route was taken: build → check three times.
+	for _, e := range g.Edges {
+		if e.Taken != (e.Count > 0) || (e.From == "build" && e.To == "check" && e.Count != 3) {
+			t.Fatalf("edge %+v", e)
+		}
 	}
 }
 

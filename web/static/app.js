@@ -173,6 +173,76 @@
   document.addEventListener("DOMContentLoaded", function () { rememberRun(); showChanged(); });
   document.addEventListener("htmx:afterSwap", function (e) { rememberRun(); showChanged(e.detail.target); });
 
+  // ---- tooltips --------------------------------------------------------------
+  // One tooltip for every chart: anything with data-tip (lines separated by
+  // newlines) shows it on hover, keyboard focus or tap. Charts also carry a
+  // <title> for when there's no JavaScript; it's set aside here so the
+  // browser's own tooltip doesn't show as well.
+  var tipEl = null, tipFor = null;
+  function quietTitle(t) {
+    var title = t.querySelector(":scope > title");
+    if (title) { t._title = title; title.remove(); }
+    if (t.hasAttribute("title")) { t.dataset.title = t.getAttribute("title"); t.removeAttribute("title"); }
+  }
+  function placeTip(x, y) {
+    var r = tipFor.getBoundingClientRect();
+    if (x == null) { x = r.left + r.width / 2; y = r.top; }
+    var tw = tipEl.offsetWidth, th = tipEl.offsetHeight;
+    var left = Math.min(Math.max(8, x - tw / 2), window.innerWidth - tw - 8);
+    var top = y - th - 12;
+    if (top < 8) top = Math.min(window.innerHeight - th - 8, (x == null ? r.bottom : y) + 16);
+    tipEl.style.left = left + "px";
+    tipEl.style.top = top + "px";
+  }
+  function showTip(t, x, y) {
+    if (!tipEl) {
+      tipEl = el("div", "tip", null, document.body);
+      tipEl.id = "chart-tip";
+      tipEl.setAttribute("role", "tooltip");
+    }
+    if (tipFor && tipFor !== t) tipFor.removeAttribute("aria-describedby");
+    quietTitle(t);
+    tipEl.textContent = "";
+    t.getAttribute("data-tip").split("\n").forEach(function (line, i) { el("div", i ? "tip-line" : "tip-head", line, tipEl); });
+    tipEl.hidden = false;
+    tipFor = t;
+    t.setAttribute("aria-describedby", "chart-tip");
+    placeTip(x, y);
+  }
+  function hideTip() {
+    if (tipEl) tipEl.hidden = true;
+    if (tipFor) tipFor.removeAttribute("aria-describedby");
+    tipFor = null;
+  }
+  function tipTarget(e) { return e.target.closest ? e.target.closest("[data-tip]") : null; }
+  document.addEventListener("pointerover", function (e) {
+    if (e.pointerType === "touch") return;
+    var t = tipTarget(e);
+    if (t) showTip(t, e.clientX, e.clientY);
+  });
+  document.addEventListener("pointermove", function (e) {
+    if (tipFor && e.pointerType !== "touch" && tipTarget(e) === tipFor) placeTip(e.clientX, e.clientY);
+  });
+  document.addEventListener("pointerout", function (e) {
+    if (!tipFor || e.pointerType === "touch") return;
+    var to = e.relatedTarget && e.relatedTarget.closest ? e.relatedTarget.closest("[data-tip]") : null;
+    if (to !== tipFor && document.activeElement !== tipFor) hideTip();
+  });
+  // A tap shows the details; a tap anywhere else hides them.
+  document.addEventListener("pointerdown", function (e) {
+    if (e.pointerType !== "touch") return;
+    var t = tipTarget(e);
+    if (t) showTip(t, e.clientX, e.clientY); else hideTip();
+  });
+  document.addEventListener("focusin", function (e) {
+    var t = tipTarget(e);
+    if (t && t === e.target) showTip(t); else if (tipFor) hideTip();
+  });
+  document.addEventListener("focusout", function (e) { if (e.target === tipFor) hideTip(); });
+  document.addEventListener("keydown", function (e) { if (e.key === "Escape" && tipFor) hideTip(); });
+  window.addEventListener("scroll", function () { if (tipFor) hideTip(); }, { passive: true });
+  document.addEventListener("htmx:beforeSwap", function (e) { if (tipFor && e.detail.target.contains(tipFor)) hideTip(); });
+
   // ---- copy ----------------------------------------------------------------
   document.addEventListener("click", function (e) {
     var b = e.target.closest("[data-copy]");
@@ -241,10 +311,14 @@
     var g = svg("g", { transform: "translate(" + pad + "," + pad + ")" }, root);
     (out.edges || []).forEach(function (e) {
       var d = e.data, cls = "edge k-" + d.kind + (d.taken ? " taken" : "");
-      var eg = svg("g", { class: cls }, g);
+      var tip = edgeTip(d);
+      var eg = svg("g", { class: cls, tabindex: 0, "data-tip": tip, "aria-label": tip.replace(/\n/g, ", ") }, g);
+      svg("title", {}, eg).textContent = tip;
       (e.sections || []).forEach(function (s) {
         var pts = [s.startPoint].concat(s.bendPoints || [], [s.endPoint]);
-        svg("path", { d: "M" + pts.map(function (p) { return p.x + "," + p.y; }).join(" L"), "marker-end": "url(#" + m.id + ")" }, eg);
+        var path = "M" + pts.map(function (p) { return p.x + "," + p.y; }).join(" L");
+        svg("path", { d: path, class: "edge-hit" }, eg);
+        svg("path", { d: path, "marker-end": "url(#" + m.id + ")" }, eg);
       });
       (e.labels || []).forEach(function (l) {
         var t = svg("text", { x: l.x + 2, y: l.y + 10 }, eg);
@@ -255,8 +329,9 @@
       var d = n.data;
       var cls = "node t-" + d.type + (d.current ? " current" : "") + (d.visits ? " visited" : "");
       var ng = svg("g", { class: cls, transform: "translate(" + n.x + "," + n.y + ")", tabindex: 0, "data-step": d.id, role: "button", "aria-label": d.id + " (" + d.type + ")" }, g);
-      var title = svg("title", {}, ng);
-      title.textContent = d.id + " (" + d.type + ")" + (d.description ? ": " + d.description : "") + (d.visits ? " · " + d.visits + " visits" : "");
+      var tip = nodeTip(d);
+      ng.setAttribute("data-tip", tip);
+      svg("title", {}, ng).textContent = tip;
       svg("rect", { width: n.width, height: n.height, rx: d.type === "ask" ? 16 : 7 }, ng);
       var gl = svg("text", { x: 10, y: 20, class: "glyph" }, ng);
       gl.textContent = GLYPH[d.type] || "";
@@ -280,6 +355,29 @@
     // A refresh (live runs) keeps the open step panel, with fresh data.
     if (box._step) openStep(box, box._step);
     applyFilter();
+  }
+
+  // What the graph's tooltips say about a step and a route.
+  function countLine(m) {
+    return Object.keys(m || {}).sort(function (a, b) { return m[b] - m[a]; }).map(function (k) { return k + " " + m[k]; }).join(" · ");
+  }
+  function nodeTip(d) {
+    var lines = [d.id + " (" + (TYPE_NAME[d.type] || d.type) + ")"];
+    if (d.description) lines.push(d.description.split("\n")[0]);
+    if (d.visits) lines.push(d.visits + (d.visits === 1 ? " visit" : " visits") + " in this run");
+    else if (d.recorded) lines.push(d.recorded + (d.recorded === 1 ? " visit" : " visits") + " over the recorded runs");
+    var oc = countLine(d.outcomes);
+    if (oc) lines.push("outcomes: " + oc);
+    if (d.current) lines.push("the run is here now");
+    return lines.join("\n");
+  }
+  var EDGE_KIND = { outcome: "on outcome", error: "on an error", exhausted: "when out of visits", came_from: "back where it came from" };
+  function edgeTip(d) {
+    var lines = [d.from + " → " + d.to];
+    lines.push((EDGE_KIND[d.kind] || d.kind) + (d.label && d.kind === "outcome" ? " " + d.label : ""));
+    if (d.count) lines.push("taken " + d.count + (d.count === 1 ? " time" : " times"));
+    else if (d.taken) lines.push("taken in this run");
+    return lines.join("\n");
   }
 
   function renderGraphs() {

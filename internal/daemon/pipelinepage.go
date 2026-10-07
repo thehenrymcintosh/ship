@@ -74,6 +74,8 @@ type VersionRow struct {
 	HandsOn    float64
 	Feedback   int
 	Current    bool
+	// The distributions behind the medians.
+	TimeHist, CostHist template.HTML
 }
 
 // StepRow is one step across runs.
@@ -90,7 +92,9 @@ type StepRow struct {
 	TokensPerRun int64
 	NeedsPerson  float64
 	Outcomes     []KV
-	Hist         template.HTML
+	Hist         template.HTML // time per visit
+	CostHist     template.HTML // cost per run
+	TokHist      template.HTML // tokens per run
 	Advice       []stats.Advice
 }
 
@@ -314,8 +318,8 @@ func overview(runs []history.RunStats, scope string) Overview {
 	if o.PRRuns > 0 {
 		o.PRRounds /= float64(o.PRRuns)
 	}
-	o.DurationHist = histSVG(ms, nil, fmtMS)
-	o.CostHist = histSVG(cost, nil, fmtUSD)
+	o.DurationHist = histSVG(ms, nil, fmtMS, "run")
+	o.CostHist = histSVG(cost, nil, fmtUSD, "run")
 	return o
 }
 
@@ -326,9 +330,11 @@ func versionRow(v history.Version, runs []history.RunStats, scope string) Versio
 	}
 	row.Success = float64(countDone(runs)) / float64(len(runs))
 	sc := scoped(runs, scope)
-	row.MedianMS = int64(stats.Describe(field(sc, runMS)).Median)
-	row.MedianCost = stats.Describe(field(sc, runCost)).Median
+	ms, cost := field(sc, runMS), field(sc, runCost)
+	row.MedianMS = int64(stats.Describe(ms).Median)
+	row.MedianCost = stats.Describe(cost).Median
 	row.HandsOn = mean(field(runs, runHands))
+	row.TimeHist, row.CostHist = sparkSVG(ms, fmtMS, "run"), sparkSVG(cost, fmtUSD, "run")
 	return row
 }
 
@@ -403,6 +409,7 @@ type stepAgg struct {
 	typ                       string
 	visits, passes, fails     int
 	durations                 []float64
+	costs, tokenList          []float64 // per run
 	cost                      float64
 	tokens                    int64
 	needs                     int
@@ -456,6 +463,10 @@ func aggregateSteps(p *pipeline.Pipeline, runs []history.RunStats, scope string)
 			}
 			a.cost += st.CostUSD
 			a.tokens += st.Tokens
+			if st.Visits > 0 {
+				a.costs = append(a.costs, st.CostUSD)
+				a.tokenList = append(a.tokenList, float64(st.Tokens))
+			}
 			if runDur > 0 {
 				a.durShareSum += float64(d) / float64(runDur)
 			}
@@ -493,7 +504,13 @@ func stepRows(p *pipeline.Pipeline, runs []history.RunStats, scope string) []Ste
 			row.Outcomes = append(row.Outcomes, KV{o, n})
 		}
 		sort.Slice(row.Outcomes, func(i, j int) bool { return row.Outcomes[i].V > row.Outcomes[j].V })
-		row.Hist = sparkSVG(a.durations)
+		row.Hist = sparkSVG(a.durations, fmtMS, "visit")
+		if row.CostPerRun > 0 {
+			row.CostHist = sparkSVG(a.costs, fmtUSD, "run")
+		}
+		if row.TokensPerRun > 0 {
+			row.TokHist = sparkSVG(a.tokenList, fmtTok, "run")
+		}
 		facts := stats.StepFacts{Step: name, Decides: row.Decides, Visits: a.visits, Passes: a.passes, Fails: a.fails, Runs: a.scopedRuns, NeedsPerson: row.NeedsPerson}
 		if s := p.Steps[name]; s != nil {
 			facts.Agent = s.IsAgentLike()
@@ -540,7 +557,7 @@ func compareVersions(p *pipeline.Pipeline, withRuns []VersionRow, byVersion map[
 			m.Change = fmt.Sprintf("×%.2f", c.Change)
 		}
 		if box {
-			m.Box = boxSVG(xa, xb, fmtv)
+			m.Box = boxSVG(xa, xb, fmtv, cv.A, cv.B)
 		}
 		return m
 	}
@@ -589,8 +606,8 @@ func compareVersions(p *pipeline.Pipeline, withRuns []VersionRow, byVersion map[
 	}
 
 	cv.Hists = []HistPair{
-		{"Run time", histSVG(field(sa, runMS), field(sb, runMS), fmtMS)},
-		{"Run cost", histSVG(field(sa, runCost), field(sb, runCost), fmtUSD)},
+		{"Run time", histSVG(field(sa, runMS), field(sb, runMS), fmtMS, "run", cv.A, cv.B)},
+		{"Run cost", histSVG(field(sa, runCost), field(sb, runCost), fmtUSD, "run", cv.A, cv.B)},
 	}
 
 	// Per step.
@@ -664,9 +681,49 @@ func fmtTok(f float64) string { return steps.FormatTokens(int64(f)) }
 
 // --- SVG -----------------------------------------------------------------------
 
+// Charts carry their details as data-tip (lines joined by newlines), which
+// app.js shows as a tooltip on hover, keyboard focus or tap; a <title>
+// says the same without JavaScript.
+
+// tipAttrs is a focusable element's tooltip attributes and its <title>.
+func tipAttrs(lines ...string) (attrs, title string) {
+	text := template.HTMLEscapeString(strings.Join(lines, "\n"))
+	attrs = fmt.Sprintf(` tabindex="0" data-tip="%s" aria-label="%s"`, strings.ReplaceAll(text, "\n", "&#10;"), strings.ReplaceAll(text, "\n", ", "))
+	return attrs, "<title>" + text + "</title>"
+}
+
+func plural(n int, noun string) string {
+	if n == 1 {
+		return "1 " + noun
+	}
+	return fmt.Sprintf("%d %ss", n, noun)
+}
+
+func share(n, total int) string {
+	if total == 0 {
+		return "0%"
+	}
+	return fmt.Sprintf("%.0f%%", float64(n)/float64(total)*100)
+}
+
+// binTip describes one bin: its range, then each series' count and share
+// of its total.
+func binTip(lo, hi string, noun string, names []string, counts, totals []int) []string {
+	lines := []string{lo + " to " + hi}
+	for i := range counts {
+		line := fmt.Sprintf("%s (%s of %ss)", plural(counts[i], noun), share(counts[i], totals[i]), noun)
+		if i < len(names) && names[i] != "" {
+			line = names[i] + ": " + line
+		}
+		lines = append(lines, line)
+	}
+	return lines
+}
+
 // histSVG draws one sample's histogram, or two overlaid (a is the older
-// version, b the newer), sharing bins.
-func histSVG(a, b []float64, label func(float64) string) template.HTML {
+// version, b the newer), sharing bins. noun is what the values are of
+// ("run"); names label the two versions.
+func histSVG(a, b []float64, label func(float64) string, noun string, names ...string) template.HTML {
 	if len(a)+len(b) == 0 {
 		return ""
 	}
@@ -679,7 +736,7 @@ func histSVG(a, b []float64, label func(float64) string) template.HTML {
 		maxC = max(maxC, ha[i].Count, hb[i].Count)
 	}
 	var sb strings.Builder
-	fmt.Fprintf(&sb, `<svg class="hist" viewBox="0 0 %d %d" role="img" aria-label="histogram from %s to %s">`, w, h+16, template.HTMLEscapeString(label(lo)), template.HTMLEscapeString(label(hi)))
+	fmt.Fprintf(&sb, `<svg class="hist" viewBox="0 0 %d %d" role="group" aria-label="histogram of %ss from %s to %s">`, w, h+16, noun, template.HTMLEscapeString(label(lo)), template.HTMLEscapeString(label(hi)))
 	bw := float64(w) / n
 	bar := func(bins []stats.Bin, class string, inset float64) {
 		for i, bn := range bins {
@@ -687,8 +744,7 @@ func histSVG(a, b []float64, label func(float64) string) template.HTML {
 				continue
 			}
 			bh := float64(bn.Count) / float64(maxC) * h
-			fmt.Fprintf(&sb, `<rect class="%s" x="%.1f" y="%.1f" width="%.1f" height="%.1f"><title>%s to %s: %d</title></rect>`,
-				class, float64(i)*bw+inset, h-bh, bw-1-2*inset, bh, template.HTMLEscapeString(label(bn.Lo)), template.HTMLEscapeString(label(bn.Hi)), bn.Count)
+			fmt.Fprintf(&sb, `<rect class="%s" x="%.1f" y="%.1f" width="%.1f" height="%.1f"/>`, class, float64(i)*bw+inset, h-bh, bw-1-2*inset, bh)
 		}
 	}
 	if b == nil {
@@ -696,6 +752,18 @@ func histSVG(a, b []float64, label func(float64) string) template.HTML {
 	} else {
 		bar(ha, "bar-a", 0)
 		bar(hb, "bar-b", bw/5)
+	}
+	// One hover target per bin, over both series.
+	for i := range ha {
+		counts, totals := []int{ha[i].Count}, []int{len(a)}
+		if b != nil {
+			counts, totals = append(counts, hb[i].Count), append(totals, len(b))
+		}
+		if counts[0] == 0 && (b == nil || counts[1] == 0) {
+			continue
+		}
+		attrs, title := tipAttrs(binTip(label(ha[i].Lo), label(ha[i].Hi), noun, names, counts, totals)...)
+		fmt.Fprintf(&sb, `<rect class="hit" x="%.1f" y="0" width="%.1f" height="%d"%s>%s</rect>`, float64(i)*bw, bw, h, attrs, title)
 	}
 	fmt.Fprintf(&sb, `<line class="axis" x1="0" y1="%d" x2="%d" y2="%d"/>`, h, w, h)
 	fmt.Fprintf(&sb, `<text class="tick" x="0" y="%d">%s</text><text class="tick" x="%d" y="%d" text-anchor="end">%s</text>`, h+13, template.HTMLEscapeString(label(lo)), w, h+13, template.HTMLEscapeString(label(hi)))
@@ -706,8 +774,9 @@ func histSVG(a, b []float64, label func(float64) string) template.HTML {
 	return template.HTML(sb.String())
 }
 
-// sparkSVG is a tiny histogram for a table cell.
-func sparkSVG(xs []float64) template.HTML {
+// sparkSVG is a tiny histogram for a table cell: each bar has its details,
+// and the whole chart (one tab stop) sums them up.
+func sparkSVG(xs []float64, label func(float64) string, noun string) template.HTML {
 	if len(xs) < 2 {
 		return ""
 	}
@@ -717,22 +786,27 @@ func sparkSVG(xs []float64) template.HTML {
 	for _, b := range bins {
 		maxC = max(maxC, b.Count)
 	}
-	var sb strings.Builder
-	fmt.Fprintf(&sb, `<svg class="spark" viewBox="0 0 60 16" role="img" aria-label="time per visit, %s to %s">`, fmtMS(lo), fmtMS(hi))
+	sum := []string{fmt.Sprintf("%s, %s to %s", plural(len(xs), noun), label(lo), label(hi))}
+	var bars strings.Builder
 	for i, b := range bins {
 		if b.Count == 0 {
 			continue
 		}
+		lines := binTip(label(b.Lo), label(b.Hi), noun, nil, []int{b.Count}, []int{len(xs)})
+		sum = append(sum, lines[0]+": "+lines[1])
+		text := template.HTMLEscapeString(strings.Join(lines, "\n"))
 		bh := math.Max(1, float64(b.Count)/float64(maxC)*16)
-		fmt.Fprintf(&sb, `<rect class="bar-b" x="%d" y="%.1f" width="5" height="%.1f"/>`, i*6, 16-bh, bh)
+		fmt.Fprintf(&bars, `<rect class="bar-b" x="%d" y="%.1f" width="5" height="%.1f"/>`, i*6, 16-bh, bh)
+		fmt.Fprintf(&bars, `<rect class="hit" x="%d" y="0" width="6" height="16" data-tip="%s"><title>%s</title></rect>`, i*6, strings.ReplaceAll(text, "\n", "&#10;"), text)
 	}
-	sb.WriteString(`</svg>`)
-	return template.HTML(sb.String())
+	attrs, _ := tipAttrs(sum...)
+	return template.HTML(`<svg class="spark" viewBox="0 0 60 16" role="img"` + attrs + `>` + bars.String() + `</svg>`)
 }
 
 // boxSVG draws two box plots (older above, newer below) on a shared scale:
-// whiskers p10 to p90, box p25 to p75, a tick at the median.
-func boxSVG(a, b []float64, label func(float64) string) template.HTML {
+// whiskers p10 to p90, box p25 to p75, a tick at the median. names label
+// the two versions.
+func boxSVG(a, b []float64, label func(float64) string, names ...string) template.HTML {
 	if len(a) == 0 && len(b) == 0 {
 		return ""
 	}
@@ -743,20 +817,36 @@ func boxSVG(a, b []float64, label func(float64) string) template.HTML {
 	const w, rowH = 240, 18
 	x := func(v float64) float64 { return 4 + (v-lo)/(hi-lo)*(w-8) }
 	var sb strings.Builder
-	fmt.Fprintf(&sb, `<svg class="box" viewBox="0 0 %d %d" role="img" aria-label="distributions from %s to %s">`, w, rowH*2+14, template.HTMLEscapeString(label(lo)), template.HTMLEscapeString(label(hi)))
-	row := func(xs []float64, y int, class string) {
+	fmt.Fprintf(&sb, `<svg class="box" viewBox="0 0 %d %d" role="group" aria-label="distributions from %s to %s">`, w, rowH*2+14, template.HTMLEscapeString(label(lo)), template.HTMLEscapeString(label(hi)))
+	row := func(xs []float64, y int, class, name string) {
 		if len(xs) == 0 {
 			return
 		}
 		s := stats.Describe(xs)
 		mid := float64(y) + rowH/2
-		fmt.Fprintf(&sb, `<g class="%s"><title>median %s, middle half %s to %s, n=%d</title>`, class, template.HTMLEscapeString(label(s.Median)), template.HTMLEscapeString(label(s.P25)), template.HTMLEscapeString(label(s.P75)), s.N)
+		head := fmt.Sprintf("n=%d", s.N)
+		if name != "" {
+			head = name + ", " + head
+		}
+		attrs, title := tipAttrs(head,
+			"min "+label(s.Min)+" · max "+label(s.Max),
+			"quartiles "+label(s.P25)+" to "+label(s.P75),
+			"median "+label(s.Median),
+			"whiskers p10 "+label(s.P10)+" to p90 "+label(s.P90))
+		fmt.Fprintf(&sb, `<g class="%s"%s>%s`, class, attrs, title)
+		fmt.Fprintf(&sb, `<rect class="hit" x="0" y="%d" width="%d" height="%d"/>`, y, w, rowH)
 		fmt.Fprintf(&sb, `<line x1="%.1f" y1="%.1f" x2="%.1f" y2="%.1f"/>`, x(s.P10), mid, x(s.P90), mid)
 		fmt.Fprintf(&sb, `<rect x="%.1f" y="%d" width="%.1f" height="%d"/>`, x(s.P25), y+3, math.Max(1, x(s.P75)-x(s.P25)), rowH-6)
 		fmt.Fprintf(&sb, `<line class="median" x1="%.1f" y1="%d" x2="%.1f" y2="%d"/></g>`, x(s.Median), y+2, x(s.Median), y+rowH-2)
 	}
-	row(a, 0, "box-a")
-	row(b, rowH, "box-b")
+	nameOf := func(i int) string {
+		if i < len(names) {
+			return names[i]
+		}
+		return ""
+	}
+	row(a, 0, "box-a", nameOf(0))
+	row(b, rowH, "box-b", nameOf(1))
 	fmt.Fprintf(&sb, `<text class="tick" x="0" y="%d">%s</text><text class="tick" x="%d" y="%d" text-anchor="end">%s</text></svg>`, rowH*2+12, template.HTMLEscapeString(label(lo)), w, rowH*2+12, template.HTMLEscapeString(label(hi)))
 	return template.HTML(sb.String())
 }

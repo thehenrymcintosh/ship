@@ -41,7 +41,7 @@
   <h3>By version</h3>
   <div class="table-scroll"><table class="step-stats">
     <thead><tr><th>Version</th><th class="num">Runs</th><th class="num">Success</th><th class="num">Median time</th><th class="num">Median cost</th><th class="num">Hands-on</th></tr></thead>
-    <tbody>{{range $v.Trend}}<tr><td>{{.Label}}</td><td class="num">{{.Runs}}</td><td class="num">{{pct .Success}}</td><td class="num">{{or (dur .MedianMS) "-"}}</td><td class="num">{{or (money .MedianCost) "-"}}</td><td class="num">{{num .HandsOn}}</td></tr>{{end}}</tbody>
+    <tbody>{{range $v.Trend}}<tr><td>{{.Label}}</td><td class="num">{{.Runs}}</td><td class="num">{{pct .Success}}</td><td class="num"><span class="with-spark">{{or (dur .MedianMS) "-"}}{{.TimeHist}}</span></td><td class="num"><span class="with-spark">{{or (money .MedianCost) "-"}}{{.CostHist}}</span></td><td class="num">{{num .HandsOn}}</td></tr>{{end}}</tbody>
   </table></div>
   {{end}}
   {{end}}
@@ -55,21 +55,20 @@
   {{if not $v.Steps}}<p class="muted">Nothing yet.</p>{{else}}
   <p class="muted small">A step passes when its outcome moves the run on, and fails when it sends work back, stops the run or errors. A step that always passes may not be needed; one that mostly fails is often let down by the step before it.</p>
   <div class="table-scroll"><table class="step-stats">
-    <thead><tr><th>Step</th><th class="num">Visits/run</th><th class="num">Passes</th><th class="num">Median time</th><th>Spread</th><th class="num">Cost/run</th><th class="num">Tokens/run</th><th class="num">Needs a person</th><th>Outcomes</th></tr></thead>
+    <thead><tr><th>Step</th><th class="num">Visits/run</th><th class="num">Passes</th><th class="num" title="Median time per visit, with how visit times spread">Median time</th><th class="num" title="Average cost per run, with how it spread over runs">Cost/run</th><th class="num" title="Average tokens per run, with how they spread over runs">Tokens/run</th><th class="num">Needs a person</th><th>Outcomes</th></tr></thead>
     <tbody>
     {{range $v.Steps}}
       <tr>
         <td><span class="glyph" aria-hidden="true">{{glyph .Type}}</span> {{.Step}}</td>
         <td class="num">{{num .Visits}}</td>
         <td class="num">{{if .Total}}{{pct .PassRate}} <span class="muted">({{.Passes}}/{{.Total}})</span>{{else}}-{{end}}</td>
-        <td class="num">{{or (dur .MedianMS) "-"}}</td>
-        <td>{{.Hist}}</td>
-        <td class="num">{{or (money .CostPerRun) "-"}}</td>
-        <td class="num">{{if .TokensPerRun}}{{tokens .TokensPerRun}}{{else}}-{{end}}</td>
+        <td class="num"><span class="with-spark">{{or (dur .MedianMS) "-"}}{{.Hist}}</span></td>
+        <td class="num"><span class="with-spark">{{or (money .CostPerRun) "-"}}{{.CostHist}}</span></td>
+        <td class="num"><span class="with-spark">{{if .TokensPerRun}}{{tokens .TokensPerRun}}{{else}}-{{end}}{{.TokHist}}</span></td>
         <td class="num">{{if .NeedsPerson}}{{pct .NeedsPerson}}{{else}}-{{end}}</td>
         <td class="small">{{range $i, $o := .Outcomes}}{{if $i}}, {{end}}{{$o.K}} {{$o.V}}{{end}}</td>
       </tr>
-      {{if .Advice}}<tr class="advice-row"><td colspan="9">{{range .Advice}}<span class="advice advice-{{.Kind}}">{{.Text}}</span>{{end}}</td></tr>{{end}}
+      {{if .Advice}}<tr class="advice-row"><td colspan="8">{{range .Advice}}<span class="advice advice-{{.Kind}}">{{.Text}}</span>{{end}}</td></tr>{{end}}
     {{end}}
     </tbody>
   </table></div>

@@ -15,6 +15,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -430,6 +431,7 @@ type RunView struct {
 	Children   []*store.RunSnapshot
 	Visits     []store.VisitSummary // newest first
 	StepStats  []store.StepStat     // finished visits summed by step
+	StepSparks map[string]StepSpark // how each step's visits spread
 	Steps      []string
 	Panels     []Panel
 	Slices     []SliceView
@@ -456,6 +458,37 @@ type RunView struct {
 	Window      *RunWindow
 	Card        *CardView // when the run waits for a person
 	Seen        SeenView  // what the run looks like now, remembered by the browser
+}
+
+// StepSpark is how a step's visits in a run spread, for its row.
+type StepSpark struct {
+	Time, Cost, Tokens template.HTML
+}
+
+// stepSparks draws each step's visits as sparklines (steps with two or more
+// finished visits).
+func stepSparks(visits []store.VisitSummary) map[string]StepSpark {
+	ms, usd, tok := map[string][]float64{}, map[string][]float64{}, map[string][]float64{}
+	for _, v := range visits {
+		if v.Finished == nil {
+			continue
+		}
+		ms[v.Step] = append(ms[v.Step], float64(v.DurationMS))
+		usd[v.Step] = append(usd[v.Step], v.CostUSD)
+		tok[v.Step] = append(tok[v.Step], float64(v.Tokens))
+	}
+	out := map[string]StepSpark{}
+	for step, xs := range ms {
+		sp := StepSpark{Time: sparkSVG(xs, fmtMS, "visit")}
+		if slices.ContainsFunc(usd[step], func(x float64) bool { return x > 0 }) {
+			sp.Cost = sparkSVG(usd[step], fmtUSD, "visit")
+		}
+		if slices.ContainsFunc(tok[step], func(x float64) bool { return x > 0 }) {
+			sp.Tokens = sparkSVG(tok[step], fmtTok, "visit")
+		}
+		out[step] = sp
+	}
+	return out
 }
 
 // BudgetView is the run's budget, raised amounts included (0 = no limit).
@@ -523,6 +556,7 @@ func (d *Daemon) runView(id string) (*RunView, error) {
 		v.Visits = append(v.Visits, s.Visits[i])
 	}
 	v.StepStats = store.StepStats(s.Visits)
+	v.StepSparks = stepSparks(s.Visits)
 	if v.P != nil {
 		v.Steps = v.P.SortedSteps()
 		for _, n := range v.Steps {

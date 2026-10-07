@@ -501,3 +501,24 @@ svg .median { stroke-width: 2.5; }
   .page-pipeline .step-stats td, .page-pipeline .step-stats th { padding: 0.3rem 0.35rem; }
 }
 .slice-rows .slice-start { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; margin: 0.2rem 0 0.1rem; }
+
+/* chart tooltips (app.js): one for every chart */
+.tip { position: fixed; z-index: 60; max-width: 18rem; padding: 0.4rem 0.6rem; border-radius: 8px; pointer-events: none;
+  background: var(--surface); color: var(--text); border: 1px solid var(--border); box-shadow: 0 6px 20px rgb(0 0 0 / 0.18);
+  font-size: 0.8rem; line-height: 1.35; font-variant-numeric: tabular-nums; }
+.tip[hidden] { display: none; }
+.tip-head { font-weight: 650; }
+.tip-line { color: var(--muted); }
+svg .hit { fill: transparent; cursor: default; }
+svg .hit:hover, svg .hit:focus { fill: color-mix(in srgb, var(--text) 9%, transparent); outline: none; }
+svg .hit:focus-visible { stroke: var(--accent); stroke-width: 1.5; }
+svg.spark:focus-visible, svg [data-tip]:focus-visible { outline: 2px solid var(--focus); }
+svg g.box-a:focus, svg g.box-b:focus { outline: none; }
+svg g.box-a:focus-visible .hit, svg g.box-b:focus-visible .hit { stroke: var(--accent); stroke-width: 1.5; }
+.edge .edge-hit { stroke: transparent; stroke-width: 10; stroke-dasharray: none; fill: none; }
+.edge:hover path:not(.edge-hit), .edge:focus-visible path:not(.edge-hit) { stroke-opacity: 1; stroke-width: 2.2; }
+.edge:focus { outline: none; }
+.with-spark { display: inline-flex; align-items: center; gap: 0.45rem; justify-content: flex-end; }
+.with-spark svg.spark { flex: none; }
+.um[data-tip], .uw-bar[data-tip] { cursor: default; }
+.um:focus-visible, .uw-bar:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }

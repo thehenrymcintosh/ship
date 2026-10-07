@@ -830,7 +830,30 @@ func (d *Daemon) pipelineGraph(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 404, "not_found", msg)
 		return
 	}
-	writeJSON(w, 200, f.Pipeline.Graph())
+	g := f.Pipeline.Graph()
+	// What the recorded runs did at each step, for the graph's tooltips.
+	runs, _ := d.eng.HistoryStore(engine.HistoryDir(d.eng.Loader(repo), repo, d.eng.Home(), r.PathValue("name"))).Runs()
+	visits, outcomes := map[string]int{}, map[string]map[string]int{}
+	for _, rs := range runs {
+		for _, st := range rs.Steps {
+			visits[st.Step] += st.Visits
+			if outcomes[st.Step] == nil {
+				outcomes[st.Step] = map[string]int{}
+			}
+			for o, n := range st.Outcomes {
+				outcomes[st.Step][o] += n
+			}
+		}
+	}
+	for i := range g.Nodes {
+		g.Nodes[i].Recorded, g.Nodes[i].Outcomes = visits[g.Nodes[i].ID], outcomes[g.Nodes[i].ID]
+	}
+	for i := range g.Edges {
+		if e := &g.Edges[i]; e.Kind == "outcome" {
+			e.Count = outcomes[e.From][e.Label]
+		}
+	}
+	writeJSON(w, 200, g)
 }
 
 func (d *Daemon) events(w http.ResponseWriter, r *http.Request) {

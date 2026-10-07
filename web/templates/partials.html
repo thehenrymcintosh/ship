@@ -209,7 +209,7 @@
 {{/* usage-meter: the account's usage limits, compact, for the top bar. Data: UsageView */}}
 {{define "usage-meter"}}{{if .Known}}
 <a class="usage-meter{{if .Rejected}} rejected{{end}}" href="/#usage" title="Claude usage limits, as of {{ago .UpdatedAt}}. Counts all use of your account, not only ship.">
-  {{range .Windows}}<span class="um um-{{.Level}}" title="{{.Label}}: {{.Pct}}% used{{with resets .ResetsAt}} · {{.}}{{end}}"><span class="um-label">{{.Label}}</span><span class="um-bar"><span style="width: {{.Pct}}%"></span></span><span class="um-pct">{{.Pct}}%</span></span>{{end}}
+  {{range .Windows}}<span class="um um-{{.Level}}" tabindex="0" data-tip="{{.Label}}&#10;{{.Pct}}% used{{with resets .ResetsAt}}&#10;{{.}}{{end}}" title="{{.Label}}: {{.Pct}}% used{{with resets .ResetsAt}} · {{.}}{{end}}"><span class="um-label">{{.Label}}</span><span class="um-bar"><span style="width: {{.Pct}}%"></span></span><span class="um-pct">{{.Pct}}%</span></span>{{end}}
 </a>
 {{end}}{{end}}
 
@@ -221,7 +221,7 @@
     {{range .Windows}}
     <div class="uw uw-{{.Level}}">
       <div class="uw-top"><strong>{{.Label}}</strong><span>{{.Pct}}%</span></div>
-      <div class="uw-bar"><span style="width: {{.Pct}}%"></span></div>
+      <div class="uw-bar" tabindex="0" role="img" aria-label="{{.Label}}: {{.Pct}}% used" data-tip="{{.Label}}&#10;{{.Pct}}% used{{with resets .ResetsAt}}&#10;{{.}}{{else}}&#10;reset time unknown until an agent runs{{end}}"><span style="width: {{.Pct}}%"></span></div>
       <div class="muted small">{{with resets .ResetsAt}}{{.}}{{else}}reset time unknown until an agent runs{{end}}</div>
     </div>
     {{end}}

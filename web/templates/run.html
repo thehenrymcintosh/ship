@@ -113,19 +113,19 @@
 
 {{define "run-steps"}}{{if .StepStats}}
 <section class="card steps-card">
-  <header class="card-head"><h2>Steps</h2><span class="muted small">totals over each step's finished visits</span></header>
+  <header class="card-head"><h2>Steps</h2><span class="muted small">totals over each step's finished visits, with how the visits spread</span></header>
   <p class="muted small">A step that takes far longer or uses far more tokens than the rest may be doing too much and be worth splitting; a very small one may be worth merging into its neighbour.</p>
   <div class="table-scroll">
   <table class="step-stats">
     <thead><tr><th>Step</th><th class="num">Visits</th><th class="num">Time</th><th class="num">Cost</th><th class="num" title="Counted toward budgets: input, cache writes and output">Tokens</th><th class="num">In</th><th class="num">Out</th><th class="num" title="Cache writes">Cache write</th><th class="num" title="Cache reads: re-reading the conversation, not counted toward budgets">Cache read</th></tr></thead>
     <tbody>
-    {{range .StepStats}}
+    {{range .StepStats}}{{$sp := index $.StepSparks .Step}}
       <tr>
         <td><span class="glyph" aria-hidden="true">{{glyph .Type}}</span> {{.Step}}</td>
         <td class="num">{{.Visits}}</td>
-        <td class="num">{{dur .DurationMS}}</td>
-        <td class="num">{{money .CostUSD}}</td>
-        <td class="num">{{if .Tokens}}{{tokens .Tokens}}{{end}}</td>
+        <td class="num"><span class="with-spark">{{dur .DurationMS}}{{$sp.Time}}</span></td>
+        <td class="num"><span class="with-spark">{{money .CostUSD}}{{$sp.Cost}}</span></td>
+        <td class="num"><span class="with-spark">{{if .Tokens}}{{tokens .Tokens}}{{end}}{{$sp.Tokens}}</span></td>
         <td class="num">{{if .Usage.Input}}{{tokens .Usage.Input}}{{end}}</td>
         <td class="num">{{if .Usage.Output}}{{tokens .Usage.Output}}{{end}}</td>
         <td class="num">{{if .Usage.CacheWrite}}{{tokens .Usage.CacheWrite}}{{end}}</td>
@@ -253,7 +253,7 @@
   <p class="small">{{if .USD}}This run spent <strong>{{money .USD}}</strong> in the current 5-hour window.{{else}}This run hasn't spent anything in the current 5-hour window.{{end}}</p>
   <div class="uw uw-{{.Level}}">
     <div class="uw-top"><span class="small">5-hour limit, whole account</span><span>{{.Pct}}%</span></div>
-    <div class="uw-bar"><span style="width: {{.Pct}}%"></span></div>
+    <div class="uw-bar" tabindex="0" role="img" aria-label="5-hour limit: {{.Pct}}% used" data-tip="5-hour limit, whole account&#10;{{.Pct}}% used{{if .USD}}&#10;this run: {{money .USD}}{{end}}{{with resets .Resets}}&#10;{{.}}{{end}}"><span style="width: {{.Pct}}%"></span></div>
     {{with resets .Resets}}<div class="muted small">{{.}}</div>{{end}}
   </div>
   {{if not (terminal $s.Status)}}{{if not (or (eq $s.Status "paused") $s.PauseRequested)}}

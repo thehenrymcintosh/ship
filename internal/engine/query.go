@@ -51,6 +51,14 @@ func (e *Engine) Graph(id string) (pipeline.Graph, error) {
 		n := &g.Nodes[i]
 		n.History = history[n.ID]
 		n.Visits = snap.VisitTotals[n.ID]
+		for _, h := range n.History {
+			if h.Outcome != "" {
+				if n.Outcomes == nil {
+					n.Outcomes = map[string]int{}
+				}
+				n.Outcomes[h.Outcome]++
+			}
+		}
 		n.Current = !snap.Status.Terminal() && snap.CurrentStep == n.ID
 		if snap.Status == store.StatusDone && n.ID == pipeline.TargetDone || snap.Status == store.StatusStopped && n.ID == pipeline.TargetStop {
 			n.Current = true
@@ -83,12 +91,14 @@ func markTaken(g *pipeline.Graph, evs []store.Event) {
 		for i := range g.Edges {
 			if ed := &g.Edges[i]; ed.From == t.From && ed.To == t.To && ed.Label == label {
 				ed.Taken, matched = true, true
+				ed.Count++
 			}
 		}
 		if !matched {
 			for i := range g.Edges {
 				if ed := &g.Edges[i]; ed.From == t.From && ed.To == t.To {
 					ed.Taken = true
+					ed.Count++
 				}
 			}
 		}
