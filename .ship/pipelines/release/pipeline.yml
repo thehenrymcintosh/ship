@@ -6,6 +6,12 @@ start: implement
 variables:
   bump: { set_by: checks, format: '^(patch|minor|major)$', description: "the release level review chose" }
 
+# Lean agents: no MCP servers, only the tools these steps use, and the
+# per-machine system prompt sections moved out so the cache is shared
+# across worktrees.
+agent:
+  extra_args: [--strict-mcp-config, --exclude-dynamic-system-prompt-sections, --tools, "Bash,Read,Edit,Write,Glob,Grep"]
+
 defaults:
   max_visits: 3            # rounds before it checks in with you
   when_exhausted: check-in
@@ -14,25 +20,37 @@ defaults:
 steps:
   implement:
     description: Implement the plan in the brief
-    session: implement     # one conversation across all its visits
+    model: opus
+    effort: medium
+    timeout: 60m
+    # A fresh conversation each visit: a later visit works from the
+    # handover rather than resuming a long, possibly cold-cached session.
     prompt: |
       Implement the plan in the brief. Follow the repo's conventions, add or
       update focused tests, and keep the change as small as the brief allows.
-      On a later visit, address the review's findings in its handover, or
-      fix what the checks step (lint and tests) reported failing.
-      Before finishing, run `make lint` and `go test -count=1 ./...` and fix
-      what fails. Commit with clear messages and leave the tree clean.
+      On a later visit, start from the previous visit's handover: address the
+      review's findings, or fix what the checks step reported failing. Don't
+      redo work the handover says is done.
+      Keep context small: run the tests of the packages you changed
+      (`go test -count=1 ./internal/foo/...`), pipe long output through
+      `| tail -40`, and read files by line range rather than whole. The checks
+      step runs gofmt, lint and the full suite after review, so don't run the
+      full suite more than once, at the end. Commit with clear messages and
+      leave the tree clean. Your handover should say what's done, what's
+      left, and anything the next visit needs.
       Choose stuck if the brief can't be implemented as written (say why).
     next: { done: review, stuck: check-in }
 
   review:
     description: Review the change, fix small things, and choose the release
-    session: review        # one conversation across all its visits
+    model: sonnet
     prompt: |
       Review the whole change against the brief and its acceptance criteria:
-      `git log --oneline {{run.base}}..HEAD` and `git diff {{run.base}}...HEAD`.
-      Fix small things yourself (typos, docs, a missing test, a small bug),
-      commit them, and re-run `make lint` and `go test -count=1 ./...`.
+      `git log --oneline {{run.base}}..HEAD`, `git diff --stat {{run.base}}...HEAD`,
+      then the diff file by file. Fix small things yourself (typos, docs, a
+      missing test, a small bug), commit them, and run the tests of the
+      packages you touched (pipe output through `| tail -40`). Don't run the
+      full suite: the checks step after you runs gofmt, lint and all tests.
       Send anything bigger back with changes, listing each finding with
       file:line, what's wrong and the fix you expect.
       When it's ready to ship, choose the release:
