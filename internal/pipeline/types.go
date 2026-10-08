@@ -70,6 +70,13 @@ type AgentConfig struct {
 	AllowedTools    []string `yaml:"allowed_tools,omitempty"`
 	DisallowedTools []string `yaml:"disallowed_tools,omitempty"`
 	ExtraArgs       []string `yaml:"extra_args,omitempty"`
+	// Lean (the default) starts agents with only the core tools (plus
+	// Skill when the step uses skills, plus Tools) and no MCP servers
+	// (except MCPConfig), which cuts the context every turn re-reads.
+	// lean: false gives them everything the user's Claude Code has.
+	Lean      *bool    `yaml:"lean,omitempty" jsonschema:"description=Agent steps: false loads every tool and MCP server the user's Claude Code has; by default agents get only the core tools (plus Skill, plus tools) and no MCP servers (plus mcp_config)."`
+	Tools     []string `yaml:"tools,omitempty" jsonschema:"description=Agent steps: tools to add to the lean core set (Bash, Read, Edit, Write, Glob, Grep), e.g. WebFetch."`
+	MCPConfig []string `yaml:"mcp_config,omitempty" jsonschema:"description=Agent steps: MCP server configs (JSON files or strings) to load in lean mode."`
 }
 
 // Variable is a pipeline variable. Exactly one source must be set.

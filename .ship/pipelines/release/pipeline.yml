@@ -6,12 +6,6 @@ start: implement
 variables:
   bump: { set_by: checks, format: '^(patch|minor|major)$', description: "the release level review chose" }
 
-# Lean agents: no MCP servers, only the tools these steps use, and the
-# per-machine system prompt sections moved out so the cache is shared
-# across worktrees.
-agent:
-  extra_args: [--strict-mcp-config, --exclude-dynamic-system-prompt-sections, --tools, "Bash,Read,Edit,Write,Glob,Grep"]
-
 defaults:
   max_visits: 3            # rounds before it checks in with you
   when_exhausted: check-in

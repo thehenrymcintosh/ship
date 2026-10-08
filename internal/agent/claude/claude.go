@@ -110,12 +110,77 @@ func Args(req agent.Request) ([]string, bool) {
 	for _, d := range req.PluginDirs {
 		args = append(args, "--plugin-dir", d)
 	}
+	if req.Lean {
+		args = append(args, leanArgs(req)...)
+	}
 	if req.BudgetUSD > 0 {
 		// Claude checks the limit against the session's running total.
 		args = append(args, "--max-budget-usd", strconv.FormatFloat(req.BudgetUSD+sessionCost(req), 'f', 4, 64))
 	}
 	args = append(args, req.ExtraArgs...)
 	return args, stdin
+}
+
+// CoreTools are the built-in tools a lean agent gets.
+var CoreTools = []string{"Bash", "Read", "Edit", "Write", "Glob", "Grep"}
+
+// leanArgs trim what the agent loads: only the core tools (plus Skill when
+// it uses skills, plus req.Tools), no MCP servers but req.MCPConfig, and
+// the per-machine system prompt sections moved out so worktrees share the
+// prompt cache. Every token here is re-read on every turn.
+func leanArgs(req agent.Request) []string {
+	tools := append([]string{}, CoreTools...)
+	if strings.HasPrefix(strings.TrimSpace(req.Prompt), "/") || len(req.PluginDirs) > 0 {
+		tools = append(tools, "Skill")
+	}
+	for _, t := range req.Tools {
+		if !contains(tools, t) {
+			tools = append(tools, t)
+		}
+	}
+	args := []string{"--tools", strings.Join(tools, ","), "--strict-mcp-config", "--exclude-dynamic-system-prompt-sections"}
+	if len(req.MCPConfig) > 0 {
+		args = append(args, append([]string{"--mcp-config"}, req.MCPConfig...)...)
+	}
+	return args
+}
+
+// leanFlags are the lean args' flags with the number of values each takes;
+// supported drops any the installed CLI doesn't know.
+var leanFlags = map[string]int{"--tools": 1, "--strict-mcp-config": 0, "--exclude-dynamic-system-prompt-sections": 0}
+
+var (
+	helpMu   sync.Mutex
+	helpText = map[string]string{}
+)
+
+// supported removes lean flags this claude binary doesn't have (an older
+// CLI), warning about each, rather than failing every step.
+func (a *Adapter) supported(ctx context.Context, args []string, warn io.Writer) []string {
+	helpMu.Lock()
+	help, ok := helpText[a.bin()]
+	if !ok {
+		out, _ := exec.CommandContext(ctx, a.bin(), "--help").CombinedOutput()
+		help = string(out)
+		helpText[a.bin()] = help
+	}
+	helpMu.Unlock()
+	if help == "" {
+		return args
+	}
+	out := make([]string, 0, len(args))
+	for i := 0; i < len(args); i++ {
+		n, lean := leanFlags[args[i]]
+		if lean && !strings.Contains(help, args[i]) {
+			if warn != nil {
+				fmt.Fprintf(warn, "ship: this claude CLI has no %s; running without it (update Claude Code for leaner agents)\n", args[i])
+			}
+			i += n
+			continue
+		}
+		out = append(out, args[i])
+	}
+	return out
 }
 
 // Run runs one invocation and parses its stream.
@@ -126,6 +191,9 @@ func (a *Adapter) Run(ctx context.Context, req agent.Request, sink agent.Sink) (
 		defer cancel()
 	}
 	args, useStdin := Args(req)
+	if req.Lean {
+		args = a.supported(ctx, args, req.StderrW)
+	}
 	p := NewParser(sink)
 	// Stop the agent once it has used its token budget (claude enforces the
 	// dollar one itself).

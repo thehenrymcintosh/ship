@@ -23,10 +23,13 @@ You MUST follow the rules in {{.Rules}}.
 {{.Extra}}
 {{end}}
 You are unattended: nobody will answer questions. Do not ask for confirmation.
+Keep your context small, since every turn re-reads it: run the tests that cover what you changed rather than
+whole suites (a later step may run those), pipe long command output through `tail` or `grep`, and read
+large files by line range.
 When finished, report your result using the structured output tool:
 - outcome: exactly one of:
 {{range .Outcomes}}  - "{{.Name}}" → next: {{.Target}}
-{{end}}- summary: a concise handover for whoever runs next (what you did, what's left, anything surprising).
+{{end}}- summary: a concise handover for whoever runs next (what you did, what's left, anything surprising), in a few short paragraphs or bullets, not a transcript.
 {{if .Save}}- vars: {{join .Save ", "}}
 {{end}}{{if .Slices}}- slices: the slices, in the order they should land (required when the outcome is "ok").
 {{end}}{{range .Outcomes}}{{if .Choices}}- decision: include it when the outcome is "{{.Name}}", which asks a person to choose: {{join .Choices ", "}}. Give them what they need to decide fast:

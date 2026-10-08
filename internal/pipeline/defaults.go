@@ -141,6 +141,15 @@ func mergeAgent(a, b AgentConfig) AgentConfig {
 	if b.ExtraArgs != nil {
 		a.ExtraArgs = b.ExtraArgs
 	}
+	if b.Lean != nil {
+		a.Lean = b.Lean
+	}
+	if b.Tools != nil {
+		a.Tools = b.Tools
+	}
+	if b.MCPConfig != nil {
+		a.MCPConfig = b.MCPConfig
+	}
 	return a
 }
 

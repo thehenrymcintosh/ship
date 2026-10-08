@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -171,5 +172,46 @@ func TestParserLimitsAndTokens(t *testing.T) {
 	r := p.Response()
 	if !r.Limited || r.RetryAt.Unix() != 1791215400 || r.Tokens != 34+54791+13426 || r.TokenUsage.CacheRead != 773291 || r.TokenUsage.Output != 13426 {
 		t.Fatalf("%+v", r)
+	}
+}
+
+func TestLeanArgs(t *testing.T) {
+	args, _ := Args(agent.Request{Prompt: "fix it", Lean: true, Tools: []string{"WebFetch", "Bash"}, MCPConfig: []string{"/m.json"}})
+	got := strings.Join(args, " ")
+	for _, want := range []string{"--tools Bash,Read,Edit,Write,Glob,Grep,WebFetch", "--strict-mcp-config", "--exclude-dynamic-system-prompt-sections", "--mcp-config /m.json"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("missing %q in %s", want, got)
+		}
+	}
+	// Skills need the Skill tool.
+	args, _ = Args(agent.Request{Prompt: "/review", Lean: true})
+	if got := strings.Join(args, " "); !strings.Contains(got, "Grep,Skill") {
+		t.Errorf("a skill step should get Skill: %s", got)
+	}
+	args, _ = Args(agent.Request{Prompt: "x", PluginDirs: []string{"/p"}, Lean: true})
+	if got := strings.Join(args, " "); !strings.Contains(got, "Grep,Skill") {
+		t.Errorf("plugin skills need Skill: %s", got)
+	}
+	args, _ = Args(agent.Request{Prompt: "x"})
+	if got := strings.Join(args, " "); strings.Contains(got, "--tools") || strings.Contains(got, "--strict-mcp-config") {
+		t.Errorf("lean: false should load everything: %s", got)
+	}
+}
+
+// An older CLI without a lean flag runs without it, with a warning.
+func TestSupportedDropsUnknownFlags(t *testing.T) {
+	dir := t.TempDir()
+	bin := filepath.Join(dir, "claude")
+	if err := os.WriteFile(bin, []byte("#!/bin/sh\necho '  --strict-mcp-config  only these'\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	a := &Adapter{Binary: bin}
+	var warn strings.Builder
+	got := strings.Join(a.supported(context.Background(), []string{"-p", "x", "--tools", "Bash,Read", "--strict-mcp-config", "--exclude-dynamic-system-prompt-sections", "--model", "opus"}, &warn), " ")
+	if got != "-p x --strict-mcp-config --model opus" {
+		t.Errorf("got %q", got)
+	}
+	if !strings.Contains(warn.String(), "--tools") || !strings.Contains(warn.String(), "--exclude-dynamic-system-prompt-sections") {
+		t.Errorf("warn: %q", warn.String())
 	}
 }

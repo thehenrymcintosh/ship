@@ -280,6 +280,16 @@ func SharedPrompt(step string, visit int, since, task string) string {
 	return b.String()
 }
 
+// FreshPrompt tells an agent its step's earlier conversation wasn't
+// resumed, and why.
+func FreshPrompt(step, why, handover string) string {
+	s := fmt.Sprintf("This is a fresh conversation: %s's earlier one wasn't resumed because %s.", step, why)
+	if handover != "" {
+		s += fmt.Sprintf(" Read its last handover first: %s.", handover)
+	}
+	return s + " Work from that, the previous step's handover and the worktree (`git log`, `git status`); don't redo what's already done."
+}
+
 // ResumePrompt is the prompt for resume-session after an interruption.
 const ResumePrompt = "You were interrupted. Check the current state of the worktree, continue, then report your result."
 

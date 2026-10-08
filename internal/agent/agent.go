@@ -48,13 +48,18 @@ type Request struct {
 	OutputSchema json.RawMessage // structured-output schema
 	SessionID    string          // new session id to assign (fresh)
 	ResumeID     string          // session to resume
-	BudgetUSD    float64         // spending limit for this invocation, 0 = none
-	MaxTokens    int64           // token limit for this invocation (see Tokens), 0 = none
-	Timeout      time.Duration
-	Env          []string
-	ExtraArgs    []string
-	TranscriptW  io.Writer // raw stream output
-	StderrW      io.Writer
+	// Lean limits the agent to CoreTools (plus Skill when it uses skills,
+	// plus Tools) and the MCP servers in MCPConfig.
+	Lean        bool
+	Tools       []string
+	MCPConfig   []string
+	BudgetUSD   float64 // spending limit for this invocation, 0 = none
+	MaxTokens   int64   // token limit for this invocation (see Tokens), 0 = none
+	Timeout     time.Duration
+	Env         []string
+	ExtraArgs   []string
+	TranscriptW io.Writer // raw stream output
+	StderrW     io.Writer
 	// SessionCostUSD is what the resumed session has already cost. Claude
 	// reports (and budgets) a resumed session's running total; adapters
 	// subtract this so Response.CostUSD is this invocation's alone.

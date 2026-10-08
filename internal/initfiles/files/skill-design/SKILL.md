@@ -253,6 +253,13 @@ such as `SHIP_RUN_ID`, `SHIP_RUN_DIR`, `SHIP_BRANCH`, `SHIP_VAR_<NAME>` and
 - Agent steps run unattended, with Bash allowed by default. If a step needs a
   tool the project doesn't allow, add it to `allowed_tools` (a list replaces
   the default, so keep "Bash" in it); denied tools show up as warnings in the UI.
+- Agents run lean: core tools only (plus Skill for skill steps) and no MCP
+  servers. A step that needs more lists it (`tools: [WebFetch]`,
+  `mcp_config: [.ship/mcp.json]`), or sets `lean: false` for everything.
+- Keep usage down: use sonnet (`model: sonnet`) for review and judging steps,
+  let a `run:` step run the full test suite rather than every agent, and
+  prefer fresh sessions; a `session:` continued across a long human
+  check-in is restarted from its handover anyway.
 
 ## Fake-agent script for dry runs
 

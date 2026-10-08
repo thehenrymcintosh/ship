@@ -2,7 +2,10 @@ package engine
 
 import (
 	"encoding/json"
+	"path/filepath"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/thehenrymcintosh/ship/internal/pipeline"
 	"github.com/thehenrymcintosh/ship/internal/store"
@@ -31,5 +34,31 @@ func TestMarkTakenMatchesOutcome(t *testing.T) {
 		if e.Taken != want[i] {
 			t.Errorf("%s -%s-> %s: taken %v, want %v", e.From, e.Label, e.To, e.Taken, want[i])
 		}
+	}
+}
+
+// A conversation idle past the cache's lifetime, or grown large, isn't
+// resumed: re-sending all of it costs more than starting from the handover.
+func TestStaleSession(t *testing.T) {
+	now := time.Now()
+	ago := func(d time.Duration) *time.Time { t := now.Add(-d); return &t }
+	s := &store.RunSnapshot{Visits: []store.VisitSummary{
+		{Seq: 1, SessionID: "a", Finished: ago(2 * time.Hour), Usage: &store.TokenUsage{CacheWrite: 10_000}},
+		{Seq: 2, SessionID: "b", Finished: ago(time.Minute), Usage: &store.TokenUsage{CacheWrite: 100_000, Output: 10_000}},
+		{Seq: 3, SessionID: "b", Finished: ago(time.Minute), Usage: &store.TokenUsage{CacheWrite: 60_000, CacheRead: 5_000_000}},
+		{Seq: 4, SessionID: "c", Finished: ago(time.Minute), Usage: &store.TokenUsage{CacheWrite: 20_000, CacheRead: 5_000_000}},
+	}}
+	if why := staleSession(s, &s.Visits[0], now); !strings.Contains(why, "idle") {
+		t.Errorf("idle 2h: %q", why)
+	}
+	if why := staleSession(s, &s.Visits[2], now); !strings.Contains(why, "170k") {
+		t.Errorf("170k across the session's visits: %q", why)
+	}
+	// Cache reads don't grow the conversation.
+	if why := staleSession(s, &s.Visits[3], now); why != "" {
+		t.Errorf("small, recent session should resume: %q", why)
+	}
+	if h := freshHandover("/run", sessionPlan{kind: "fresh", last: &store.VisitSummary{Dir: "0003-implement"}}); h != filepath.Join("/run", store.VisitsDir, "0003-implement", "handover.md") {
+		t.Errorf("handover %q", h)
 	}
 }

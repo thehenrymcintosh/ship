@@ -34,6 +34,24 @@
             "type": "string"
           },
           "type": "array"
+        },
+        "lean": {
+          "type": "boolean",
+          "description": "Agent steps: false loads every tool and MCP server the user's Claude Code has; by default agents get only the core tools (plus Skill"
+        },
+        "tools": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array",
+          "description": "Agent steps: tools to add to the lean core set (Bash"
+        },
+        "mcp_config": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array",
+          "description": "Agent steps: MCP server configs (JSON files or strings) to load in lean mode."
         }
       },
       "additionalProperties": false,
@@ -244,6 +262,24 @@
             "type": "string"
           },
           "type": "array"
+        },
+        "lean": {
+          "type": "boolean",
+          "description": "Agent steps: false loads every tool and MCP server the user's Claude Code has; by default agents get only the core tools (plus Skill"
+        },
+        "tools": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array",
+          "description": "Agent steps: tools to add to the lean core set (Bash"
+        },
+        "mcp_config": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array",
+          "description": "Agent steps: MCP server configs (JSON files or strings) to load in lean mode."
         },
         "session": {
           "type": "string",

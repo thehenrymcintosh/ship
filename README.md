@@ -828,7 +828,18 @@ workspace:
 ```
 
 Agents run unattended, in the worktree, with your project's
-`.claude/settings.json`, skills and `CLAUDE.md`. Tools they're refused are
+`.claude/settings.json`, skills and `CLAUDE.md`. They run lean: only the
+core tools (Bash, Read, Edit, Write, Glob, Grep, plus Skill for steps that
+use skills) and no MCP servers, because every turn re-reads everything the
+agent was given. Add tools with `tools: [WebFetch]`, MCP servers with
+`mcp_config: [path/to/mcp.json]`, or give a step everything your Claude
+Code has with `lean: false`.
+
+A step that continues a conversation (`session:`) starts a fresh one
+instead, reading the last handover, when the conversation has been idle
+for over an hour (the prompt cache has expired, so resuming would re-send
+all of it) or has grown past about 150k tokens. `ship status` shows each
+visit's cache use and flags resumes that look cold. Tools they're refused are
 flagged in the UI. Bash is allowed by default; to narrow it, list what
 they may use in `allowed_tools` (such as `"Bash(make *)"`), which replaces
 the default.

@@ -145,6 +145,9 @@ func buildCall(v *Visit, outcomes []string, extra string) (*agentCall, *Result) 
 		if v.ResumeKind == "resplit-fresh" {
 			c.prompt += "\n\nThe reviewer asked for a different split:\n\n" + v.Note
 		}
+		if v.ResumeKind == "fresh" {
+			c.prompt += "\n\n" + agent.FreshPrompt(v.StepName, v.FreshWhy, v.FreshHandover)
+		}
 	}
 
 	var infos []agent.OutcomeInfo
@@ -241,6 +244,7 @@ func invoke(ctx context.Context, v *Visit, c *agentCall) (agent.Output, Result) 
 		PluginDirs:   v.PluginDirs,
 		OutputSchema: c.schema, SessionID: v.SessionID, ResumeID: v.ResumeID,
 		Timeout: v.Timeout, Env: v.Env, ExtraArgs: c.cfg.ExtraArgs,
+		Lean: c.cfg.Lean == nil || *c.cfg.Lean, Tools: c.cfg.Tools, MCPConfig: c.cfg.MCPConfig,
 		TranscriptW: tw, StderrW: io.MultiWriter(ew, outputWriter{v, "stderr"}),
 		RunID: v.RunID, Step: v.StepName, VisitNumber: v.Number,
 	}

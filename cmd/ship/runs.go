@@ -343,6 +343,14 @@ func (a *app) statusCmd() *cobra.Command {
 					if v.Tokens > 0 {
 						tok = steps.FormatTokens(v.Tokens) + " tok"
 					}
+					if u := v.Usage; u != nil && (u.CacheWrite > 0 || u.CacheRead > 0) {
+						tok += fmt.Sprintf(" (cache %s written, %s read)", steps.FormatTokens(u.CacheWrite), steps.FormatTokens(u.CacheRead))
+						// Resuming a conversation whose cache had expired
+						// re-sends all of it.
+						if v.ResumeID != "" && u.CacheWrite > coldResumeTokens {
+							tok += a.color("33", " cold resume?")
+						}
+					}
 					fmt.Fprintf(tw, "  %d\t%s %s\t%s\t%s\t%s\t%s\t%s\n", v.Seq, pipeline.TypeGlyph(v.Type), v.Step, outcome, dur, money(v.CostUSD), tok, truncate(firstLine(v.Summary), 70))
 				}
 				tw.Flush()
@@ -517,3 +525,7 @@ func (a *app) cdCmd() *cobra.Command {
 		},
 	}
 }
+
+// coldResumeTokens is how much cache a resumed visit writes before
+// `ship status` suspects its conversation's cache had expired.
+const coldResumeTokens = 100_000
