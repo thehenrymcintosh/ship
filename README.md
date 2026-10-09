@@ -830,16 +830,54 @@ workspace:
 Agents run unattended, in the worktree, with your project's
 `.claude/settings.json`, skills and `CLAUDE.md`. They run lean: only the
 core tools (Bash, Read, Edit, Write, Glob, Grep, plus Skill for steps that
-use skills) and no MCP servers, because every turn re-reads everything the
-agent was given. Add tools with `tools: [WebFetch]`, MCP servers with
-`mcp_config: [path/to/mcp.json]`, or give a step everything your Claude
-Code has with `lean: false`.
+use skills) and no MCP servers, not even claude.ai connectors, because every
+turn re-reads everything the agent was given. Add tools with
+`tools: [WebFetch]`, and MCP servers by name with `mcp: [linear, github]`
+(looked up in your Claude Code config: `claude mcp add`'s user, project and
+local scopes; `ship validate` names the servers it found when one is
+missing) or by file with `mcp_config: [path/to/mcp.json]`. Give a step
+everything your Claude Code has with `lean: false`.
+
+Agent settings combine in order: the `agent:` in `~/.ship/config.yml` and
+the repo's `.ship/config.yml`, then the pipeline's `agent:`, then the step's own (a step
+sets them directly, without an `agent:` key). A later value replaces an
+earlier one field by field; lists replace rather than add to each other, so
+a step's `extra_args`, `tools`, `allowed_tools`, `disallowed_tools`, `mcp`
+or `mcp_config` replaces the pipeline's list. To give one step an extra
+tool, repeat the pipeline's tools in its list. `lean: false` works per step
+too:
+
+```yaml
+agent:
+  model: sonnet
+  tools: [WebFetch]
+steps:
+  research:
+    prompt: Find prior art.
+    tools: [WebFetch, WebSearch]   # replaces [WebFetch]
+    mcp: [linear]
+  explore:
+    prompt: Try it in the browser.
+    model: opus
+    lean: false                    # every tool and MCP server you have
+```
 
 A step that continues a conversation (`session:`) starts a fresh one
-instead, reading the last handover, when the conversation has been idle
-for over an hour (the prompt cache has expired, so resuming would re-send
-all of it) or has grown past about 150k tokens. `ship status` shows each
-visit's cache use and flags resumes that look cold. Tools they're refused are
+instead, reading the last handover, when resuming it would re-send all of
+it: when the conversation has been idle for over an hour (the prompt cache
+has expired), has grown past about 150k tokens, or its last turn ran a
+skill step (`agent:`), after which a resumed conversation misses the cache
+every time. Set the thresholds in config, or per pipeline or step; 0
+disables one:
+
+```yaml
+agent:
+  fresh_after_idle: 1h       # the default
+  fresh_after_tokens: 150k   # the default
+```
+
+`ship status` and the run's page show each visit's cache use and flag
+resumes that look cold. Tools they're refused are
 flagged in the UI. Bash is allowed by default; to narrow it, list what
 they may use in `allowed_tools` (such as `"Bash(make *)"`), which replaces
 the default.

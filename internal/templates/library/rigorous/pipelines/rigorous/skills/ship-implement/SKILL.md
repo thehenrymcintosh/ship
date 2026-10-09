@@ -15,7 +15,8 @@ disable-model-invocation: true
 3. Follow the repository's conventions (its `CLAUDE.md` and existing code).
 4. Add or update focused tests for the new behaviour and the failure modes the
    brief names.
-5. Run the tests closest to what you changed; fix what you broke.
+5. Run the tests closest to what you changed and fix what you broke. Leave
+   the whole suite to the checks step.
 6. Commit with clear messages and leave the working tree clean.
 
 ## Your result

@@ -20,19 +20,17 @@ steps:
   implement:
     description: Implement the plan in the brief
     agent: /ship-implement
-    session: builder
     next: { done: review, stuck: check-in }
 
   review:
     description: Adversarial review of the whole change, fresh every round
     agent: /ship-review
-    model: opus
+    model: sonnet
     next: { clean: verify, fix: fix-review, ask: review-decision }
 
   fix-review:
     description: Fix the review's auto-fix findings
     agent: /ship-fix
-    session: fixer
     next: { done: review, stuck: check-in }
 
   review-decision:
@@ -52,7 +50,6 @@ steps:
   fix-verify:
     description: Fix what verification found
     agent: /ship-fix
-    session: fixer
     next: { done: verify, stuck: check-in }
 
   verify-decision:
@@ -74,7 +71,6 @@ steps:
   fix-checks:
     description: Fix failing checks
     agent: /ship-fix
-    session: fixer
     next: { done: checks, stuck: check-in }
 
   write-pr:
@@ -104,14 +100,12 @@ steps:
     description: Address the PR review comments
     agent: /ship-fix
     prompt: The findings to address are the PR review comments in your handover.
-    session: fixer
     next: { done: push, stuck: check-in }
 
   fix-ci:
     description: Fix the CI failure
     agent: /ship-fix
     prompt: The finding to address is the CI failure in your handover. If it isn't caused by this change, say so and choose stuck rather than changing code.
-    session: fixer
     next: { done: push, stuck: ci-decision }
 
   ci-decision:

@@ -31,6 +31,8 @@ the brief and any earlier handovers are in `$SHIP_RUN_DIR`.
   patching each symptom.
 - Add or adjust a focused test when a defect had no test that would have
   caught it.
+- Run the tests closest to what you changed, not the whole suite: the checks
+  step and CI run that.
 - For CI failures, find the root cause in the failed log. If the failure isn't
   caused by this change (flaky test, infrastructure, an unrelated breakage),
   don't change code: choose **stuck** and say what you found.
