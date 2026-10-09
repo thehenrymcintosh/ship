@@ -3,6 +3,7 @@ package pipeline
 import (
 	"fmt"
 	"regexp"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -75,6 +76,9 @@ type Options struct {
 	// SkillExists reports whether a skill (or slash command) a step calls
 	// can be found for the pipeline file (W108). nil skips the check.
 	SkillExists func(f *File, skill string) bool
+	// MCPServers returns the MCP server names the user's Claude Code has,
+	// for checking a step's mcp:. nil skips the check.
+	MCPServers func() []string
 }
 
 type validator struct {
@@ -660,6 +664,22 @@ func (v *validator) checkAgents() {
 		if v.opts.AgentCheck != nil {
 			for _, msg := range v.opts.AgentCheck(cfg) {
 				v.errf("E014", Ptr("steps", name), "%s", msg)
+			}
+		}
+		if len(cfg.MCP) > 0 && v.opts.MCPServers != nil {
+			have := v.opts.MCPServers()
+			var missing []string
+			for _, n := range cfg.MCP {
+				if !slices.Contains(have, n) {
+					missing = append(missing, n)
+				}
+			}
+			if len(missing) > 0 {
+				names := "none are configured (claude mcp add)"
+				if len(have) > 0 {
+					names = "configured: " + strings.Join(have, ", ")
+				}
+				v.errf("E015", Ptr("steps", name), "no MCP server named %s in your Claude Code config; %s", strings.Join(missing, ", "), names)
 			}
 		}
 		// W108: a skill nobody can find. Plugin skills (/plugin:skill of

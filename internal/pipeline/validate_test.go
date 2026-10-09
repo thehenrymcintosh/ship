@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 var update = flag.Bool("update", false, "rewrite golden files")
@@ -166,5 +167,27 @@ steps:
 	m := f.Pipeline.Mermaid()
 	if !strings.HasPrefix(m, "flowchart LR") || strings.Contains(m, "check_in") || !strings.Contains(m, "n_test") {
 		t.Errorf("mermaid:\n%s", m)
+	}
+}
+
+// E015: an mcp: name the user's Claude Code doesn't have, from the pipeline
+// or a step; the message names the servers that exist. A step's list
+// replaces the pipeline's. Settings parse 0 to disable a threshold.
+func TestValidateMCPNames(t *testing.T) {
+	dir := t.TempDir()
+	p := filepath.Join(dir, "p.yml")
+	writeT(t, p, "version: 1\nstart: a\nagent: {mcp: [jira], fresh_after_tokens: 0, fresh_after_idle: 2h}\nsteps:\n  a: {prompt: hi, next: {pass: b}}\n  b: {prompt: hi, mcp: [linear], next: {pass: done}}\n")
+	f, findings := ValidateFile(p, Options{MCPServers: func() []string { return []string{"github", "linear"} }})
+	var e015 []string
+	for _, fd := range findings {
+		if fd.Code == "E015" {
+			e015 = append(e015, fd.Message)
+		}
+	}
+	if len(e015) != 1 || !strings.Contains(e015[0], "jira") || !strings.Contains(e015[0], "configured: github, linear") {
+		t.Fatalf("E015: %v (all: %v)", e015, findings)
+	}
+	if f == nil || f.Pipeline.Agent.FreshAfterTokens == nil || f.Pipeline.Agent.FreshAfterTokens.N() != 0 || f.Pipeline.Agent.FreshAfterIdle.D(0) != 2*time.Hour {
+		t.Fatalf("fresh thresholds: %+v", f.Pipeline.Agent)
 	}
 }

@@ -52,6 +52,21 @@
           },
           "type": "array",
           "description": "Agent steps: MCP server configs (JSON files or strings) to load in lean mode."
+        },
+        "mcp": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array",
+          "description": "Agent steps: MCP servers to load in lean mode"
+        },
+        "fresh_after_idle": {
+          "$ref": "#/$defs/Duration",
+          "description": "Start a continued conversation fresh from its handover once it has been idle this long (default 1h; 0 never)."
+        },
+        "fresh_after_tokens": {
+          "$ref": "#/$defs/Tokens",
+          "description": "Start a continued conversation fresh from its handover once it has grown past this many tokens (default 150k; 0 never)."
         }
       },
       "additionalProperties": false,
@@ -281,6 +296,21 @@
           "type": "array",
           "description": "Agent steps: MCP server configs (JSON files or strings) to load in lean mode."
         },
+        "mcp": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array",
+          "description": "Agent steps: MCP servers to load in lean mode"
+        },
+        "fresh_after_idle": {
+          "$ref": "#/$defs/Duration",
+          "description": "Start a continued conversation fresh from its handover once it has been idle this long (default 1h; 0 never)."
+        },
+        "fresh_after_tokens": {
+          "$ref": "#/$defs/Tokens",
+          "description": "Start a continued conversation fresh from its handover once it has grown past this many tokens (default 150k; 0 never)."
+        },
         "session": {
           "type": "string",
           "pattern": "^[a-z][a-z0-9_-]*$",
@@ -424,7 +454,7 @@
       "oneOf": [
         {
           "type": "integer",
-          "minimum": 1
+          "minimum": 0
         },
         {
           "type": "string",

@@ -248,7 +248,7 @@ defaults:
   on_error: check-in
 steps:
   implement:
-    agent: /implement
+    prompt: implement the brief
     session: continue
     next: review
   review:

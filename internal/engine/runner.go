@@ -370,12 +370,37 @@ type sessionPlan struct {
 }
 
 // A conversation idle past the prompt cache's lifetime, or this big, starts
-// fresh from its last handover: resuming it would re-send (and re-cache)
-// the whole conversation before doing anything.
-var (
-	FreshAfterIdle   = time.Hour
-	FreshAfterTokens = int64(150_000)
+// fresh from its last handover by default: resuming it would re-send (and
+// re-cache) the whole conversation before doing anything. Config's
+// agent.fresh_after_idle and fresh_after_tokens change these; 0 disables.
+const (
+	defaultFreshAfterIdle   = time.Hour
+	defaultFreshAfterTokens = int64(150_000)
 )
+
+// freshRules are when a continued conversation starts fresh instead.
+type freshRules struct {
+	idle   time.Duration // 0 = never for idleness
+	tokens int64         // 0 = never for size
+	// skill reports whether a step runs a skill (`agent:`). Resuming a
+	// conversation whose last turn was a slash-skill prompt misses the
+	// prompt cache every time (issue #3), so it starts fresh.
+	skill func(step string) bool
+}
+
+// freshRulesFor reads the thresholds from the step's agent settings.
+func (r *runner) freshRulesFor(st *pipeline.Step) freshRules {
+	ac := r.pipe.AgentFor(r.cfg.Agent, st)
+	f := freshRules{idle: ac.FreshAfterIdle.D(defaultFreshAfterIdle), tokens: defaultFreshAfterTokens}
+	if ac.FreshAfterTokens != nil {
+		f.tokens = ac.FreshAfterTokens.N()
+	}
+	f.skill = func(step string) bool {
+		s := r.pipe.Steps[step]
+		return s != nil && s.Agent != nil
+	}
+	return f
+}
 
 // freshHandover is the handover of the conversation a fresh visit didn't
 // resume, or "".
@@ -387,8 +412,11 @@ func freshHandover(dir string, plan sessionPlan) string {
 }
 
 // staleSession says why resuming last's session would be wasteful, or "".
-func staleSession(s *store.RunSnapshot, last *store.VisitSummary, now time.Time) string {
-	if last.Finished != nil && now.Sub(*last.Finished) > FreshAfterIdle {
+func staleSession(s *store.RunSnapshot, last *store.VisitSummary, now time.Time, f freshRules) string {
+	if f.skill != nil && f.skill(last.Step) {
+		return fmt.Sprintf("its last turn ran the %s step's skill, and a conversation resumed after a skill misses the prompt cache, re-sending all of it", last.Step)
+	}
+	if f.idle > 0 && last.Finished != nil && now.Sub(*last.Finished) > f.idle {
 		return fmt.Sprintf("it has been idle for %s, longer than the prompt cache keeps it", now.Sub(*last.Finished).Round(time.Minute))
 	}
 	var size int64
@@ -397,7 +425,7 @@ func staleSession(s *store.RunSnapshot, last *store.VisitSummary, now time.Time)
 			size += v.Usage.Input + v.Usage.CacheWrite + v.Usage.Output
 		}
 	}
-	if size > FreshAfterTokens {
+	if f.tokens > 0 && size > f.tokens {
 		return fmt.Sprintf("it has grown to about %dk tokens, which every turn would re-read", size/1000)
 	}
 	return ""
@@ -429,7 +457,7 @@ func (r *runner) sessions(s *store.RunSnapshot, name string, st *pipeline.Step, 
 				if v.Step != name {
 					kind = "shared"
 				}
-				if why := staleSession(s, v, time.Now()); why != "" {
+				if why := staleSession(s, v, time.Now(), r.freshRulesFor(st)); why != "" {
 					return sessionPlan{sessionID: uuid.NewString(), kind: "fresh", thread: thread, last: v, why: why}
 				}
 				return sessionPlan{resumeID: v.SessionID, kind: kind, thread: thread, last: v}

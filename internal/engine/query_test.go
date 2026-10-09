@@ -47,18 +47,46 @@ func TestStaleSession(t *testing.T) {
 		{Seq: 2, SessionID: "b", Finished: ago(time.Minute), Usage: &store.TokenUsage{CacheWrite: 100_000, Output: 10_000}},
 		{Seq: 3, SessionID: "b", Finished: ago(time.Minute), Usage: &store.TokenUsage{CacheWrite: 60_000, CacheRead: 5_000_000}},
 		{Seq: 4, SessionID: "c", Finished: ago(time.Minute), Usage: &store.TokenUsage{CacheWrite: 20_000, CacheRead: 5_000_000}},
+		{Seq: 5, Step: "triage", SessionID: "d", Finished: ago(9 * time.Second), Usage: &store.TokenUsage{CacheWrite: 5_000}},
 	}}
-	if why := staleSession(s, &s.Visits[0], now); !strings.Contains(why, "idle") {
+	f := freshRules{idle: defaultFreshAfterIdle, tokens: defaultFreshAfterTokens, skill: func(step string) bool { return step == "triage" }}
+	if why := staleSession(s, &s.Visits[0], now, f); !strings.Contains(why, "idle") {
 		t.Errorf("idle 2h: %q", why)
 	}
-	if why := staleSession(s, &s.Visits[2], now); !strings.Contains(why, "170k") {
+	if why := staleSession(s, &s.Visits[2], now, f); !strings.Contains(why, "170k") {
 		t.Errorf("170k across the session's visits: %q", why)
 	}
 	// Cache reads don't grow the conversation.
-	if why := staleSession(s, &s.Visits[3], now); why != "" {
+	if why := staleSession(s, &s.Visits[3], now, f); why != "" {
 		t.Errorf("small, recent session should resume: %q", why)
+	}
+	// A conversation resumed after a skill step misses the cache (#3).
+	if why := staleSession(s, &s.Visits[4], now, f); !strings.Contains(why, "triage step's skill") {
+		t.Errorf("after a skill step: %q", why)
+	}
+	// 0 disables a threshold.
+	if why := staleSession(s, &s.Visits[2], now, freshRules{}); why != "" {
+		t.Errorf("thresholds disabled: %q", why)
+	}
+	if why := staleSession(s, &s.Visits[0], now, freshRules{idle: 3 * time.Hour}); why != "" {
+		t.Errorf("idle 2h under a 3h threshold: %q", why)
 	}
 	if h := freshHandover("/run", sessionPlan{kind: "fresh", last: &store.VisitSummary{Dir: "0003-implement"}}); h != filepath.Join("/run", store.VisitsDir, "0003-implement", "handover.md") {
 		t.Errorf("handover %q", h)
+	}
+}
+
+// The thresholds come from config's agent settings (0 disables), and a
+// step with `agent:` runs a skill.
+func TestFreshRulesFor(t *testing.T) {
+	skill, idle, zero := "/review", pipeline.Duration(2*time.Hour), pipeline.Tokens(0)
+	st := &pipeline.Step{}
+	r := &runner{pipe: &pipeline.Pipeline{Steps: map[string]*pipeline.Step{"review": {Agent: &skill}, "fix": st}}}
+	if f := r.freshRulesFor(st); f.idle != time.Hour || f.tokens != 150_000 || !f.skill("review") || f.skill("fix") || f.skill("gone") {
+		t.Errorf("defaults: %+v", f)
+	}
+	r.cfg.Agent.FreshAfterIdle, r.cfg.Agent.FreshAfterTokens = &idle, &zero
+	if f := r.freshRulesFor(st); f.idle != 2*time.Hour || f.tokens != 0 {
+		t.Errorf("configured: %+v", f)
 	}
 }

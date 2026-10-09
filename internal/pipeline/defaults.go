@@ -150,6 +150,15 @@ func mergeAgent(a, b AgentConfig) AgentConfig {
 	if b.MCPConfig != nil {
 		a.MCPConfig = b.MCPConfig
 	}
+	if b.MCP != nil {
+		a.MCP = b.MCP
+	}
+	if b.FreshAfterIdle != nil {
+		a.FreshAfterIdle = b.FreshAfterIdle
+	}
+	if b.FreshAfterTokens != nil {
+		a.FreshAfterTokens = b.FreshAfterTokens
+	}
 	return a
 }
 

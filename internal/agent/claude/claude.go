@@ -125,9 +125,10 @@ func Args(req agent.Request) ([]string, bool) {
 var CoreTools = []string{"Bash", "Read", "Edit", "Write", "Glob", "Grep"}
 
 // leanArgs trim what the agent loads: only the core tools (plus Skill when
-// it uses skills, plus req.Tools), no MCP servers but req.MCPConfig, and
-// the per-machine system prompt sections moved out so worktrees share the
-// prompt cache. Every token here is re-read on every turn.
+// it uses skills, plus req.Tools) and no MCP servers but req.MCPConfig.
+// Every token here is re-read on every turn. With no MCP config, an empty
+// one keeps out the claude.ai connectors too, which --strict-mcp-config
+// alone doesn't (~16k tokens a step, issue #4).
 func leanArgs(req agent.Request) []string {
 	tools := append([]string{}, CoreTools...)
 	if strings.HasPrefix(strings.TrimSpace(req.Prompt), "/") || len(req.PluginDirs) > 0 {
@@ -138,16 +139,20 @@ func leanArgs(req agent.Request) []string {
 			tools = append(tools, t)
 		}
 	}
-	args := []string{"--tools", strings.Join(tools, ","), "--strict-mcp-config", "--exclude-dynamic-system-prompt-sections"}
-	if len(req.MCPConfig) > 0 {
-		args = append(args, append([]string{"--mcp-config"}, req.MCPConfig...)...)
+	mcp := req.MCPConfig
+	if len(mcp) == 0 {
+		mcp = []string{NoMCPServers}
 	}
-	return args
+	args := []string{"--tools", strings.Join(tools, ","), "--strict-mcp-config"}
+	return append(args, append([]string{"--mcp-config"}, mcp...)...)
 }
 
 // leanFlags are the lean args' flags with the number of values each takes;
 // supported drops any the installed CLI doesn't know.
-var leanFlags = map[string]int{"--tools": 1, "--strict-mcp-config": 0, "--exclude-dynamic-system-prompt-sections": 0}
+var leanFlags = map[string]int{"--tools": 1, "--strict-mcp-config": 0}
+
+// NoMCPServers is an MCP config with no servers.
+const NoMCPServers = `{"mcpServers":{}}`
 
 var (
 	helpMu   sync.Mutex

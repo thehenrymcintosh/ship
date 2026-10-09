@@ -7,6 +7,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/thehenrymcintosh/ship/internal/agent/claude"
 	"github.com/thehenrymcintosh/ship/internal/config"
 	"github.com/thehenrymcintosh/ship/internal/daemon"
 	"github.com/thehenrymcintosh/ship/internal/engine"
@@ -23,6 +24,8 @@ func (a *app) validateOpts(repo string) pipeline.Options {
 	in := history.Inputs{Repo: repo, ClaudeDir: config.ClaudeDir()}
 	return pipeline.Options{AgentCheck: daemon.NewRegistry().Check, AgentBase: cfg.Agent, SkillExists: func(f *pipeline.File, skill string) bool {
 		return !in.ResolveSkill(skill, f.Name, pipeline.FolderOf(f.Path)).Missing
+	}, MCPServers: func() []string {
+		return claude.MCPNames(claude.MCPServers(claude.UserConfigDir(), repo))
 	}}
 }
 

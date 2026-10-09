@@ -178,10 +178,15 @@ func TestParserLimitsAndTokens(t *testing.T) {
 func TestLeanArgs(t *testing.T) {
 	args, _ := Args(agent.Request{Prompt: "fix it", Lean: true, Tools: []string{"WebFetch", "Bash"}, MCPConfig: []string{"/m.json"}})
 	got := strings.Join(args, " ")
-	for _, want := range []string{"--tools Bash,Read,Edit,Write,Glob,Grep,WebFetch", "--strict-mcp-config", "--exclude-dynamic-system-prompt-sections", "--mcp-config /m.json"} {
+	for _, want := range []string{"--tools Bash,Read,Edit,Write,Glob,Grep,WebFetch", "--strict-mcp-config", "--mcp-config /m.json"} {
 		if !strings.Contains(got, want) {
 			t.Errorf("missing %q in %s", want, got)
 		}
+	}
+	// No MCP servers keeps out the claude.ai connectors too (#4).
+	args, _ = Args(agent.Request{Prompt: "x", Lean: true})
+	if got := strings.Join(args, " "); !strings.Contains(got, `--strict-mcp-config --mcp-config {"mcpServers":{}}`) || strings.Contains(got, "--exclude-dynamic") {
+		t.Errorf("lean with no MCP servers: %s", got)
 	}
 	// Skills need the Skill tool.
 	args, _ = Args(agent.Request{Prompt: "/review", Lean: true})
@@ -207,11 +212,11 @@ func TestSupportedDropsUnknownFlags(t *testing.T) {
 	}
 	a := &Adapter{Binary: bin}
 	var warn strings.Builder
-	got := strings.Join(a.supported(context.Background(), []string{"-p", "x", "--tools", "Bash,Read", "--strict-mcp-config", "--exclude-dynamic-system-prompt-sections", "--model", "opus"}, &warn), " ")
+	got := strings.Join(a.supported(context.Background(), []string{"-p", "x", "--tools", "Bash,Read", "--strict-mcp-config", "--model", "opus"}, &warn), " ")
 	if got != "-p x --strict-mcp-config --model opus" {
 		t.Errorf("got %q", got)
 	}
-	if !strings.Contains(warn.String(), "--tools") || !strings.Contains(warn.String(), "--exclude-dynamic-system-prompt-sections") {
+	if !strings.Contains(warn.String(), "--tools") {
 		t.Errorf("warn: %q", warn.String())
 	}
 }

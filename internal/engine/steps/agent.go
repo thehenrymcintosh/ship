@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/thehenrymcintosh/ship/internal/agent"
+	"github.com/thehenrymcintosh/ship/internal/agent/claude"
 	"github.com/thehenrymcintosh/ship/internal/brief"
 	"github.com/thehenrymcintosh/ship/internal/pipeline"
 	"github.com/thehenrymcintosh/ship/internal/store"
@@ -236,6 +237,14 @@ func invoke(ctx context.Context, v *Visit, c *agentCall) (agent.Output, Result) 
 	}
 	defer ew.Close()
 
+	mcp := c.cfg.MCPConfig
+	if len(c.cfg.MCP) > 0 {
+		named, err := claude.MCPConfig(c.cfg.MCP, claude.MCPServers(claude.UserConfigDir(), v.Repo, v.Worktree))
+		if err != nil {
+			return agent.Output{}, ErrorResult("config", err.Error())
+		}
+		mcp = append(append([]string{}, mcp...), named)
+	}
 	req := agent.Request{
 		Workdir: v.Worktree, Prompt: c.prompt, SystemAppend: preamble,
 		Model: c.cfg.Model, Effort: c.cfg.Effort,
@@ -244,7 +253,7 @@ func invoke(ctx context.Context, v *Visit, c *agentCall) (agent.Output, Result) 
 		PluginDirs:   v.PluginDirs,
 		OutputSchema: c.schema, SessionID: v.SessionID, ResumeID: v.ResumeID,
 		Timeout: v.Timeout, Env: v.Env, ExtraArgs: c.cfg.ExtraArgs,
-		Lean: c.cfg.Lean == nil || *c.cfg.Lean, Tools: c.cfg.Tools, MCPConfig: c.cfg.MCPConfig,
+		Lean: c.cfg.Lean == nil || *c.cfg.Lean, Tools: c.cfg.Tools, MCPConfig: mcp,
 		TranscriptW: tw, StderrW: io.MultiWriter(ew, outputWriter{v, "stderr"}),
 		RunID: v.RunID, Step: v.StepName, VisitNumber: v.Number,
 	}

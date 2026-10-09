@@ -77,6 +77,11 @@ type AgentConfig struct {
 	Lean      *bool    `yaml:"lean,omitempty" jsonschema:"description=Agent steps: false loads every tool and MCP server the user's Claude Code has; by default agents get only the core tools (plus Skill, plus tools) and no MCP servers (plus mcp_config)."`
 	Tools     []string `yaml:"tools,omitempty" jsonschema:"description=Agent steps: tools to add to the lean core set (Bash, Read, Edit, Write, Glob, Grep), e.g. WebFetch."`
 	MCPConfig []string `yaml:"mcp_config,omitempty" jsonschema:"description=Agent steps: MCP server configs (JSON files or strings) to load in lean mode."`
+	MCP       []string `yaml:"mcp,omitempty" jsonschema:"description=Agent steps: MCP servers to load in lean mode, by name from the user's Claude Code config (e.g. linear)."`
+	// A continued conversation idle this long, or this big, starts fresh
+	// from its last handover rather than re-sending all of it.
+	FreshAfterIdle   *Duration `yaml:"fresh_after_idle,omitempty" jsonschema:"description=Start a continued conversation fresh from its handover once it has been idle this long (default 1h; 0 never)."`
+	FreshAfterTokens *Tokens   `yaml:"fresh_after_tokens,omitempty" jsonschema:"description=Start a continued conversation fresh from its handover once it has grown past this many tokens (default 150k; 0 never)."`
 }
 
 // Variable is a pipeline variable. Exactly one source must be set.
@@ -416,7 +421,7 @@ func ParseTokens(s string) (int64, error) {
 		mult, t = 1e6, strings.TrimSuffix(t, "m")
 	}
 	f, err := strconv.ParseFloat(t, 64)
-	if err != nil || f <= 0 {
+	if err != nil || f < 0 {
 		return 0, fmt.Errorf("invalid token count %q (e.g. 200000, 200k, 1.5m)", s)
 	}
 	return int64(f * mult), nil

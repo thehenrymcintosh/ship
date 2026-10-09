@@ -52,6 +52,21 @@
           },
           "type": "array",
           "description": "Agent steps: MCP server configs (JSON files or strings) to load in lean mode."
+        },
+        "mcp": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array",
+          "description": "Agent steps: MCP servers to load in lean mode"
+        },
+        "fresh_after_idle": {
+          "$ref": "#/$defs/Duration",
+          "description": "Start a continued conversation fresh from its handover once it has been idle this long (default 1h; 0 never)."
+        },
+        "fresh_after_tokens": {
+          "$ref": "#/$defs/Tokens",
+          "description": "Start a continued conversation fresh from its handover once it has grown past this many tokens (default 150k; 0 never)."
         }
       },
       "additionalProperties": false,
@@ -100,6 +115,11 @@
       "additionalProperties": false,
       "type": "object"
     },
+    "Duration": {
+      "type": "string",
+      "pattern": "^([0-9]+(\\.[0-9]+)?(ns|us|µs|ms|s|m|h|d))+$",
+      "description": "Go duration syntax plus d for days: 90s, 5m, 2h, 7d."
+    },
     "Git": {
       "properties": {
         "dir": {
@@ -140,6 +160,19 @@
       },
       "additionalProperties": false,
       "type": "object"
+    },
+    "Tokens": {
+      "oneOf": [
+        {
+          "type": "integer",
+          "minimum": 0
+        },
+        {
+          "type": "string",
+          "pattern": "^[0-9][0-9_]*(\\.[0-9]+)?[kKmM]?$"
+        }
+      ],
+      "description": "Token count: 200000, 200k or 1.5m. Counts input, cache writes and output; cache reads aren't counted."
     },
     "UI": {
       "properties": {
