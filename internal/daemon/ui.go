@@ -55,6 +55,7 @@ var funcs = template.FuncMap{
 	},
 	"usage":      steps.FormatUsage,
 	"usageTitle": steps.DescribeUsage,
+	"coldResume": steps.ColdResume,
 	"short":      shortID,
 	"trunc":      truncRunes,
 	"pretty":     prettyJSON,

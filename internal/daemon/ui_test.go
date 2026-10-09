@@ -112,3 +112,30 @@ func TestProblemCard(t *testing.T) {
 		at += i
 	}
 }
+
+// A resumed visit that re-cached most of its conversation is flagged as a
+// cold resume, as in `ship status`; a fresh one writing as much isn't.
+func TestTimelineFlagsColdResume(t *testing.T) {
+	tp, err := tpl.get("run")
+	if err != nil {
+		t.Fatal(err)
+	}
+	done := time.Now()
+	visit := func(resume string) store.VisitSummary {
+		return store.VisitSummary{Seq: 2, Step: "fix", Type: "agent", Outcome: "done", Finished: &done, ResumeID: resume,
+			Usage: &store.TokenUsage{CacheWrite: 140_000}}
+	}
+	render := func(v store.VisitSummary) string {
+		var buf bytes.Buffer
+		if err := tp.ExecuteTemplate(&buf, "run-timeline", &RunView{S: &store.RunSnapshot{ID: "r1"}, Visits: []store.VisitSummary{v}}); err != nil {
+			t.Fatal(err)
+		}
+		return buf.String()
+	}
+	if got := render(visit("s1")); !strings.Contains(got, "cold resume?") || !strings.Contains(got, "cache had likely expired") {
+		t.Fatalf("resumed visit writing 140k should be flagged:\n%s", got)
+	}
+	if got := render(visit("")); strings.Contains(got, "cold resume?") {
+		t.Fatalf("a fresh visit isn't a resume:\n%s", got)
+	}
+}

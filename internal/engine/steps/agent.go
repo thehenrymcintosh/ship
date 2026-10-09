@@ -467,6 +467,17 @@ func FormatUsage(tokens int64, u *store.TokenUsage) string {
 		FormatTokens(u.Input), FormatTokens(u.Output), FormatTokens(u.CacheWrite), FormatTokens(u.CacheRead))
 }
 
+// ColdResumeTokens is how much cache a resumed visit writes before it
+// looks like its conversation's cache had expired.
+const ColdResumeTokens = 100_000
+
+// ColdResume reports whether a visit resumed a conversation and re-cached
+// most of it: the prompt cache had expired, so the whole conversation was
+// re-sent.
+func ColdResume(v store.VisitSummary) bool {
+	return v.ResumeID != "" && v.Usage != nil && v.Usage.CacheWrite > ColdResumeTokens
+}
+
 // DescribeUsage spells a visit's tokens out in full, for a tooltip.
 func DescribeUsage(tokens int64, u *store.TokenUsage) string {
 	if u == nil || u.IsZero() {
